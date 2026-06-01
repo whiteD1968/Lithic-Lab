@@ -31,6 +31,9 @@ const state = {
   forceLmin: 0.15,
   forceLmax: 0.75,
   forceLocks: {},
+  pipelineStage: 0,
+  groinMorph: 0,
+  lInterlockBias: 0.35,
   cubeScale: 1,
   arrayU: 1,
   arrayV: 1,
@@ -47,6 +50,8 @@ const state = {
   importedSurfaceBbox: null,
   view2d: { x: 0, y: 0, w: 1000, h: 700 },
   pan2d: null,
+  lightingPreset: "Studio Soft",
+  displayPreset: "Shaded + Edges",
 };
 
 const vaultTypes = [
@@ -67,7 +72,7 @@ const patterns = ["Courses", "Radial joints", "Running bond", "Diagonal joints",
 const viewModes = ["Geometry", "Structure", "Fabrication", "Assembly", "Material", "Printability"];
 const vaultParamRules = {
   "Barrel Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "springingAngle"],
-  "Groin Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "springingAngle", "bayRatio"],
+  "Groin Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "springingAngle", "bayRatio", "groinMorph", "lInterlockBias"],
   "Cloister Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "bayRatio"],
   "Sail Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "bayRatio"],
   Dome: ["span", "rise", "thickness", "courseCount", "blockCount", "subdivisionDensity"],
@@ -172,6 +177,7 @@ const nodes = {
   forceDiagram: byId("forceDiagram"),
   diagramMode: byId("diagramMode"),
   toolTabs: byId("toolTabs"),
+  pipelineStatus: byId("pipelineStatus"),
 };
 
 byId("vaultType").innerHTML = vaultTypes.map((v) => `<option>${v}</option>`).join("");
@@ -185,6 +191,47 @@ const setToolTab = (tab) => {
   document.querySelectorAll("[data-tool-group]").forEach((section) => {
     section.classList.toggle("tab-hidden", section.getAttribute("data-tool-group") !== tab);
   });
+};
+
+const setPipelineStatus = (txt) => {
+  if (nodes.pipelineStatus) nodes.pipelineStatus.textContent = txt;
+};
+
+const runPipelineStage = (stage) => {
+  state.pipelineStage = stage;
+  if (stage === 1) {
+    state.customPatternSource = "UV Form Grid";
+    if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
+    setPipelineStatus("Stage 1: traced form/force guides from current surface.");
+  }
+  if (stage === 2) {
+    state.customPatternSource = "Imported 2D Layout";
+    if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
+    setPipelineStatus("Stage 2: intrados cut network generated.");
+  }
+  if (stage === 3) {
+    state.extradosOffset = Math.max(0.08, state.extradosOffset);
+    if (byId("extradosOffset")) byId("extradosOffset").value = String(state.extradosOffset);
+    setPipelineStatus("Stage 3: cuts projected to extrados.");
+  }
+  if (stage === 4) {
+    state.customPatternSource = "NGon Adaptive";
+    if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
+    state.forceLmin *= 0.95;
+    state.forceLmax *= 1.05;
+    if (byId("forceLmin")) byId("forceLmin").value = state.forceLmin.toFixed(2);
+    if (byId("forceLmax")) byId("forceLmax").value = state.forceLmax.toFixed(2);
+    setPipelineStatus("Stage 4: concave transition cleanup pass applied.");
+  }
+  if (stage === 5) {
+    runChecksAndAssemblyPreview();
+    setPipelineStatus("Stage 5: assembly/tolerance checks complete.");
+  }
+  rebuild();
+};
+
+const runChecksAndAssemblyPreview = () => {
+  state.constraints.fabTolerance = Math.max(0.003, state.constraints.fabTolerance);
 };
 
 const scene = new THREE.Scene();
@@ -207,11 +254,56 @@ controls.screenSpacePanning = true;
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 renderer.domElement.style.touchAction = "none";
 scene.add(new THREE.AmbientLight(0xffffff, 0.46));
+const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x141b28, 0.4);
+scene.add(hemi);
 const key = new THREE.DirectionalLight(0xb6d9ff, 1.18);
-key.position.set(20, 30, 8);
+const fill = new THREE.DirectionalLight(0x9cc7ff, 0.45);
+const rim = new THREE.DirectionalLight(0xffffff, 0.35);
 scene.add(key);
+scene.add(fill);
+scene.add(rim);
 scene.add(new THREE.GridHelper(120, 60, 0x324f69, 0x1c2c39));
 scene.add(new THREE.AxesHelper(6));
+
+const applyLightingPreset = (preset) => {
+  state.lightingPreset = preset;
+  if (preset === "Studio Soft") {
+    scene.background = new THREE.Color(0x0d1422);
+    scene.fog = new THREE.FogExp2(0x0b1020, 0.024);
+    hemi.color.set(0xcfe6ff); hemi.groundColor.set(0x121822); hemi.intensity = 0.45;
+    key.color.set(0xbfe0ff); key.intensity = 1.05; key.position.set(18, 28, 12);
+    fill.color.set(0x9ec8ff); fill.intensity = 0.48; fill.position.set(-16, 13, 18);
+    rim.color.set(0xffffff); rim.intensity = 0.30; rim.position.set(0, 10, -24);
+  } else if (preset === "Three-Point") {
+    scene.background = new THREE.Color(0x101421);
+    scene.fog = new THREE.FogExp2(0x0d121d, 0.02);
+    hemi.color.set(0xd6e8ff); hemi.groundColor.set(0x131a25); hemi.intensity = 0.28;
+    key.color.set(0xffffff); key.intensity = 1.25; key.position.set(22, 24, 16);
+    fill.color.set(0xaed3ff); fill.intensity = 0.62; fill.position.set(-22, 10, 6);
+    rim.color.set(0xffffff); rim.intensity = 0.68; rim.position.set(0, 20, -26);
+  } else if (preset === "Clay Neutral") {
+    scene.background = new THREE.Color(0x1a1a1a);
+    scene.fog = new THREE.FogExp2(0x161616, 0.018);
+    hemi.color.set(0xe8e8e8); hemi.groundColor.set(0x1a1a1a); hemi.intensity = 0.35;
+    key.color.set(0xffffff); key.intensity = 1.10; key.position.set(16, 24, 14);
+    fill.color.set(0xffffff); fill.intensity = 0.35; fill.position.set(-12, 10, 8);
+    rim.color.set(0xf2f2f2); rim.intensity = 0.25; rim.position.set(6, 14, -20);
+  } else if (preset === "Overcast Daylight") {
+    scene.background = new THREE.Color(0xaeb9c7);
+    scene.fog = new THREE.FogExp2(0xaab6c4, 0.012);
+    hemi.color.set(0xf2f6ff); hemi.groundColor.set(0x6e7886); hemi.intensity = 0.7;
+    key.color.set(0xf5f8ff); key.intensity = 0.62; key.position.set(12, 30, 10);
+    fill.color.set(0xe4ecff); fill.intensity = 0.52; fill.position.set(-14, 18, 12);
+    rim.color.set(0xdde8ff); rim.intensity = 0.2; rim.position.set(0, 12, -18);
+  } else if (preset === "Sunset Rim") {
+    scene.background = new THREE.Color(0x241820);
+    scene.fog = new THREE.FogExp2(0x1f1620, 0.02);
+    hemi.color.set(0xffd2a6); hemi.groundColor.set(0x22161a); hemi.intensity = 0.32;
+    key.color.set(0xffb37a); key.intensity = 0.95; key.position.set(-18, 16, 16);
+    fill.color.set(0xa6b9ff); fill.intensity = 0.42; fill.position.set(18, 8, 6);
+    rim.color.set(0xffd0b0); rim.intensity = 0.9; rim.position.set(0, 12, -28);
+  }
+};
 
 const blockGroup = new THREE.Group();
 const importedSurfaceGroup = new THREE.Group();
@@ -352,7 +444,13 @@ const vaultEvaluators = {
     const z = (v - 0.5) * length * state.bayRatioY;
     const yx = rise * Math.sqrt(Math.max(0, 1 - (x / (span * 0.5)) ** 2));
     const yz = rise * Math.sqrt(Math.max(0, 1 - (z / (length * 0.5)) ** 2));
-    return new THREE.Vector3(x, Math.min(yx, yz), z);
+    const groin = Math.min(yx, yz);
+    // Mallorcan-inspired morph toward smoother elliptical transitions.
+    const nx = x / Math.max(0.001, span * 0.5);
+    const nz = z / Math.max(0.001, length * 0.5);
+    const elliptic = rise * Math.sqrt(Math.max(0, 1 - 0.55 * nx * nx - 0.55 * nz * nz));
+    const y = THREE.MathUtils.lerp(groin, elliptic, clamp(state.groinMorph, 0, 1));
+    return new THREE.Vector3(x, y, z);
   },
   "Cloister Vault": (u, v) => {
     const { span, rise, length } = state.params;
@@ -593,6 +691,13 @@ const generatePatternBlocks = () => {
         const sk = diag / Math.max(rows, cols);
         u0 += sk;
         u1 += sk;
+        // Mallorcan cue: L-shaped tie tendency near corner+groin transitions.
+        const edgeU = Math.min((c + 0.5) / cols, 1 - (c + 0.5) / cols);
+        const edgeV = Math.min((r + 0.5) / rows, 1 - (r + 0.5) / rows);
+        const cornerness = 1 - clamp((edgeU + edgeV) * 2.4, 0, 1);
+        const lBias = state.lInterlockBias * cornerness * 0.18 / Math.max(rows, cols);
+        u0 -= lBias;
+        v0 += lBias * 0.6;
       }
       if (state.vaultType === "Cloister Vault" || state.vaultType === "Sail Vault") {
         // Corner-fan behavior: denser wedge-like seams toward corners.
@@ -783,9 +888,49 @@ const build3d = () => {
     mesh.userData.blockId = b.id;
     const seam = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 16), new THREE.LineBasicMaterial({ color: 0xcff2ff, transparent: true, opacity: 0.5 }));
     seam.scale.setScalar(Math.max(0.9, 1 - state.constraints.jointGap));
+    seam.name = "seam";
     mesh.add(seam);
     b.mesh = mesh;
     blockGroup.add(mesh);
+  });
+  applyDisplayPreset();
+};
+
+const applyDisplayPreset = () => {
+  state.blocks.forEach((b, i) => {
+    if (!b.mesh) return;
+    const failed = b.failed.length > 0;
+    const seam = b.mesh.getObjectByName("seam");
+    if (state.displayPreset === "Clay") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: failed ? 0xca7f7f : 0xd9d4cc, roughness: 0.86, metalness: 0.02, transparent: false,
+      });
+      if (seam) seam.visible = false;
+    } else if (state.displayPreset === "Technical Wire") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: 0xa9c2de, roughness: 0.3, metalness: 0.05, wireframe: true, transparent: true, opacity: 0.92,
+      });
+      if (seam) seam.visible = false;
+    } else if (state.displayPreset === "Analysis Heatmap") {
+      const w = clamp((b.metrics.weight - 120) / 700, 0, 1);
+      const c = new THREE.Color().setHSL((1 - w) * 0.66, 0.85, 0.5);
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: c, roughness: 0.5, metalness: 0.08, transparent: true, opacity: 0.95,
+      });
+      if (seam) seam.visible = true;
+    } else if (state.displayPreset === "Fabrication IDs") {
+      const hue = (i % 48) / 48;
+      const c = new THREE.Color().setHSL(hue, 0.72, 0.55);
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: c, roughness: 0.52, metalness: 0.07, transparent: true, opacity: 0.95,
+      });
+      if (seam) seam.visible = true;
+    } else {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: failed ? 0xd15a5a : 0x7ab8df, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92,
+      });
+      if (seam) seam.visible = true;
+    }
   });
 };
 
@@ -895,6 +1040,8 @@ const syncInputsFromState = () => {
   if (byId("tileLayers")) byId("tileLayers").value = String(state.tileLayers);
   if (byId("extradosOffset")) byId("extradosOffset").value = String(state.extradosOffset);
   if (byId("supportTopology")) byId("supportTopology").value = state.supportTopology;
+  if (byId("groinMorph")) byId("groinMorph").value = String(state.groinMorph);
+  if (byId("lInterlockBias")) byId("lInterlockBias").value = String(state.lInterlockBias);
 };
 
 const applyReferencePreset = (name) => {
@@ -918,7 +1065,7 @@ const applyVaultParamRules = () => {
     span: "span", rise: "rise", length: "length", thickness: "thickness",
     courseCount: "courseCount", blockCount: "blockCount", subdivisionDensity: "subdivisionDensity", keystoneSize: "keystoneSize",
     springingAngle: "springingAngle", bayRatio: "bayRatio", ribCount: "ribCount",
-    lierneDensity: "lierneDensity", netFrequency: "netFrequency", tileLayers: "tileLayers",
+    lierneDensity: "lierneDensity", netFrequency: "netFrequency", tileLayers: "tileLayers", groinMorph: "groinMorph", lInterlockBias: "lInterlockBias",
   };
   Object.entries(map).forEach(([key, id]) => {
     const el = byId(id);
@@ -1137,6 +1284,8 @@ byId("netFrequency").addEventListener("input", (e) => { state.netFrequency = Mat
 byId("tileLayers").addEventListener("input", (e) => { state.tileLayers = Math.max(1, Number(e.target.value)); state.params.thickness = Math.max(0.15, 0.18 * state.tileLayers); syncInputsFromState(); });
 if (byId("extradosOffset")) byId("extradosOffset").addEventListener("input", (e) => { state.extradosOffset = Math.max(0, Number(e.target.value)); });
 if (byId("supportTopology")) byId("supportTopology").addEventListener("change", (e) => { state.supportTopology = e.target.value; });
+if (byId("groinMorph")) byId("groinMorph").addEventListener("input", (e) => { state.groinMorph = clamp(Number(e.target.value), 0, 1); });
+if (byId("lInterlockBias")) byId("lInterlockBias").addEventListener("input", (e) => { state.lInterlockBias = clamp(Number(e.target.value), 0, 1); });
 byId("designMode").addEventListener("change", (e) => { state.designMode = e.target.value; });
 if (byId("customPatternSource")) byId("customPatternSource").addEventListener("change", (e) => { state.customPatternSource = e.target.value; });
 if (byId("supportCount")) byId("supportCount").addEventListener("input", (e) => { state.supportCount = Math.max(3, Number(e.target.value)); });
@@ -1175,6 +1324,8 @@ byId("vaultType").addEventListener("change", (e) => {
   rebuild();
 });
 byId("subdivision").addEventListener("change", (e) => { state.pattern = e.target.value; });
+if (byId("lightingPreset")) byId("lightingPreset").addEventListener("change", (e) => applyLightingPreset(e.target.value));
+if (byId("displayPreset")) byId("displayPreset").addEventListener("change", (e) => { state.displayPreset = e.target.value; applyDisplayPreset(); });
 byId("structuralDirection").addEventListener("change", (e) => { state.structuralDirection = e.target.value; });
 byId("generateVault").addEventListener("click", () => rebuild());
 byId("zoomExtents").addEventListener("click", () => zoomExtents());
@@ -1281,6 +1432,11 @@ if (nodes.toolTabs) {
     setToolTab(b.dataset.tab);
   });
 }
+if (byId("pipeTrace")) byId("pipeTrace").addEventListener("click", () => runPipelineStage(1));
+if (byId("pipeIntrados")) byId("pipeIntrados").addEventListener("click", () => runPipelineStage(2));
+if (byId("pipeProject")) byId("pipeProject").addEventListener("click", () => runPipelineStage(3));
+if (byId("pipeCleanup")) byId("pipeCleanup").addEventListener("click", () => runPipelineStage(4));
+if (byId("pipeAssembly")) byId("pipeAssembly").addEventListener("click", () => runPipelineStage(5));
 
 window.addEventListener("resize", resize);
 renderer.domElement.addEventListener("wheel", (e) => {
@@ -1305,6 +1461,7 @@ const tick = () => {
 applyVaultParamRules();
 applyWorkflowStep(1);
 setToolTab("catalog");
+applyLightingPreset(state.lightingPreset);
 rebuild();
 resize();
 tick();

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-CXgPy00Y.js"></script>
+  <script type="module" crossorigin src="/assets/index-BKaNxusm.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-CmGEaYKN.css">
 </head>
 <body>
@@ -88,6 +88,14 @@
             <label>Force Edge lmin <input id="forceLmin" type="number" min="0.01" step="0.01" value="0.15" /></label>
             <label>Force Edge lmax <input id="forceLmax" type="number" min="0.02" step="0.01" value="0.75" /></label>
           </div>
+          <div class="grid-1" id="customPipeline">
+            <button class="ghost-btn" id="pipeTrace">1 Trace Form/Force</button>
+            <button class="ghost-btn" id="pipeIntrados">2 Generate Intrados Cuts</button>
+            <button class="ghost-btn" id="pipeProject">3 Project to Extrados</button>
+            <button class="ghost-btn" id="pipeCleanup">4 Transition Cleanup</button>
+            <button class="ghost-btn" id="pipeAssembly">5 Assembly + Tolerance Check</button>
+            <div class="hint" id="pipelineStatus">Pipeline idle.</div>
+          </div>
         </div>
 
         <div class="section" data-tool-group="workflow">
@@ -122,12 +130,32 @@
             <label>Tile Layers <input type="number" id="tileLayers" min="1" max="6" step="1" value="3" /></label>
             <label>Extrados Offset (m) <input type="number" id="extradosOffset" min="0" step="0.01" value="0.15" /></label>
             <label>Support Topology <select id="supportTopology"><option>4 corners</option><option>continuous walls</option><option>piers + walls</option></select></label>
+            <label>Mallorcan Groin Morph <input type="number" id="groinMorph" min="0" max="1" step="0.05" value="0" /></label>
+            <label>L-Interlock Bias <input type="number" id="lInterlockBias" min="0" max="1" step="0.05" value="0.35" /></label>
           </div>
           <button class="ghost-btn" id="generateVault">Generate Vault</button>
         </div>
 
         <div class="section" data-tool-group="pattern">
           <h3>2D Subdivision Pattern</h3>
+          <label>Lighting
+            <select id="lightingPreset">
+              <option>Studio Soft</option>
+              <option>Three-Point</option>
+              <option>Clay Neutral</option>
+              <option>Overcast Daylight</option>
+              <option>Sunset Rim</option>
+            </select>
+          </label>
+          <label>Display
+            <select id="displayPreset">
+              <option>Shaded + Edges</option>
+              <option>Clay</option>
+              <option>Technical Wire</option>
+              <option>Analysis Heatmap</option>
+              <option>Fabrication IDs</option>
+            </select>
+          </label>
           <select id="subdivision">
             <option>Courses</option>
             <option>Radial joints</option>

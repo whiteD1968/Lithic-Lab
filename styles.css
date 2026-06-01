@@ -31,6 +31,8 @@ body {
 .glass { background: var(--panel); border: 1px solid var(--panel-border); box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), 0 12px 32px rgba(0,0,0,0.35); backdrop-filter: blur(18px); border-radius: var(--radius); }
 .panel { padding: 14px; overflow: auto; }
 .controls { display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; }
+.analysis { display: grid; grid-template-rows: auto auto auto 1fr; gap: 10px; }
+.docked-display { position: sticky; top: 0; z-index: 4; padding-bottom: 8px; margin-bottom: 2px; background: linear-gradient(180deg, rgba(24, 30, 44, 0.96), rgba(24, 30, 44, 0.72)); border-bottom: 1px solid rgba(255,255,255,0.08); }
 .tool-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 8px; }
 .tool-tabs .ghost-btn { font-size: 0.72rem; padding: 6px; }
 .tool-scroll { overflow: auto; min-height: 0; padding-right: 2px; }
@@ -55,10 +57,16 @@ input[type="range"] { padding: 0; }
 .window-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
 .window-head h2 { margin: 0; font-size: 0.9rem; }
 .window-head span { color: var(--muted); font-size: 0.75rem; }
-#layout2d { width: 100%; height: 100%; background: linear-gradient(180deg, rgba(3,10,18,0.7), rgba(6,16,28,0.6)); }
+#layout2d { width: 100%; height: 100%; background: linear-gradient(180deg, #585d66, #4c515a); }
+#layout2d.layout-blueprint { background: radial-gradient(circle at 50% 20%, rgba(84,140,196,0.18), transparent 45%), linear-gradient(180deg, #0c1e33, #0b1726); }
+#layout2d.layout-paper { background: linear-gradient(180deg, #f5f0e4, #e7dfd0); }
+#layout2d.layout-paper .block2d { fill: rgba(146, 126, 96, 0.18); stroke: rgba(79, 62, 45, 0.85); }
+#layout2d.layout-paper .uv-handle { fill: #2f6ea8; stroke: #f7f1e8; }
+#layout2d.layout-contrast { background: #0a0a0a; }
+#layout2d.layout-contrast .block2d { fill: rgba(255, 255, 255, 0.08); stroke: rgba(255, 255, 255, 0.95); }
 #layout2d .block2d { fill: rgba(106, 170, 214, 0.17); stroke: rgba(155, 223, 255, 0.8); stroke-width: 1.1; cursor: pointer; }
 #layout2d .selected { stroke: #ffffff; stroke-width: 2; }
-#layout2d .invalid { fill: rgba(255,93,93,0.35); stroke: rgba(255,170,170,0.95); }
+#layout2d .invalid { fill: rgba(226, 174, 98, 0.28); stroke: rgba(244, 213, 154, 0.96); }
 #layout2d .uv-handle { fill: #83d6ff; stroke: #071521; stroke-width: 1; cursor: grab; opacity: 0.9; }
 #layout2d .uv-handle.selected { fill: #ffffff; }
 #viewport { width: 100%; height: 100%; display: block; }
@@ -79,6 +87,9 @@ body.ff-fullscreen #formDiagram, body.ff-fullscreen #forceDiagram { height: min(
 .mode-switch { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .mode-switch button { font-size: 0.76rem; }
 .mode-switch button.active { border-color: rgba(99,214,255,0.8); background: rgba(99,214,255,0.22); }
+.display-toggles { margin-top: 8px; display: grid; gap: 5px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem; color: var(--text); }
+.toggle-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: #8ea1c8; }
 @media (max-width: 1320px) {
   .workspace { grid-template-columns: 1fr; }
   .modelspace { min-height: 780px; }

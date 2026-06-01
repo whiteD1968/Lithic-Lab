@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lithic Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <script type="module" crossorigin src="/assets/index-CXgPy00Y.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CmGEaYKN.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar glass">
+      <div class="brand"><span class="dot"></span><h1>Lithic Lab</h1></div>
+      <div class="mode-switch" id="viewModes"></div>
+      <button class="ghost-btn" id="exportJson">Export Mesh JSON</button>
+      <button class="ghost-btn" id="exportBlocks">Export Individual Blocks</button>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel controls glass">
+        <h2>Generator Controls</h2>
+        <div class="tool-tabs" id="toolTabs">
+          <button class="ghost-btn active" data-tab="catalog">Catalog</button>
+          <button class="ghost-btn" data-tab="import">Import</button>
+          <button class="ghost-btn" data-tab="workflow">Workflow</button>
+          <button class="ghost-btn" data-tab="params">Params</button>
+          <button class="ghost-btn" data-tab="pattern">Pattern</button>
+        </div>
+        <div class="tool-scroll">
+        <div class="section" data-tool-group="catalog">
+          <h3>Vault Catalog</h3>
+          <select id="vaultType">
+            <option>Barrel Vault</option>
+            <option>Groin Vault</option>
+            <option>Cloister Vault</option>
+            <option>Sail Vault</option>
+            <option>Dome</option>
+            <option>Rib Vault</option>
+            <option>Fan Vault</option>
+            <option>Lierne Vault</option>
+            <option>Net Vault</option>
+            <option>Catalan Vault</option>
+            <option>Guastavino Vault</option>
+            <option>Custom Imported Rhino Surface</option>
+          </select>
+          <div class="hint">Barrel vault is active. Other types are scaffolded for extension.</div>
+          <label>Reference Preset
+            <select id="referencePreset">
+              <option>Custom</option>
+              <option>Aqueduc Barrel Stereotomy</option>
+              <option>Groined Plate XXIV</option>
+              <option>Arc de Cloitre</option>
+              <option>Fan Vault Bath</option>
+              <option>Catalan Running Bond</option>
+              <option>Guastavino Thin Tile</option>
+              <option>Lierne Gothic Nodework</option>
+              <option>Net Vault Lattice</option>
+            </select>
+          </label>
+        </div>
+        <div class="section" data-tool-group="import">
+          <h3>Custom Design Import Mode</h3>
+          <label>Mode
+            <select id="designMode">
+              <option>Generated</option>
+              <option>Custom Import</option>
+            </select>
+          </label>
+          <div class="grid-1">
+            <label>2D Layout File (SVG / DXF)
+              <input id="import2d" type="file" accept=".svg,.dxf" />
+            </label>
+            <label>3D Surface File (OBJ / STL / GLB)
+              <input id="import3d" type="file" accept=".obj,.stl,.glb,.gltf" />
+            </label>
+            <div class="hint">Rhino 3DM planned for future support.</div>
+            <label>Custom Pattern Source
+              <select id="customPatternSource">
+                <option>Imported 2D Layout</option>
+                <option>UV Form Grid</option>
+                <option>NGon Adaptive</option>
+              </select>
+            </label>
+            <label>Support Vertex Count <input id="supportCount" type="number" min="3" max="24" step="1" value="4" /></label>
+            <label>Force Edge lmin <input id="forceLmin" type="number" min="0.01" step="0.01" value="0.15" /></label>
+            <label>Force Edge lmax <input id="forceLmax" type="number" min="0.02" step="0.01" value="0.75" /></label>
+          </div>
+        </div>
+
+        <div class="section" data-tool-group="workflow">
+          <h3>Workflow</h3>
+          <div class="grid-1" id="workflowSteps">
+            <button class="ghost-btn" data-step="1">1 Pattern</button>
+            <button class="ghost-btn" data-step="2">2 Supports</button>
+            <button class="ghost-btn" data-step="3">3 Forces</button>
+            <button class="ghost-btn" data-step="4">4 Equilibrium</button>
+            <button class="ghost-btn" data-step="5">5 Thickness</button>
+            <button class="ghost-btn" data-step="6">6 Checks</button>
+          </div>
+        </div>
+        <div class="section" data-tool-group="params">
+          <h3>Vault Parameters</h3>
+          <div class="grid-2">
+            <label>Span <input type="range" id="span" min="4" max="60" value="22" /></label>
+            <label>Rise <input type="range" id="rise" min="2" max="30" value="10" /></label>
+            <label>Depth <input type="range" id="length" min="4" max="80" value="28" /></label>
+            <label>Thickness <input type="range" id="thickness" min="0.2" max="4" step="0.05" value="1.1" /></label>
+            <label>Courses <input type="range" id="courseCount" min="4" max="48" value="16" /></label>
+            <label>Blocks/Course <input type="range" id="blockCount" min="6" max="40" value="18" /></label>
+            <label>Subdivision Density <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" /></label>
+            <label>Keystone Size <input type="range" id="keystoneSize" min="0" max="1" step="0.05" value="0.45" /></label>
+            <label>Bounding Cube Scale <input type="number" id="cubeScale" min="0.1" step="0.1" value="1" /></label>
+            <label>Array U x V <input type="text" id="arrayUV" value="1x1" /></label>
+            <label>Springing Angle (deg) <input type="number" id="springingAngle" min="0" max="50" step="1" value="0" /></label>
+            <label>Bay Ratio X:Y <input type="text" id="bayRatio" value="1:1" /></label>
+            <label>Rib Count <input type="number" id="ribCount" min="2" max="48" step="1" value="8" /></label>
+            <label>Lierne Density <input type="number" id="lierneDensity" min="0" max="1" step="0.05" value="0.4" /></label>
+            <label>Net Frequency <input type="number" id="netFrequency" min="1" max="24" step="1" value="10" /></label>
+            <label>Tile Layers <input type="number" id="tileLayers" min="1" max="6" step="1" value="3" /></label>
+            <label>Extrados Offset (m) <input type="number" id="extradosOffset" min="0" step="0.01" value="0.15" /></label>
+            <label>Support Topology <select id="supportTopology"><option>4 corners</option><option>continuous walls</option><option>piers + walls</option></select></label>
+          </div>
+          <button class="ghost-btn" id="generateVault">Generate Vault</button>
+        </div>
+
+        <div class="section" data-tool-group="pattern">
+          <h3>2D Subdivision Pattern</h3>
+          <select id="subdivision">
+            <option>Courses</option>
+            <option>Radial joints</option>
+            <option>Running bond</option>
+            <option>Diagonal joints</option>
+            <option>Hex / NGon</option>
+            <option>Rib-aligned</option>
+            <option>Keystone zones</option>
+          </select>
+          <div class="grid-2">
+            <label>Joint Thickness (m) <input id="jointGap" type="number" step="0.005" value="0.02" /></label>
+            <label>Taper (deg) <input id="taperAngle" type="number" step="0.1" value="4" /></label>
+            <label>Course Height (m) <input id="courseHeight" type="number" step="0.01" value="0.65" /></label>
+            <label>Block Depth (m) <input id="bedDepth" type="number" step="0.01" value="0.24" /></label>
+            <label>Structural Direction
+              <select id="structuralDirection">
+                <option>Compression lines</option>
+                <option>Rib lines</option>
+                <option>Thrust paths</option>
+              </select>
+            </label>
+            <label>Registration Method
+              <select id="registrationMode">
+                <option>UV coordinates</option>
+                <option>Bounding box fit</option>
+                <option>Control points</option>
+              </select>
+            </label>
+            <label>Align Scale <input id="alignScale" type="number" step="0.05" value="1" /></label>
+            <label>Align Offset U <input id="alignOffsetU" type="number" step="0.01" value="0" /></label>
+            <label>Align Offset V <input id="alignOffsetV" type="number" step="0.01" value="0" /></label>
+            <label>Align Rotation (deg) <input id="alignRotation" type="number" step="1" value="0" /></label>
+          </div>
+        </div>
+        </div>
+      </aside>
+
+      <section class="modelspace">
+        <article class="panel-window glass">
+          <div class="window-head">
+            <h2>2D Stereotomic Layout</h2>
+            <span>UV Editor</span>
+          </div>
+          <svg id="layout2d" viewBox="0 0 1000 700" preserveAspectRatio="none"></svg>
+          <div class="floating glass" id="diagramPanel">
+            <div class="window-head">
+              <h2>Form / Force</h2>
+              <div>
+                <button class="ghost-btn" id="ffFullscreen">Expand</button>
+                <span id="diagramMode">Generated</span>
+              </div>
+            </div>
+            <svg id="formDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
+            <svg id="forceDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
+          </div>
+        </article>
+
+        <article class="panel-window glass">
+          <div class="window-head">
+            <h2>3D Vault Visualization</h2>
+            <div>
+              <button class="ghost-btn" id="zoomExtents">Zoom Extents</button>
+              <span>Three.js</span>
+            </div>
+          </div>
+          <canvas id="viewport"></canvas>
+          <div class="floating inspector glass" id="inspector"></div>
+        </article>
+      </section>
+
+      <aside class="panel analysis glass">
+        <h2>Fabrication + Analysis</h2>
+        <div class="metrics" id="metrics"></div>
+
+        <div class="section">
+          <h3>Fabrication Constraints</h3>
+          <div class="grid-1">
+            <label>Max Block Length (m) <input id="maxLength" type="number" value="2.4" step="0.1" /></label>
+            <label>Max Block Width (m) <input id="maxWidth" type="number" value="1.2" step="0.1" /></label>
+            <label>Min Block Thickness (m) <input id="minThickness" type="number" value="0.3" step="0.05" /></label>
+            <label>Max Block Weight (kg) <input id="maxWeight" type="number" value="520" step="10" /></label>
+            <label>Allowable Taper (deg) <input id="maxTaper" type="number" value="8" step="0.1" /></label>
+            <label>Min Edge Length (m) <input id="minEdgeLength" type="number" value="0.18" step="0.01" /></label>
+            <label>Fab Tolerance (m) <input id="fabTolerance" type="number" value="0.008" step="0.001" /></label>
+          </div>
+          <button class="ghost-btn" id="runChecks">Run Checks</button>
+          <ul id="warnings"></ul>
+        </div>
+        <div class="section">
+          <h3>Stereotomic Precedent</h3>
+          <div id="precedentDetails" class="hint"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+</body>
+</html>

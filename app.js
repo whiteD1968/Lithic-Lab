@@ -18,6 +18,11 @@ const state = {
   jointMode: "Visual seams",
   params: { span: 22, rise: 10, length: 28, thickness: 1.1, courseCount: 16, blockCount: 18, subdivisionDensity: 1, keystoneSize: 0.45 },
   springingAngle: 0,
+  archType: "Semicircular",
+  targetBlockWidth: 1.2,
+  barrelOffsetSide: "Inside",
+  wallThickness: 0.45,
+  wallHeightOffset: 0,
   bayRatioX: 1,
   bayRatioY: 1,
   ribCount: 8,
@@ -32,6 +37,9 @@ const state = {
   forceLmin: 0.15,
   forceLmax: 0.75,
   forceLocks: {},
+  patternAppliedToModel: false,
+  barrelBondMode: "1",
+  dragSensitivity: "Normal",
   pipelineStage: 0,
   groinMorph: 0,
   lInterlockBias: 0.35,
@@ -46,6 +54,10 @@ const state = {
   blocks: [],
   selectedBlockId: null,
   dragging: null,
+  draggingSectionHandle: null,
+  suspendViewportFit: false,
+  draggingPointerId: null,
+  hoveredSectionHandle: null,
   imported2DPolys: null,
   importedSurface: null,
   importedSurfaceBbox: null,
@@ -66,146 +78,150 @@ const state = {
   },
 };
 
-const vaultTypes = [
-  "Barrel Vault",
-  "Groin Vault",
-  "Cloister Vault",
-  "Sail Vault",
-  "Dome",
-  "Rib Vault",
-  "Fan Vault",
-  "Lierne Vault",
-  "Net Vault",
-  "Catalan Vault",
-  "Guastavino Vault",
-  "Custom Imported Rhino Surface",
-];
 const patterns = ["Courses", "Radial joints", "Running bond", "Diagonal joints", "Hex / NGon", "Rib-aligned", "Keystone zones"];
 const viewModes = ["Geometry", "Structure", "Fabrication", "Assembly", "Material", "Printability"];
-const vaultParamRules = {
-  "Barrel Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "springingAngle"],
-  "Groin Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "springingAngle", "bayRatio", "groinMorph", "lInterlockBias"],
-  "Cloister Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "bayRatio"],
-  "Sail Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "bayRatio"],
-  Dome: ["span", "rise", "thickness", "courseCount", "blockCount", "subdivisionDensity"],
-  "Rib Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "bayRatio"],
-  "Fan Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount"],
-  "Lierne Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "lierneDensity"],
-  "Net Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "netFrequency"],
-  "Catalan Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"],
-  "Guastavino Vault": ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"],
-  "Custom Imported Rhino Surface": ["thickness", "courseCount", "blockCount", "subdivisionDensity"],
-};
-const vaultPatternPreset = {
-  "Barrel Vault": "Running bond",
-  "Groin Vault": "Radial joints",
-  "Cloister Vault": "Rib-aligned",
-  "Sail Vault": "Rib-aligned",
-  Dome: "Radial joints",
-  "Rib Vault": "Rib-aligned",
-  "Fan Vault": "Rib-aligned",
-  "Lierne Vault": "Hex / NGon",
-  "Net Vault": "Hex / NGon",
-  "Catalan Vault": "Running bond",
-  "Guastavino Vault": "Running bond",
-};
-const vaultPatternAllowed = {
-  "Barrel Vault": ["Courses", "Running bond", "Radial joints", "Keystone zones"],
-  "Groin Vault": ["Radial joints", "Diagonal joints", "Rib-aligned", "Keystone zones"],
-  "Cloister Vault": ["Radial joints", "Rib-aligned", "Keystone zones"],
-  "Sail Vault": ["Radial joints", "Rib-aligned", "Keystone zones"],
-  Dome: ["Radial joints", "Courses", "Keystone zones"],
-  "Rib Vault": ["Rib-aligned", "Radial joints", "Diagonal joints"],
-  "Fan Vault": ["Rib-aligned", "Radial joints"],
-  "Lierne Vault": ["Rib-aligned", "Hex / NGon", "Diagonal joints"],
-  "Net Vault": ["Hex / NGon", "Diagonal joints", "Rib-aligned"],
-  "Catalan Vault": ["Running bond", "Diagonal joints", "Courses"],
-  "Guastavino Vault": ["Running bond", "Diagonal joints", "Courses"],
-  "Custom Imported Rhino Surface": ["Hex / NGon", "Rib-aligned", "Diagonal joints", "Running bond", "Radial joints", "Courses", "Keystone zones"],
-};
-const vaultStructuralDefault = {
-  "Barrel Vault": "Compression lines",
-  "Groin Vault": "Thrust paths",
-  "Cloister Vault": "Compression lines",
-  "Sail Vault": "Compression lines",
-  Dome: "Compression lines",
-  "Rib Vault": "Rib lines",
-  "Fan Vault": "Rib lines",
-  "Lierne Vault": "Rib lines",
-  "Net Vault": "Rib lines",
-  "Catalan Vault": "Compression lines",
-  "Guastavino Vault": "Compression lines",
-  "Custom Imported Rhino Surface": "Compression lines",
-};
-const vaultStartupSolutions = {
+const vaultLibrary = {
   "Barrel Vault": {
-    pattern: "Running bond",
-    params: { span: 22, rise: 10, length: 28, thickness: 0.9, courseCount: 20, blockCount: 22, subdivisionDensity: 1.1, keystoneSize: 0.35 },
+    name: "Barrel Vault",
+    construction2D: "Longitudinal ring courses and springing control lines.",
+    construction3D: "Continuous semicylindrical shell from a single arc family.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Courses",
+    parameters: ["span", "rise", "length", "thickness", "archType", "courseHeight", "targetBlockWidth", "barrelBondMode", "barrelOffsetSide", "wallThickness", "wallHeightOffset"].map((key) => ({ key })),
+    allowedPatterns: ["Courses", "Running bond", "Radial joints", "Keystone zones"],
+    startup: { params: { span: 22, rise: 10, length: 28, thickness: 0.9, courseCount: 20, blockCount: 22, subdivisionDensity: 1.1, keystoneSize: 0.35 } },
   },
   "Groin Vault": {
-    pattern: "Radial joints",
-    params: { span: 22, rise: 11, length: 22, thickness: 0.88, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 },
-    bayRatioX: 1,
-    bayRatioY: 1,
-    groinMorph: 0.45,
+    name: "Groin Vault",
+    construction2D: "Crossed barrel guides with diagonal arris seams.",
+    construction3D: "Intersection of orthogonal barrel surfaces with groin arrises.",
+    forceFlowType: "Thrust paths",
+    stereotomyType: "Radial joints",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "springingAngle", "bayRatio", "groinMorph", "lInterlockBias"].map((key) => ({ key })),
+    allowedPatterns: ["Radial joints", "Diagonal joints", "Rib-aligned", "Keystone zones"],
+    startup: { params: { span: 22, rise: 11, length: 22, thickness: 0.88, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 }, bayRatioX: 1, bayRatioY: 1, groinMorph: 0.45 },
   },
   "Cloister Vault": {
-    pattern: "Rib-aligned",
-    params: { span: 22, rise: 10, length: 22, thickness: 0.82, courseCount: 18, blockCount: 16, subdivisionDensity: 1.05, keystoneSize: 0.58 },
-    bayRatioX: 1,
-    bayRatioY: 1,
+    name: "Cloister Vault",
+    construction2D: "Four corner fans converging to apex control.",
+    construction3D: "Corner-rising sectors meeting toward central summit.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Rib-aligned",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "bayRatio"].map((key) => ({ key })),
+    allowedPatterns: ["Radial joints", "Rib-aligned", "Keystone zones"],
+    startup: { params: { span: 22, rise: 10, length: 22, thickness: 0.82, courseCount: 18, blockCount: 16, subdivisionDensity: 1.05, keystoneSize: 0.58 }, bayRatioX: 1, bayRatioY: 1 },
   },
   "Sail Vault": {
-    pattern: "Rib-aligned",
-    params: { span: 22, rise: 12, length: 22, thickness: 0.78, courseCount: 18, blockCount: 18, subdivisionDensity: 1.08, keystoneSize: 0.52 },
-    bayRatioX: 1,
-    bayRatioY: 1,
+    name: "Sail Vault",
+    construction2D: "Square bay guide with corner-support arcs.",
+    construction3D: "Billowed surface spanning between four corner supports.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Rib-aligned",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "bayRatio"].map((key) => ({ key })),
+    allowedPatterns: ["Radial joints", "Rib-aligned", "Keystone zones"],
+    startup: { params: { span: 22, rise: 12, length: 22, thickness: 0.78, courseCount: 18, blockCount: 18, subdivisionDensity: 1.08, keystoneSize: 0.52 }, bayRatioX: 1, bayRatioY: 1 },
   },
   Dome: {
-    pattern: "Radial joints",
-    params: { span: 22, rise: 13, length: 22, thickness: 0.85, courseCount: 24, blockCount: 24, subdivisionDensity: 1.15, keystoneSize: 0.5 },
+    name: "Dome",
+    construction2D: "Polar radial rings with meridian controls.",
+    construction3D: "Axisymmetric shell from revolution geometry.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Radial joints",
+    parameters: ["span", "rise", "thickness", "courseCount", "blockCount", "subdivisionDensity"].map((key) => ({ key })),
+    allowedPatterns: ["Radial joints", "Courses", "Keystone zones"],
+    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.85, courseCount: 24, blockCount: 24, subdivisionDensity: 1.15, keystoneSize: 0.5 } },
   },
   "Rib Vault": {
-    pattern: "Rib-aligned",
-    params: { span: 20, rise: 11, length: 22, thickness: 0.72, courseCount: 16, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.45 },
-    ribCount: 8,
-    bayRatioX: 1,
-    bayRatioY: 1,
+    name: "Rib Vault",
+    construction2D: "Primary rib skeleton with web infill zones.",
+    construction3D: "Groin-like web reinforced by raised diagonal ribs.",
+    forceFlowType: "Rib lines",
+    stereotomyType: "Rib-aligned",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "bayRatio"].map((key) => ({ key })),
+    allowedPatterns: ["Rib-aligned", "Radial joints", "Diagonal joints"],
+    startup: { params: { span: 20, rise: 11, length: 22, thickness: 0.72, courseCount: 16, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.45 }, ribCount: 8, bayRatioX: 1, bayRatioY: 1 },
   },
   "Fan Vault": {
-    pattern: "Rib-aligned",
-    params: { span: 20, rise: 16, length: 20, thickness: 0.72, courseCount: 18, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.55 },
-    ribCount: 12,
+    name: "Fan Vault",
+    construction2D: "Sectorized fan ribs from clustered spring points.",
+    construction3D: "Conoidal fan surfaces with scalloped rib emphasis.",
+    forceFlowType: "Rib lines",
+    stereotomyType: "Rib-aligned",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount"].map((key) => ({ key })),
+    allowedPatterns: ["Rib-aligned", "Radial joints"],
+    startup: { params: { span: 20, rise: 16, length: 20, thickness: 0.72, courseCount: 18, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 12 },
   },
   "Lierne Vault": {
-    pattern: "Hex / NGon",
-    params: { span: 22, rise: 13, length: 22, thickness: 0.78, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.55 },
-    ribCount: 10,
-    lierneDensity: 0.52,
+    name: "Lierne Vault",
+    construction2D: "Primary ribs with tertiary lierne connectors.",
+    construction3D: "Rib-vault web enriched by dense linking ribs.",
+    forceFlowType: "Rib lines",
+    stereotomyType: "Hex / NGon",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "lierneDensity"].map((key) => ({ key })),
+    allowedPatterns: ["Rib-aligned", "Hex / NGon", "Diagonal joints"],
+    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.78, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 10, lierneDensity: 0.52 },
   },
   "Net Vault": {
-    pattern: "Hex / NGon",
-    params: { span: 22, rise: 13, length: 22, thickness: 0.8, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.58 },
-    netFrequency: 8,
+    name: "Net Vault",
+    construction2D: "Interwoven diagonal net lanes and node loci.",
+    construction3D: "Groin-derived web with periodic net modulation.",
+    forceFlowType: "Rib lines",
+    stereotomyType: "Hex / NGon",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "netFrequency"].map((key) => ({ key })),
+    allowedPatterns: ["Hex / NGon", "Diagonal joints", "Rib-aligned"],
+    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.8, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.58 }, netFrequency: 8 },
   },
   "Catalan Vault": {
-    pattern: "Running bond",
-    params: { span: 20, rise: 8, length: 24, thickness: 0.54, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.24 },
-    tileLayers: 3,
+    name: "Catalan Vault",
+    construction2D: "Layered running-bond tile courses.",
+    construction3D: "Shallow compression shell tuned for thin-tile layering.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Running bond",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"].map((key) => ({ key })),
+    allowedPatterns: ["Running bond", "Diagonal joints", "Courses"],
+    startup: { params: { span: 20, rise: 8, length: 24, thickness: 0.54, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.24 }, tileLayers: 3 },
   },
   "Guastavino Vault": {
-    pattern: "Running bond",
-    params: { span: 24, rise: 9, length: 28, thickness: 0.5, courseCount: 24, blockCount: 26, subdivisionDensity: 1.15, keystoneSize: 0.2 },
-    tileLayers: 3,
+    name: "Guastavino Vault",
+    construction2D: "Multi-layer timbrel tile bond sequencing.",
+    construction3D: "Timbrel shell profile with catenary-inspired rise.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Running bond",
+    parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"].map((key) => ({ key })),
+    allowedPatterns: ["Running bond", "Diagonal joints", "Courses"],
+    startup: { params: { span: 24, rise: 9, length: 28, thickness: 0.5, courseCount: 24, blockCount: 26, subdivisionDensity: 1.15, keystoneSize: 0.2 }, tileLayers: 3 },
   },
   "Custom Imported Rhino Surface": {
-    pattern: "Hex / NGon",
-    params: { thickness: 0.75, courseCount: 20, blockCount: 22, subdivisionDensity: 1.15 },
+    name: "Custom Imported Rhino Surface",
+    construction2D: "User-supplied 2D network registration.",
+    construction3D: "Imported mesh/surface projection target.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Hex / NGon",
+    parameters: ["thickness", "courseCount", "blockCount", "subdivisionDensity"].map((key) => ({ key })),
+    allowedPatterns: ["Hex / NGon", "Rib-aligned", "Diagonal joints", "Running bond", "Radial joints", "Courses", "Keystone zones"],
+    startup: { params: { thickness: 0.75, courseCount: 20, blockCount: 22, subdivisionDensity: 1.15 } },
   },
 };
+const vaultTypes = Object.keys(vaultLibrary);
+const vaultParamRules = Object.fromEntries(vaultTypes.map((name) => [name, (vaultLibrary[name].parameters || []).map((p) => p.key)]));
+const vaultPatternPreset = Object.fromEntries(vaultTypes.map((name) => [name, vaultLibrary[name].stereotomyType]));
+const vaultPatternAllowed = Object.fromEntries(vaultTypes.map((name) => [name, vaultLibrary[name].allowedPatterns || patterns]));
+const vaultStructuralDefault = Object.fromEntries(vaultTypes.map((name) => [name, vaultLibrary[name].forceFlowType || "Compression lines"]));
+const vaultStartupSolutions = Object.fromEntries(vaultTypes.map((name) => [name, { pattern: vaultLibrary[name].stereotomyType, ...(vaultLibrary[name].startup || {}) }]));
 const vaultStartupSeen = new Set(["Barrel Vault"]);
 const referencePresets = {
   Custom: null,
+  "Default Groin Vault (Solid First)": {
+    vaultType: "Groin Vault",
+    pattern: "Radial joints",
+    params: { span: 24, rise: 12, length: 24, thickness: 1.05, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 },
+    cubeScale: 1,
+    arrayU: 1,
+    arrayV: 1,
+    groinMorph: 0.5,
+    bayRatioX: 1,
+    bayRatioY: 1,
+  },
   "Aqueduc Barrel Stereotomy": {
     vaultType: "Barrel Vault",
     pattern: "Running bond",
@@ -307,6 +323,8 @@ const setPipelineStatus = (txt) => {
 const runPipelineStage = (stage) => {
   state.pipelineStage = stage;
   if (stage === 1) {
+    state.designMode = "Generated";
+    if (byId("designMode")) byId("designMode").value = "Generated";
     state.customPatternSource = "UV Form Grid";
     if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
     setPipelineStatus("Stage 1: traced form/force guides from current surface.");
@@ -334,6 +352,42 @@ const runPipelineStage = (stage) => {
     runChecksAndAssemblyPreview();
     setPipelineStatus("Stage 5: assembly/tolerance checks complete.");
   }
+  rebuild();
+};
+
+const runSolidToStereotomicWorkflow = () => {
+  state.designMode = "Generated";
+  if (byId("designMode")) byId("designMode").value = "Generated";
+  state.customPatternSource = "UV Form Grid";
+  if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
+  state.pattern = vaultPatternPreset[state.vaultType] || state.pattern;
+  if (byId("subdivision")) byId("subdivision").value = state.pattern;
+  state.patternAppliedToModel = false;
+  state.pipelineStage = 0;
+  setPipelineStatus("Solid model opened. Developing stereotomic pattern...");
+  rebuild();
+};
+
+const runVaultSelectionPipeline = (vaultType) => {
+  const def = vaultLibrary[vaultType];
+  if (!def) return;
+  state.vaultType = vaultType;
+  applyVaultStartupSolution(vaultType);
+  fitStartupParamsToConstraints(vaultType);
+  state.structuralDirection = def.forceFlowType || state.structuralDirection;
+  state.pattern = def.stereotomyType || state.pattern;
+  state.patternAppliedToModel = false;
+  state.selectedBlockId = null;
+  if (state.vaultType !== "Custom Imported Rhino Surface") {
+    state.designMode = "Generated";
+    if (byId("designMode")) byId("designMode").value = "Generated";
+  }
+  if (byId("subdivision")) byId("subdivision").value = state.pattern;
+  if (byId("structuralDirection")) byId("structuralDirection").value = state.structuralDirection;
+  applyVaultParamRules();
+  syncWallThicknessWithVault();
+  syncInputsFromState();
+  setPipelineStatus(`Loaded ${def.name}: 2D construction, 3D geometry, force flow, and default stereotomy ready.`);
   rebuild();
 };
 
@@ -437,12 +491,22 @@ const applyLightingPreset = (preset) => {
 };
 
 const blockGroup = new THREE.Group();
+const solidVaultGroup = new THREE.Group();
+const supportWallGroup = new THREE.Group();
 const importedSurfaceGroup = new THREE.Group();
+const sectionGizmoGroup = new THREE.Group();
+const sectionActiveGizmoGroup = new THREE.Group();
 scene.add(blockGroup);
+scene.add(solidVaultGroup);
+scene.add(supportWallGroup);
 scene.add(importedSurfaceGroup);
+scene.add(sectionGizmoGroup);
+scene.add(sectionActiveGizmoGroup);
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+const sectionDragPlane = new THREE.Plane();
+const sectionDragPoint = new THREE.Vector3();
 const objLoader = new OBJLoader();
 const stlLoader = new STLLoader();
 const gltfLoader = new GLTFLoader();
@@ -461,6 +525,8 @@ const precedentDb = {
     historicalReferences: [
       { title: "Britannica: Groin Vault", url: "https://www.britannica.com/technology/groin-vault" },
       { title: "Wikipedia: Groin Vault", url: "https://en.wikipedia.org/wiki/Groin_vault" },
+      { title: "CGTrader: Gothic Groin + Rib Vault Model", url: "https://www.cgtrader.com/3d-models/architectural/other/gothic-groin-vault-and-rib-vault" },
+      { title: "SketchUp Warehouse: Roman Groin Vault", url: "https://3dwarehouse.sketchup.com/model/c8db1f7f207c40c6256ec53cd94b6afc/Roman-Groin-Vault" },
     ],
     blockLogic: "Intersection of two barrel systems with emphasized arrises.",
     jointPatterns: "Diagonal groin seams plus transverse arch courses.",
@@ -555,6 +621,222 @@ const precedentDb = {
   },
 };
 
+const evalBarrelArchProfile = (nx) => {
+  const x = clamp(nx, 0, 1);
+  if (state.archType === "Semicircular") {
+    return Math.sqrt(Math.max(0, 1 - x ** 2));
+  }
+  if (state.archType === "Segmental") {
+    // Flatter than semicircular while keeping springings and crown fixed.
+    return Math.pow(Math.max(0, 1 - x ** 2), 1.25);
+  }
+  if (state.archType === "Pointed") {
+    // Two-arc pointed profile with a small rounded apex cap (C1-smooth).
+    const c = 0.42;
+    const radius2 = (1 + c) * (1 + c) + c * c;
+    const baseFn = (xx) => {
+      const inside = radius2 - (xx + c) * (xx + c);
+      return Math.max(0, -c + Math.sqrt(Math.max(0, inside)));
+    };
+    const w = 0.085;
+    if (x >= w) return baseFn(x);
+    const h = 0.002;
+    const yW = baseFn(w);
+    const dW = (baseFn(Math.min(1, w + h)) - baseFn(Math.max(0, w - h))) / (2 * h);
+    // y = 1 + b x^2 + c4 x^4, with y(0)=1, y'(0)=0 and matching y,dy at x=w.
+    const w2 = w * w;
+    const w3 = w2 * w;
+    const w4 = w2 * w2;
+    const rhs1 = yW - 1;
+    const rhs2 = dW;
+    const c4 = (rhs2 - (2 * rhs1) / Math.max(1e-8, w)) / (2 * w3);
+    const b = (rhs1 - c4 * w4) / Math.max(1e-8, w2);
+    return clamp(1 + b * x * x + c4 * x * x * x * x, 0, 1);
+  }
+  if (state.archType === "Elliptical" || state.archType === "Catenary") {
+    // Legacy "Catenary" option maps to Elliptical behavior.
+    return Math.pow(Math.max(0, 1 - x ** 2), 0.82);
+  }
+  return Math.sqrt(Math.max(0, 1 - x ** 2));
+};
+
+const getBarrelWallHeight = (scale = state.cubeScale) => {
+  return Math.max(0.3, (state.params.rise + state.wallHeightOffset) * scale);
+};
+
+const syncWallThicknessWithVault = () => {
+  state.wallThickness = clamp(state.params.thickness, 0.1, 4);
+};
+
+const getDragLerp = () => {
+  if (state.dragSensitivity === "Precise") return 0.18;
+  if (state.dragSensitivity === "Fast") return 0.55;
+  return 0.32;
+};
+
+const getBarrelSpringingY = (scale = state.cubeScale) => {
+  return getBarrelWallHeight(scale);
+};
+
+const intersectInfinite2D = (p1, p2, p3, p4) => {
+  const x1 = p1.x, y1 = p1.y;
+  const x2 = p2.x, y2 = p2.y;
+  const x3 = p3.x, y3 = p3.y;
+  const x4 = p4.x, y4 = p4.y;
+  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(den) < 1e-8) return null;
+  const a = x1 * y2 - y1 * x2;
+  const b = x3 * y4 - y3 * x4;
+  const x = (a * (x3 - x4) - (x1 - x2) * b) / den;
+  const y = (a * (y3 - y4) - (y1 - y2) * b) / den;
+  return new THREE.Vector2(x, y);
+};
+
+const offsetJoinedPolyline = (pts, dist, miterLimit = 3.0) => {
+  if (!pts?.length) return [];
+  if (pts.length < 2) return pts.map((p) => p.clone());
+  const out = [];
+  const segNormals = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.max(1e-8, Math.hypot(dx, dy));
+    segNormals.push(new THREE.Vector2(dy / len, -dx / len)); // right normal
+  }
+  for (let i = 0; i < pts.length; i++) {
+    if (i === 0) {
+      out.push(pts[i].clone().addScaledVector(segNormals[0], dist));
+      continue;
+    }
+    if (i === pts.length - 1) {
+      out.push(pts[i].clone().addScaledVector(segNormals[segNormals.length - 1], dist));
+      continue;
+    }
+    const pPrev = pts[i - 1];
+    const pCurr = pts[i];
+    const pNext = pts[i + 1];
+    const t0 = pCurr.clone().sub(pPrev).normalize();
+    const t1 = pNext.clone().sub(pCurr).normalize();
+    const n0 = segNormals[i - 1];
+    const n1 = segNormals[i];
+    // Very sharp cusps (e.g. pointed arch apex) are unstable for miter intersections.
+    // Use a safe averaged bevel point to avoid spikes/self-intersection.
+    const turnDot = t0.dot(t1);
+    if (turnDot < -0.2) {
+      // Reduce effective offset near very sharp cusps (pointed apex) to avoid
+      // local foldover/self-intersection while preserving a pointed silhouette.
+      const cuspScale = clamp((turnDot + 1) / 0.8, 0.12, 1);
+      const localDist = dist * cuspScale;
+      const q0 = pCurr.clone().addScaledVector(n0, localDist);
+      const q1 = pCurr.clone().addScaledVector(n1, localDist);
+      out.push(q0.add(q1).multiplyScalar(0.5));
+      continue;
+    }
+    const a0 = pPrev.clone().addScaledVector(n0, dist);
+    const a1 = pCurr.clone().addScaledVector(n0, dist);
+    const b0 = pCurr.clone().addScaledVector(n1, dist);
+    const b1 = pNext.clone().addScaledVector(n1, dist);
+    const hit = intersectInfinite2D(a0, a1, b0, b1);
+    if (!hit) {
+      out.push(pCurr.clone().addScaledVector(n1, dist));
+      continue;
+    }
+    const mLen = hit.distanceTo(pCurr);
+    if (!Number.isFinite(mLen) || mLen > Math.abs(dist) * miterLimit) {
+      const bis = n0.clone().add(n1);
+      if (bis.lengthSq() < 1e-8) {
+        out.push(pCurr.clone().addScaledVector(n1, dist));
+      } else {
+        bis.normalize();
+        out.push(pCurr.clone().addScaledVector(bis, dist));
+      }
+    } else {
+      out.push(hit);
+    }
+  }
+  return out;
+};
+
+const buildBarrelSectionPolyline = (scale = state.cubeScale) => {
+  const span = state.params.span * scale;
+  const rise = state.params.rise * scale * (Math.cos((state.springingAngle * Math.PI) / 180) || 1);
+  const springY = getBarrelSpringingY(scale);
+  const halfW = span * 0.5;
+  const legN = 12;
+  const archN = 180;
+  const pts = [];
+  for (let i = 0; i <= legN; i++) {
+    const t = i / legN;
+    pts.push(new THREE.Vector2(-halfW, t * springY));
+  }
+  // Cosine-reparameterized sampling concentrates points near springings,
+  // removing the visible "extra segment" artifact at leg/arch transitions.
+  for (let i = 1; i < archN; i++) {
+    const t = i / archN;
+    const tw = 0.5 - 0.5 * Math.cos(Math.PI * t);
+    const x = -halfW + tw * span;
+    const nx = clamp(Math.abs(x) / Math.max(0.001, halfW), 0, 1);
+    const y = springY + rise * Math.max(0, evalBarrelArchProfile(nx));
+    pts.push(new THREE.Vector2(x, y));
+  }
+  for (let i = 0; i <= legN; i++) {
+    const t = i / legN;
+    pts.push(new THREE.Vector2(halfW, springY * (1 - t)));
+  }
+  return { pts, halfW, springY, rise };
+};
+
+const makeTextSprite = (text, color = "#ffe2a0") => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "600 26px 'Plus Jakarta Sans', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = color;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set(2.4, 0.6, 1);
+  return sp;
+};
+
+const setSectionGizmoHover = (handleName) => {
+  state.hoveredSectionHandle = handleName || null;
+  sectionGizmoGroup.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh) || !obj.userData.gizmoHandle || !obj.material) return;
+    const active = obj.userData.gizmoHandle === state.hoveredSectionHandle || obj.userData.gizmoHandle === state.draggingSectionHandle;
+    obj.material.emissive = new THREE.Color(active ? 0x7ec8ff : 0x3b2d16);
+    obj.material.emissiveIntensity = active ? 0.95 : 0.4;
+    obj.scale.setScalar(active ? 1.18 : 1);
+  });
+};
+
+const showActiveHandleGizmo = (handleName) => {
+  clearGroup(sectionActiveGizmoGroup);
+  if (!handleName) return;
+  const h = sectionGizmoGroup.children.find((x) => x?.userData?.gizmoHandle === handleName);
+  if (!h) return;
+  const p = h.position.clone();
+  const axisLen = 2.6;
+  const mx = new THREE.Mesh(new THREE.BoxGeometry(axisLen, 0.08, 0.08), new THREE.MeshBasicMaterial({ color: 0xff5a4f }));
+  mx.position.set(p.x + axisLen * 0.5, p.y, p.z);
+  const my = new THREE.Mesh(new THREE.BoxGeometry(0.08, axisLen, 0.08), new THREE.MeshBasicMaterial({ color: 0x56e56a }));
+  my.position.set(p.x, p.y + axisLen * 0.5, p.z);
+  const mz = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, axisLen), new THREE.MeshBasicMaterial({ color: 0x4a79ff }));
+  mz.position.set(p.x, p.y, p.z + axisLen * 0.5);
+  sectionActiveGizmoGroup.add(mx);
+  sectionActiveGizmoGroup.add(my);
+  sectionActiveGizmoGroup.add(mz);
+};
+
 const barrelVaultPoint = (u, v) => {
   const { span, rise, length } = state.params;
   const scale = state.cubeScale;
@@ -563,8 +845,11 @@ const barrelVaultPoint = (u, v) => {
   const sLength = length * scale;
   const x = (u - 0.5) * sSpan;
   const z = (v - 0.5) * sLength;
+  const nx = clamp(Math.abs(x) / Math.max(0.001, sSpan * 0.5), 0, 1);
   const springFactor = Math.cos((state.springingAngle * Math.PI) / 180) || 1;
-  const y = sRise * springFactor * Math.sqrt(Math.max(0, 1 - (x / (sSpan * 0.5)) ** 2));
+  const profile = evalBarrelArchProfile(nx);
+  const springY = getBarrelSpringingY(scale);
+  const y = springY + sRise * springFactor * Math.max(0, profile);
   return new THREE.Vector3(x, y, z);
 };
 const vaultEvaluators = {
@@ -855,6 +1140,29 @@ const generatePatternBlocks = () => {
       let u1 = (c + 1) / cols;
       let v0 = r / rows;
       let v1 = (r + 1) / rows;
+      if (state.vaultType === "Barrel Vault") {
+        if (state.barrelBondMode === "2") {
+          const sh = (r % 2 ? 0.5 : 0) / cols;
+          u0 += sh;
+          u1 += sh;
+        } else if (state.barrelBondMode === "3") {
+          const sh = (r / Math.max(1, rows - 1)) * (0.75 / cols);
+          u0 += sh;
+          u1 += sh;
+        } else if (state.barrelBondMode === "4") {
+          const side = ((c + 0.5) / cols - 0.5);
+          const fan = (r / Math.max(1, rows - 1)) * (0.8 / cols);
+          u0 += Math.sign(side || 1) * fan;
+          u1 += Math.sign(side || 1) * fan;
+          // Add taper condition: courses tighten toward crown.
+          const crown = clamp((r / Math.max(1, rows - 1)), 0, 1);
+          const taper = 1 - crown * 0.28;
+          const mid = (u0 + u1) * 0.5;
+          const w = (u1 - u0) * taper;
+          u0 = mid - w * 0.5;
+          u1 = mid + w * 0.5;
+        }
+      }
       if (state.pattern === "Running bond" && r % 2) { u0 += 0.5 / cols; u1 += 0.5 / cols; }
       if (state.pattern === "Diagonal joints") { const sk = (r / rows - 0.5) * (0.6 / cols); u0 += sk; u1 += sk; }
       if (state.pattern === "Radial joints") { u0 = Math.pow(c / cols, 0.92); u1 = Math.pow((c + 1) / cols, 0.92); }
@@ -965,6 +1273,124 @@ const validate = (m) => {
   return failed;
 };
 
+const archOverlayConfig = {
+  cx: 500,
+  baseY: 650,
+  spanScalePxPerM: 8.5,
+  riseScalePxPerM: 13,
+  minHalfW: 40,
+  maxHalfW: 420,
+  minRisePx: 20,
+  maxRisePx: 320,
+};
+
+const buildBarrelSectionGizmo3d = () => {
+  clearGroup(sectionGizmoGroup);
+  clearGroup(sectionActiveGizmoGroup);
+  if (state.vaultType !== "Barrel Vault") return;
+  const scale = state.cubeScale;
+  const span = state.params.span * scale;
+  const { pts: sectionPts, halfW, springY, rise } = buildBarrelSectionPolyline(scale);
+  const length = state.params.length * scale;
+  const z = -(length * 0.58);
+  const wallT = Math.max(0.1, state.wallThickness * scale);
+  const wallH = Math.max(0.3, rise + state.wallHeightOffset * scale);
+  const useInsideRef = state.barrelOffsetSide !== "Outside";
+  const shellT = Math.max(0.1, state.params.thickness * scale);
+  const offsetPts = offsetJoinedPolyline(sectionPts, shellT, 2.2);
+  const refPts = (useInsideRef ? sectionPts : offsetPts).map((p) => new THREE.Vector3(p.x, p.y, z));
+  const otherPts = (useInsideRef ? offsetPts : sectionPts).map((p) => new THREE.Vector3(p.x, p.y, z));
+  const profileGeo = new THREE.BufferGeometry().setFromPoints(refPts);
+  const profile = new THREE.Line(profileGeo, new THREE.LineBasicMaterial({ color: 0xffdf9f, transparent: true, opacity: 0.95 }));
+  sectionGizmoGroup.add(profile);
+  const altGeo = new THREE.BufferGeometry().setFromPoints(otherPts);
+  sectionGizmoGroup.add(new THREE.Line(altGeo, new THREE.LineBasicMaterial({ color: 0x9eb2c9, transparent: true, opacity: 0.65 })));
+  const baseGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-halfW, 0, z), new THREE.Vector3(halfW, 0, z)]);
+  const base = new THREE.Line(baseGeo, new THREE.LineBasicMaterial({ color: 0xd2bd8a, transparent: true, opacity: 0.7 }));
+  sectionGizmoGroup.add(base);
+  const xAxisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, springY, z), new THREE.Vector3(Math.max(2, halfW * 0.45), springY, z)]);
+  sectionGizmoGroup.add(new THREE.Line(xAxisGeo, new THREE.LineBasicMaterial({ color: 0xff6b6b, transparent: true, opacity: 0.85 })));
+  const yAxisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, springY, z), new THREE.Vector3(0, springY + Math.max(2, rise * 0.75), z)]);
+  sectionGizmoGroup.add(new THREE.Line(yAxisGeo, new THREE.LineBasicMaterial({ color: 0x76d275, transparent: true, opacity: 0.85 })));
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffdf9f, emissive: 0x3b2d16, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.1 });
+  const r = Math.max(0.18, span * 0.014);
+  const handleGeo = new THREE.SphereGeometry(r, 14, 14);
+  const spanHandle = new THREE.Mesh(handleGeo, mat.clone());
+  spanHandle.position.set(halfW, springY, z);
+  spanHandle.userData.gizmoHandle = "span";
+  sectionGizmoGroup.add(spanHandle);
+  const riseHandle = new THREE.Mesh(handleGeo, mat.clone());
+  riseHandle.position.set(0, springY + rise, z);
+  riseHandle.userData.gizmoHandle = "rise";
+  sectionGizmoGroup.add(riseHandle);
+  const spanLabel = makeTextSprite("Width", "#ff8f8f");
+  if (spanLabel) {
+    spanLabel.position.set(halfW + r * 2.4, r * 2.6, z);
+    sectionGizmoGroup.add(spanLabel);
+  }
+  const spanValue = makeTextSprite(`Span ${state.params.span.toFixed(2)} m`, "#ffd0d0");
+  if (spanValue) {
+    spanValue.position.set(halfW + r * 3.2, springY - r * 2.2, z);
+    sectionGizmoGroup.add(spanValue);
+  }
+  const riseLabel = makeTextSprite("Height", "#92e097");
+  if (riseLabel) {
+    riseLabel.position.set(r * 3.2, rise + r * 2.3, z);
+    sectionGizmoGroup.add(riseLabel);
+  }
+  const riseValue = makeTextSprite(`Rise ${state.params.rise.toFixed(2)} m`, "#c6ffd2");
+  if (riseValue) {
+    riseValue.position.set(r * 3.4, springY + rise + r * 0.2, z);
+    sectionGizmoGroup.add(riseValue);
+  }
+  void wallT;
+  void wallH;
+  setSectionGizmoHover(state.hoveredSectionHandle);
+  showActiveHandleGizmo(state.draggingSectionHandle || state.hoveredSectionHandle);
+};
+
+const buildBarrelArchOverlay2d = () => {
+  if (state.vaultType !== "Barrel Vault") return [];
+  const { cx, baseY, spanScalePxPerM, riseScalePxPerM, minHalfW, maxHalfW, minRisePx, maxRisePx } = archOverlayConfig;
+  const halfW = clamp(state.params.span * spanScalePxPerM * 0.5, minHalfW, maxHalfW);
+  const risePx = clamp(state.params.rise * riseScalePxPerM, minRisePx, maxRisePx);
+  const tPx = Math.max(2, state.params.thickness * riseScalePxPerM);
+  const useInsideRef = state.barrelOffsetSide !== "Outside";
+  const legPx = clamp(risePx * 0.32, 20, 150);
+  const legN = 12;
+  const archN = 84;
+  const section = [];
+  for (let i = 0; i <= legN; i++) {
+    const t = i / legN;
+    section.push({ x: cx - halfW, y: baseY + legPx * (1 - t) });
+  }
+  for (let i = 1; i < archN; i++) {
+    const t = i / archN;
+    const nx = Math.abs((t - 0.5) * 2);
+    const profile = Math.max(0, evalBarrelArchProfile(nx));
+    section.push({ x: cx - halfW + t * halfW * 2, y: baseY - profile * risePx });
+  }
+  for (let i = 0; i <= legN; i++) {
+    const t = i / legN;
+    section.push({ x: cx + halfW, y: baseY - legPx * t });
+  }
+  const sectionV = section.map((p) => new THREE.Vector2(p.x, p.y));
+  const offsetV = offsetJoinedPolyline(sectionV, tPx, 2.2);
+  const refV = useInsideRef ? sectionV : offsetV;
+  const otherV = useInsideRef ? offsetV : sectionV;
+  const ptsRef = refV.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`);
+  const ptsOther = otherV.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`);
+  return [
+    `<line x1="${(cx - halfW).toFixed(2)}" y1="${baseY}" x2="${(cx + halfW).toFixed(2)}" y2="${baseY}" stroke="rgba(255,226,160,0.45)" stroke-width="1.0" stroke-dasharray="4 4"/>`,
+    `<line x1="${cx}" y1="${baseY}" x2="${cx}" y2="${(baseY - risePx).toFixed(2)}" stroke="rgba(255,226,160,0.35)" stroke-width="1"/>`,
+    `<polyline points="${ptsOther.join(" ")}" fill="none" stroke="rgba(150,176,206,0.7)" stroke-width="1.6"/>`,
+    `<polyline points="${ptsRef.join(" ")}" fill="none" stroke="rgba(255,226,160,0.95)" stroke-width="2.2"/>`,
+    `<circle class="arch-handle" data-handle="span" cx="${(cx + halfW).toFixed(2)}" cy="${baseY}" r="6" fill="rgba(255,226,160,0.95)" stroke="rgba(20,20,20,0.7)" stroke-width="1.2"/>`,
+    `<circle class="arch-handle" data-handle="rise" cx="${cx}" cy="${(baseY - risePx).toFixed(2)}" r="6" fill="rgba(255,226,160,0.95)" stroke="rgba(20,20,20,0.7)" stroke-width="1.2"/>`,
+    `<text x="${cx}" y="${(baseY - risePx - 12).toFixed(2)}" fill="rgba(255,236,188,0.9)" font-size="12" text-anchor="middle">Barrel Arch: ${state.archType}</text>`,
+  ];
+};
+
 const draw2d = () => {
   const margin = 24;
   const iw = 952;
@@ -1070,6 +1496,14 @@ const renderFormForceDiagrams = () => {
 
 const build3d = () => {
   clearGroup(blockGroup);
+  clearGroup(solidVaultGroup);
+  clearGroup(supportWallGroup);
+  buildSupportWalls();
+  if (!state.patternAppliedToModel) {
+    buildSolidVaultMesh();
+    applyDisplayPreset();
+    return;
+  }
   state.blocks.forEach((b) => {
     const m = buildBlockMesh(b);
     b.metrics = m;
@@ -1084,6 +1518,155 @@ const build3d = () => {
     blockGroup.add(mesh);
   });
   applyDisplayPreset();
+};
+
+const buildSupportWalls = () => {
+  const def = vaultLibrary[state.vaultType];
+  if (!def?.construction3D?.toLowerCase().includes("extrud") && state.vaultType !== "Barrel Vault") return;
+  if (state.vaultType === "Barrel Vault") return;
+};
+
+const buildSolidVaultMesh = () => {
+  if (state.vaultType === "Barrel Vault") {
+    buildBarrelSolidExtrusionMesh();
+    return;
+  }
+  const cyclicU = state.vaultType === "Dome";
+  const du = 1 / 72;
+  const dv = 1 / 56;
+  const rows = Math.max(18, Math.floor((state.params.courseCount || 18) * 2.2));
+  const cols = Math.max(18, Math.floor((state.params.blockCount || 18) * 2.2));
+  const top = [];
+  const bot = [];
+  for (let r = 0; r <= rows; r++) {
+    for (let c = 0; c <= cols; c++) {
+      const u = c / cols;
+      const v = r / rows;
+      const uu = cyclicU ? wrap01(u) : clamp(u, 0, 1);
+      const p = getVaultPoint(uu, clamp(v, 0, 1));
+      const pu = getVaultPoint(cyclicU ? wrap01(uu + du) : clamp(uu + du, 0, 1), clamp(v, 0, 1));
+      const pv = getVaultPoint(uu, clamp(v + dv, 0, 1));
+      const normal = pu.clone().sub(p).cross(pv.clone().sub(p)).normalize();
+      top.push(p);
+      bot.push(p.clone().addScaledVector(normal, -(state.params.thickness + state.extradosOffset)));
+    }
+  }
+  const vertices = [...top, ...bot];
+  const stride = cols + 1;
+  const baseBot = top.length;
+  const idx = [];
+  const quad = (a, b, c, d) => { idx.push(a, b, c, a, c, d); };
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const a = r * stride + c;
+      const b = a + 1;
+      const d = a + stride;
+      const c2 = d + 1;
+      quad(a, b, c2, d);
+      quad(baseBot + d, baseBot + c2, baseBot + b, baseBot + a);
+    }
+  }
+  for (let c = 0; c < cols; c++) {
+    const a = c;
+    const b = c + 1;
+    quad(a, b, baseBot + b, baseBot + a);
+    const ar = rows * stride + c;
+    const br = ar + 1;
+    quad(baseBot + ar, baseBot + br, br, ar);
+  }
+  if (!cyclicU) {
+    for (let r = 0; r < rows; r++) {
+      const a = r * stride;
+      const b = a + stride;
+      quad(baseBot + a, a, b, baseBot + b);
+      const ar = r * stride + cols;
+      const br = ar + stride;
+      quad(ar, baseBot + ar, baseBot + br, br);
+    }
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((v, i) => {
+    pos[i * 3] = v.x;
+    pos[i * 3 + 1] = v.y;
+    pos[i * 3 + 2] = v.z;
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(idx);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: true, opacity: 0.95 }));
+  mesh.name = "solid-vault";
+  solidVaultGroup.add(mesh);
+};
+
+const buildBarrelSolidExtrusionMesh = () => {
+  const scale = state.cubeScale;
+  const length = state.params.length * scale;
+  const z0 = -length * 0.5;
+  const z1 = length * 0.5;
+  const { pts: sectionPts } = buildBarrelSectionPolyline(scale);
+  const profileN = sectionPts.length - 1;
+  const zN = Math.max(10, Math.floor((state.params.courseCount || 16) * 1.2));
+  const offset = Math.max(0.1, state.params.thickness * scale);
+  const useInsideRef = state.barrelOffsetSide !== "Outside";
+  const offsetPts = offsetJoinedPolyline(sectionPts, offset, 2.2);
+  const top = [];
+  const bot = [];
+  for (let r = 0; r <= zN; r++) {
+    const z = THREE.MathUtils.lerp(z0, z1, r / zN);
+    for (let c = 0; c < sectionPts.length; c++) {
+      const ref2 = useInsideRef ? sectionPts[c] : offsetPts[c];
+      const off2 = useInsideRef ? offsetPts[c] : sectionPts[c];
+      const ref = new THREE.Vector3(ref2.x, ref2.y, z);
+      const off = new THREE.Vector3(off2.x, off2.y, z);
+      top.push(ref);
+      bot.push(off);
+    }
+  }
+  const vertices = [...top, ...bot];
+  const stride = profileN + 1;
+  const botBase = top.length;
+  const idx = [];
+  const quad = (a, b, c, d) => { idx.push(a, b, c, a, c, d); };
+  for (let r = 0; r < zN; r++) {
+    for (let c = 0; c < profileN; c++) {
+      const a = r * stride + c;
+      const b = a + 1;
+      const d = a + stride;
+      const c2 = d + 1;
+      quad(a, b, c2, d);
+      quad(botBase + d, botBase + c2, botBase + b, botBase + a);
+    }
+  }
+  for (let r = 0; r < zN; r++) {
+    const a0 = r * stride;
+    const b0 = a0 + stride;
+    quad(botBase + a0, a0, b0, botBase + b0);
+    const a1 = r * stride + profileN;
+    const b1 = a1 + stride;
+    quad(a1, botBase + a1, botBase + b1, b1);
+  }
+  for (let c = 0; c < profileN; c++) {
+    const a = c;
+    const b = c + 1;
+    quad(botBase + a, botBase + b, b, a);
+    const aR = zN * stride + c;
+    const bR = aR + 1;
+    quad(aR, bR, botBase + bR, botBase + aR);
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((v, i) => {
+    pos[i * 3] = v.x;
+    pos[i * 3 + 1] = v.y;
+    pos[i * 3 + 2] = v.z;
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(idx);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: true, opacity: 0.95 }));
+  mesh.name = "solid-vault";
+  solidVaultGroup.add(mesh);
 };
 
 const createFoilMaterial = (color) => {
@@ -1124,6 +1707,8 @@ const refreshBboxHelpers = () => {
     bboxHelpersGroup.add(helper);
   };
   mk(blockGroup, 0xffcc66);
+  mk(solidVaultGroup, 0x9be6be);
+  mk(supportWallGroup, 0xa0a7b3);
   mk(importedSurfaceGroup, 0x78cfff);
 };
 
@@ -1195,6 +1780,36 @@ const applyDisplayPreset = () => {
     }
     obj.material.needsUpdate = true;
   });
+  solidVaultGroup.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    if (obj.material) obj.material.dispose();
+    const sideMode = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
+    const c = getFoilGradientColor(0.45);
+    obj.material = state.display.foilMaterial
+      ? createFoilMaterial(c)
+      : new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.44, metalness: 0.06, transparent: true, opacity: 0.92 });
+    obj.material.side = sideMode;
+    if (state.display.meshWires || state.displayPreset === "Technical Wire") {
+      obj.material.wireframe = true;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.88;
+    }
+    obj.material.needsUpdate = true;
+  });
+  supportWallGroup.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.material.side = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
+    if (state.display.meshWires || state.displayPreset === "Technical Wire") {
+      obj.material.wireframe = true;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.85;
+    } else {
+      obj.material.wireframe = false;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.92;
+    }
+    obj.material.needsUpdate = true;
+  });
   gridHelper.visible = !!state.display.baseGrid;
   axesHelper.visible = !!state.display.baseGrid;
   lightRigHelpers.visible = !!state.display.latticeControls;
@@ -1202,7 +1817,13 @@ const applyDisplayPreset = () => {
 };
 
 const fitCameraToBlocks = () => {
-  const box = new THREE.Box3().setFromObject(blockGroup);
+  const box = new THREE.Box3();
+  const a = new THREE.Box3().setFromObject(blockGroup);
+  const s = new THREE.Box3().setFromObject(solidVaultGroup);
+  const w = new THREE.Box3().setFromObject(supportWallGroup);
+  if (!a.isEmpty()) box.union(a);
+  if (!s.isEmpty()) box.union(s);
+  if (!w.isEmpty()) box.union(w);
   if (box.isEmpty()) return;
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
@@ -1228,8 +1849,12 @@ const fitCameraToObject = (obj) => {
 const zoomExtents = () => {
   const combined = new THREE.Box3();
   const a = new THREE.Box3().setFromObject(blockGroup);
+  const s = new THREE.Box3().setFromObject(solidVaultGroup);
+  const w = new THREE.Box3().setFromObject(supportWallGroup);
   const b = new THREE.Box3().setFromObject(importedSurfaceGroup);
   if (!a.isEmpty()) combined.union(a);
+  if (!s.isEmpty()) combined.union(s);
+  if (!w.isEmpty()) combined.union(w);
   if (!b.isEmpty()) combined.union(b);
   if (combined.isEmpty()) return;
   const size = combined.getSize(new THREE.Vector3());
@@ -1242,6 +1867,10 @@ const zoomExtents = () => {
 };
 
 const renderInspector = () => {
+  if (!state.patternAppliedToModel) {
+    nodes.inspector.innerHTML = "<b>Inspector</b><p>Solid preview active. Click Apply To Model to map blocks onto the vault.</p>";
+    return;
+  }
   const b = state.blocks.find((x) => x.id === state.selectedBlockId);
   if (!b) {
     nodes.inspector.innerHTML = "<b>Inspector</b><p>Select a block in 2D or 3D.</p>";
@@ -1251,9 +1880,9 @@ const renderInspector = () => {
 };
 
 const renderMetrics = () => {
-  const invalid = state.blocks.filter((b) => b.failed.length);
-  const vol = state.blocks.reduce((s, b) => s + b.metrics.volume, 0);
-  const wt = state.blocks.reduce((s, b) => s + b.metrics.weight, 0);
+  const invalid = state.blocks.filter((b) => (b.failed || []).length);
+  const vol = state.blocks.reduce((s, b) => s + (b.metrics?.volume || 0), 0);
+  const wt = state.blocks.reduce((s, b) => s + (b.metrics?.weight || 0), 0);
   nodes.metrics.innerHTML = [
     ["Block Count", state.blocks.length],
     ["Invalid Blocks", invalid.length],
@@ -1274,6 +1903,7 @@ const renderMetrics = () => {
 };
 
 const renderPrecedent = () => {
+  const def = vaultLibrary[state.vaultType];
   const p = precedentDb[state.vaultType];
   if (!p) {
     nodes.precedentDetails.innerHTML = "No precedent data.";
@@ -1283,6 +1913,10 @@ const renderPrecedent = () => {
     ? p.historicalReferences.map((r) => `<li><a href="${r.url}" target="_blank" rel="noreferrer">${r.title}</a></li>`).join("")
     : "<li>No external references</li>";
   nodes.precedentDetails.innerHTML = [
+    def ? `<div><b>2D construction:</b> ${def.construction2D}</div>` : "",
+    def ? `<div><b>3D construction:</b> ${def.construction3D}</div>` : "",
+    def ? `<div><b>Force flow:</b> ${def.forceFlowType}</div>` : "",
+    def ? `<div><b>Default stereotomy:</b> ${def.stereotomyType}</div>` : "",
     `<div><b>Block logic:</b> ${p.blockLogic}</div>`,
     `<div><b>Joint patterns:</b> ${p.jointPatterns}</div>`,
     `<div><b>Construction:</b> ${p.constructionMethods}</div>`,
@@ -1292,6 +1926,7 @@ const renderPrecedent = () => {
 };
 
 const syncInputsFromState = () => {
+  syncWallThicknessWithVault();
   ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
     if (byId(id)) byId(id).value = state.params[id];
   });
@@ -1301,6 +1936,13 @@ const syncInputsFromState = () => {
   if (byId("cubeScale")) byId("cubeScale").value = String(state.cubeScale);
   if (byId("arrayUV")) byId("arrayUV").value = `${state.arrayU}x${state.arrayV}`;
   if (byId("springingAngle")) byId("springingAngle").value = String(state.springingAngle);
+  if (byId("archType")) byId("archType").value = state.archType;
+  if (byId("targetBlockWidth")) byId("targetBlockWidth").value = String(state.targetBlockWidth);
+  if (byId("barrelBondMode")) byId("barrelBondMode").value = state.barrelBondMode;
+  if (byId("dragSensitivity")) byId("dragSensitivity").value = state.dragSensitivity;
+  if (byId("barrelOffsetSide")) byId("barrelOffsetSide").value = state.barrelOffsetSide;
+  if (byId("wallThickness")) byId("wallThickness").value = String(state.wallThickness);
+  if (byId("wallHeightOffset")) byId("wallHeightOffset").value = String(state.wallHeightOffset);
   if (byId("bayRatio")) byId("bayRatio").value = `${state.bayRatioX}:${state.bayRatioY}`;
   if (byId("ribCount")) byId("ribCount").value = String(state.ribCount);
   if (byId("lierneDensity")) byId("lierneDensity").value = String(state.lierneDensity);
@@ -1334,9 +1976,19 @@ const applyReferencePreset = (name) => {
   state.cubeScale = preset.cubeScale ?? state.cubeScale;
   state.arrayU = preset.arrayU ?? state.arrayU;
   state.arrayV = preset.arrayV ?? state.arrayV;
+  if (typeof preset.groinMorph === "number") state.groinMorph = preset.groinMorph;
+  if (typeof preset.bayRatioX === "number") state.bayRatioX = preset.bayRatioX;
+  if (typeof preset.bayRatioY === "number") state.bayRatioY = preset.bayRatioY;
   state.designMode = "Generated";
+  state.patternAppliedToModel = false;
+  if (state.vaultType === "Barrel Vault") state.barrelOffsetSide = "Inside";
+  syncWallThicknessWithVault();
   byId("designMode").value = "Generated";
   syncInputsFromState();
+  if (name === "Default Groin Vault (Solid First)") {
+    runSolidToStereotomicWorkflow();
+    return;
+  }
   rebuild();
 };
 
@@ -1353,13 +2005,22 @@ const applyVaultStartupSolution = (vaultType) => {
   if (typeof sol.groinMorph === "number") state.groinMorph = sol.groinMorph;
   if (typeof sol.bayRatioX === "number") state.bayRatioX = sol.bayRatioX;
   if (typeof sol.bayRatioY === "number") state.bayRatioY = sol.bayRatioY;
+  if (vaultType === "Barrel Vault") state.barrelOffsetSide = "Inside";
   if (byId("subdivision")) byId("subdivision").value = state.pattern;
   if (byId("structuralDirection")) byId("structuralDirection").value = state.structuralDirection;
+  syncWallThicknessWithVault();
   syncInputsFromState();
 };
 
 const fitStartupParamsToConstraints = (vaultType) => {
   const c = state.constraints;
+  if (vaultType === "Barrel Vault") {
+    const w = clamp(state.targetBlockWidth || 1.2, 0.1, 5);
+    const h = clamp(c.courseHeight || 0.65, 0.1, 5);
+    state.params.blockCount = clamp(Math.round(state.params.span / w), 6, 60);
+    state.params.courseCount = clamp(Math.round(state.params.length / h), 4, 80);
+    return;
+  }
   const maxL = Math.max(0.2, c.maxLength - c.fabTolerance);
   const maxW = Math.max(0.2, c.maxWidth - c.fabTolerance);
   const targetCols = Math.ceil(state.params.span / maxL);
@@ -1379,7 +2040,7 @@ const applyVaultParamRules = () => {
   const map = {
     span: "span", rise: "rise", length: "length", thickness: "thickness",
     courseCount: "courseCount", blockCount: "blockCount", subdivisionDensity: "subdivisionDensity", keystoneSize: "keystoneSize",
-    springingAngle: "springingAngle", bayRatio: "bayRatio", ribCount: "ribCount",
+    springingAngle: "springingAngle", archType: "archType", targetBlockWidth: "targetBlockWidth", barrelBondMode: "barrelBondMode", barrelOffsetSide: "barrelOffsetSide", wallThickness: "wallThickness", wallHeightOffset: "wallHeightOffset", courseHeight: "courseHeight", bayRatio: "bayRatio", ribCount: "ribCount",
     lierneDensity: "lierneDensity", netFrequency: "netFrequency", tileLayers: "tileLayers", groinMorph: "groinMorph", lInterlockBias: "lInterlockBias",
   };
   Object.entries(map).forEach(([key, id]) => {
@@ -1390,6 +2051,14 @@ const applyVaultParamRules = () => {
     const label = el.closest("label");
     if (label) label.style.opacity = on ? "1" : "0.45";
   });
+  // Barrel vault uses explicit inside/outside shell side; hide extrados offset there.
+  const extradosEl = byId("extradosOffset");
+  if (extradosEl) {
+    const extradosLabel = extradosEl.closest("label");
+    const showExtrados = state.vaultType !== "Barrel Vault";
+    extradosEl.disabled = !showExtrados;
+    if (extradosLabel) extradosLabel.style.display = showExtrados ? "" : "none";
+  }
   const allowedPatterns = vaultPatternAllowed[state.vaultType] || patterns;
   const subEl = byId("subdivision");
   if (subEl) {
@@ -1421,6 +2090,10 @@ const applySelection = () => {
 };
 
 const rebuild = () => {
+  syncWallThicknessWithVault();
+  if (!state.patternAppliedToModel) {
+    build3d();
+  }
   try {
     state.blocks = generatePatternBlocks();
   } catch (err) {
@@ -1443,15 +2116,24 @@ const rebuild = () => {
       }
     }
   }
-  build3d();
-  if (!blockGroup.children.length) {
+  state.blocks.forEach((b) => {
+    const m = buildBlockMesh(b);
+    b.metrics = m;
+    b.failed = validate(m);
+    if (m.geometry) m.geometry.dispose();
+  });
+  if (state.patternAppliedToModel) {
+    build3d();
+  }
+  buildBarrelSectionGizmo3d();
+  if (!blockGroup.children.length && !solidVaultGroup.children.length) {
     const dbg = new THREE.Mesh(
       new THREE.BoxGeometry(4, 2, 4),
       new THREE.MeshStandardMaterial({ color: 0x2fa9ff, wireframe: true })
     );
     blockGroup.add(dbg);
   }
-  fitCameraToBlocks();
+  if (!state.suspendViewportFit) fitCameraToBlocks();
   draw2d();
   renderFormForceDiagrams();
   renderMetrics();
@@ -1511,6 +2193,26 @@ const pick3d = (event) => {
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
+  const gizmoHit = raycaster.intersectObjects(sectionGizmoGroup.children, true).find((x) => x.object.userData.gizmoHandle);
+  if (gizmoHit && state.vaultType === "Barrel Vault") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    state.draggingSectionHandle = gizmoHit.object.userData.gizmoHandle;
+    state.suspendViewportFit = true;
+    state.draggingPointerId = event.pointerId;
+    setSectionGizmoHover(state.draggingSectionHandle);
+    showActiveHandleGizmo(state.draggingSectionHandle);
+    const scale = state.cubeScale;
+    const z = -(state.params.length * scale * 0.58);
+    sectionDragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, z));
+    if (renderer.domElement.setPointerCapture && typeof event.pointerId === "number") {
+      renderer.domElement.setPointerCapture(event.pointerId);
+    }
+    controls.enabled = false;
+    return;
+  }
+  if (!state.patternAppliedToModel) return;
   const hit = raycaster.intersectObjects(blockGroup.children, true).find((x) => x.object.userData.blockId);
   if (!hit) return;
   state.selectedBlockId = hit.object.userData.blockId;
@@ -1530,6 +2232,51 @@ nodes.layout2d.addEventListener("pointerdown", (e) => {
   state.dragging = { id: handle.dataset.id, vertex: Number(handle.dataset.vertex) };
 });
 window.addEventListener("pointermove", (e) => {
+  if (!state.draggingSectionHandle && state.vaultType === "Barrel Vault") {
+    const rect3 = renderer.domElement.getBoundingClientRect();
+    const inside3d = e.clientX >= rect3.left && e.clientX <= rect3.right && e.clientY >= rect3.top && e.clientY <= rect3.bottom;
+    if (inside3d) {
+      mouse.x = ((e.clientX - rect3.left) / rect3.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect3.top) / rect3.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hoverHit = raycaster.intersectObjects(sectionGizmoGroup.children, true).find((x) => x.object.userData.gizmoHandle);
+      setSectionGizmoHover(hoverHit ? hoverHit.object.userData.gizmoHandle : null);
+      showActiveHandleGizmo(state.draggingSectionHandle || state.hoveredSectionHandle);
+    } else if (state.hoveredSectionHandle) {
+      setSectionGizmoHover(null);
+      showActiveHandleGizmo(state.draggingSectionHandle || null);
+    }
+  }
+  if (state.draggingSectionHandle && state.vaultType === "Barrel Vault") {
+    const rect3 = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect3.left) / rect3.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect3.top) / rect3.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    if (!raycaster.ray.intersectPlane(sectionDragPlane, sectionDragPoint)) return;
+    const scale = state.cubeScale;
+    const springY = getBarrelSpringingY(scale);
+    if (state.draggingSectionHandle === "span") {
+      const halfW = clamp(Math.abs(sectionDragPoint.x), 2 * scale, 30 * scale);
+      const targetSpan = clamp((halfW * 2) / Math.max(0.001, scale), 4, 60);
+      state.params.span = THREE.MathUtils.lerp(state.params.span, targetSpan, getDragLerp());
+    } else if (state.draggingSectionHandle === "rise") {
+      const ry = clamp(sectionDragPoint.y - springY, 2 * scale, 30 * scale);
+      const targetRise = clamp(ry / Math.max(0.001, scale), 2, 30);
+      state.params.rise = THREE.MathUtils.lerp(state.params.rise, targetRise, getDragLerp());
+    } else if (state.draggingSectionHandle === "wallThickness") {
+      const halfW = state.params.span * scale * 0.5;
+      const outer = clamp(sectionDragPoint.x, -halfW - 2 * scale, -halfW - 0.05 * scale);
+      state.params.thickness = clamp((2 * Math.abs(outer + halfW)) / Math.max(0.001, scale), 0.1, 4);
+    } else if (state.draggingSectionHandle === "wallHeight") {
+      const rise = state.params.rise * scale * (Math.cos((state.springingAngle * Math.PI) / 180) || 1);
+      const h = clamp(sectionDragPoint.y, 0.3, 40 * scale);
+      state.wallHeightOffset = clamp((h - rise) / Math.max(0.001, scale), -2, 4);
+    }
+    fitStartupParamsToConstraints("Barrel Vault");
+    syncInputsFromState();
+    rebuild();
+    return;
+  }
   if (!state.dragging) return;
   const rect = nodes.layout2d.getBoundingClientRect();
   const u = clamp((e.clientX - rect.left) / rect.width, 0, 1);
@@ -1543,8 +2290,19 @@ window.addEventListener("pointermove", (e) => {
   renderMetrics();
   applySelection();
 });
-window.addEventListener("pointerup", () => { state.dragging = null; });
-renderer.domElement.addEventListener("pointerdown", pick3d);
+window.addEventListener("pointerup", () => {
+  state.dragging = null;
+  state.draggingSectionHandle = null;
+  state.suspendViewportFit = false;
+  if (renderer.domElement.releasePointerCapture && typeof state.draggingPointerId === "number") {
+    try { renderer.domElement.releasePointerCapture(state.draggingPointerId); } catch {}
+  }
+  state.draggingPointerId = null;
+  controls.enabled = true;
+  setSectionGizmoHover(state.hoveredSectionHandle);
+  showActiveHandleGizmo(state.hoveredSectionHandle);
+});
+renderer.domElement.addEventListener("pointerdown", pick3d, { capture: true });
 
 nodes.layout2d.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -1580,10 +2338,21 @@ window.addEventListener("pointerup", () => { state.pan2d = null; });
 nodes.layout2d.addEventListener("contextmenu", (e) => e.preventDefault());
 
 ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
-  byId(id).addEventListener("input", (e) => { state.params[id] = Number(e.target.value); rebuild(); });
+  byId(id).addEventListener("input", (e) => {
+    state.params[id] = Number(e.target.value);
+    if (id === "thickness") syncWallThicknessWithVault();
+    rebuild();
+  });
 });
 ["maxLength", "maxWidth", "minThickness", "maxWeight", "jointGap", "bedDepth", "courseHeight", "taperAngle", "maxTaper", "minEdgeLength", "fabTolerance"].forEach((id) => {
   byId(id).addEventListener("input", (e) => { state.constraints[id] = Number(e.target.value); rebuild(); });
+});
+if (byId("courseHeight")) byId("courseHeight").addEventListener("input", () => {
+  if (state.vaultType === "Barrel Vault") {
+    fitStartupParamsToConstraints("Barrel Vault");
+    syncInputsFromState();
+    rebuild();
+  }
 });
 ["alignScale", "alignOffsetU", "alignOffsetV", "alignRotation"].forEach((id) => {
   byId(id).addEventListener("input", (e) => {
@@ -1601,6 +2370,33 @@ byId("arrayUV").addEventListener("input", (e) => {
   rebuild();
 });
 byId("springingAngle").addEventListener("input", (e) => { state.springingAngle = Number(e.target.value); rebuild(); });
+if (byId("archType")) byId("archType").addEventListener("change", (e) => { state.archType = e.target.value; rebuild(); });
+if (byId("targetBlockWidth")) byId("targetBlockWidth").addEventListener("input", (e) => {
+  state.targetBlockWidth = Math.max(0.1, Number(e.target.value));
+  if (state.vaultType === "Barrel Vault") fitStartupParamsToConstraints("Barrel Vault");
+  syncInputsFromState();
+  rebuild();
+});
+if (byId("barrelBondMode")) byId("barrelBondMode").addEventListener("change", (e) => {
+  state.barrelBondMode = e.target.value;
+  rebuild();
+});
+if (byId("barrelOffsetSide")) byId("barrelOffsetSide").addEventListener("change", (e) => {
+  state.barrelOffsetSide = e.target.value === "Outside" ? "Outside" : "Inside";
+  rebuild();
+});
+if (byId("dragSensitivity")) byId("dragSensitivity").addEventListener("change", (e) => {
+  state.dragSensitivity = ["Precise", "Normal", "Fast"].includes(e.target.value) ? e.target.value : "Normal";
+});
+if (byId("wallThickness")) byId("wallThickness").addEventListener("input", (e) => {
+  state.params.thickness = Math.max(0.1, Number(e.target.value));
+  syncWallThicknessWithVault();
+  rebuild();
+});
+if (byId("wallHeightOffset")) byId("wallHeightOffset").addEventListener("input", (e) => {
+  state.wallHeightOffset = Number(e.target.value);
+  rebuild();
+});
 byId("bayRatio").addEventListener("input", (e) => {
   const m = String(e.target.value).match(/([\d.]+)\s*:\s*([\d.]+)/);
   if (!m) return;
@@ -1624,28 +2420,10 @@ if (byId("forceLmax")) byId("forceLmax").addEventListener("input", (e) => { stat
 byId("registrationMode").addEventListener("change", (e) => { state.registrationMode = e.target.value; rebuild(); });
 if (byId("jointMode")) byId("jointMode").addEventListener("change", (e) => { state.jointMode = e.target.value; rebuild(); });
 byId("vaultType").addEventListener("change", (e) => {
-  state.vaultType = e.target.value;
-  if (state.vaultType !== "Custom Imported Rhino Surface") {
-    state.designMode = "Generated";
-    byId("designMode").value = "Generated";
-    state.imported2DPolys = null;
-  }
-  const firstLoadForVault = !vaultStartupSeen.has(state.vaultType);
-  if (firstLoadForVault) {
-    applyVaultStartupSolution(state.vaultType);
-    fitStartupParamsToConstraints(state.vaultType);
-    vaultStartupSeen.add(state.vaultType);
-  } else {
-    const preset = vaultPatternPreset[state.vaultType];
-    if (preset) {
-      state.pattern = preset;
-      byId("subdivision").value = preset;
-    }
-  }
-  state.selectedBlockId = null;
-  applyVaultParamRules();
+  state.imported2DPolys = null;
+  vaultStartupSeen.add(e.target.value);
   if (byId("referencePreset")) byId("referencePreset").value = "Custom";
-  rebuild();
+  runVaultSelectionPipeline(e.target.value);
 });
 byId("subdivision").addEventListener("change", (e) => { state.pattern = e.target.value; rebuild(); });
 if (byId("lightingPreset")) byId("lightingPreset").addEventListener("change", (e) => {
@@ -1688,8 +2466,20 @@ if (byId("resetRecommended")) byId("resetRecommended").addEventListener("click",
   applyVaultStartupSolution(vt);
   fitStartupParamsToConstraints(vt);
   state.selectedBlockId = null;
+  state.patternAppliedToModel = false;
   if (byId("referencePreset")) byId("referencePreset").value = "Custom";
   applyVaultParamRules();
+  rebuild();
+});
+if (byId("applyPatternToModel")) byId("applyPatternToModel").addEventListener("click", () => {
+  state.patternAppliedToModel = true;
+  setPipelineStatus("Blocks applied to vault model.");
+  rebuild();
+});
+if (byId("showSolidOnly")) byId("showSolidOnly").addEventListener("click", () => {
+  state.patternAppliedToModel = false;
+  state.selectedBlockId = null;
+  setPipelineStatus("Solid model preview active.");
   rebuild();
 });
 if (nodes.workflowSteps) {
@@ -1813,12 +2603,11 @@ const tick = () => {
   requestAnimationFrame(tick);
 };
 
-applyVaultParamRules();
 applyWorkflowStep(1);
 setToolTab("catalog");
 syncInputsFromState();
 applyLayoutStyle();
 applyLightingPreset(state.lightingPreset);
-rebuild();
+runVaultSelectionPipeline(state.vaultType);
 resize();
 tick();

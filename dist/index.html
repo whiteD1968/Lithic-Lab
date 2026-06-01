@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-DuvxkXzN.js"></script>
+  <script type="module" crossorigin src="/assets/index-CwmRrYJf.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-CRH9zGBJ.css">
 </head>
 <body>
@@ -46,10 +46,11 @@
             <option>Guastavino Vault</option>
             <option>Custom Imported Rhino Surface</option>
           </select>
-          <div class="hint">Barrel vault is active. Other types are scaffolded for extension.</div>
+          <div class="hint">Use "Default Groin Vault (Solid First)" to open a full mass model before stereotomic subdivision.</div>
           <label>Reference Preset
             <select id="referencePreset">
               <option>Custom</option>
+              <option>Default Groin Vault (Solid First)</option>
               <option>Aqueduc Barrel Stereotomy</option>
               <option>Groined Plate XXIV</option>
               <option>Arc de Cloitre</option>
@@ -61,6 +62,10 @@
             </select>
           </label>
           <button class="ghost-btn" id="resetRecommended">Reset To Recommended</button>
+          <div class="grid-1">
+            <button class="ghost-btn" id="applyPatternToModel">Apply To Model</button>
+            <button class="ghost-btn" id="showSolidOnly">Show Solid Only</button>
+          </div>
         </div>
         <div class="section" data-tool-group="import">
           <h3>Custom Design Import Mode</h3>
@@ -124,6 +129,38 @@
             <label>Bounding Cube Scale <input type="number" id="cubeScale" min="0.1" step="0.1" value="1" /></label>
             <label>Array U x V <input type="text" id="arrayUV" value="1x1" /></label>
             <label>Springing Angle (deg) <input type="number" id="springingAngle" min="0" max="50" step="1" value="0" /></label>
+            <label>Arch Type
+              <select id="archType">
+                <option>Semicircular</option>
+                <option>Segmental</option>
+                <option>Pointed</option>
+                <option>Elliptical</option>
+              </select>
+            </label>
+            <label>Target Block Width (m) <input type="number" id="targetBlockWidth" min="0.1" max="5" step="0.05" value="1.2" /></label>
+            <label>Barrel Pattern Option
+              <select id="barrelBondMode">
+                <option value="1">1 - Orthogonal Ring Courses</option>
+                <option value="2">2 - Staggered Ring Courses</option>
+                <option value="3">3 - Progressive Drift Courses</option>
+                <option value="4">4 - Crown-Fan Courses</option>
+              </select>
+            </label>
+            <label>Thickness Side
+              <select id="barrelOffsetSide">
+                <option>Inside</option>
+                <option>Outside</option>
+              </select>
+            </label>
+            <label>Drag Sensitivity
+              <select id="dragSensitivity">
+                <option>Precise</option>
+                <option selected>Normal</option>
+                <option>Fast</option>
+              </select>
+            </label>
+            <label>Wall Thickness (m) <input type="number" id="wallThickness" min="0.1" max="4" step="0.05" value="0.45" /></label>
+            <label>Wall Height Offset (m) <input type="number" id="wallHeightOffset" min="-2" max="4" step="0.05" value="0" /></label>
             <label>Bay Ratio X:Y <input type="text" id="bayRatio" value="1:1" /></label>
             <label>Rib Count <input type="number" id="ribCount" min="2" max="48" step="1" value="8" /></label>
             <label>Lierne Density <input type="number" id="lierneDensity" min="0" max="1" step="0.05" value="0.4" /></label>

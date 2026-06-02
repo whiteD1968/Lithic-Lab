@@ -7,21 +7,31 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-CwmRrYJf.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CRH9zGBJ.css">
+  <script type="module" crossorigin src="/assets/index-cs4z0-Qm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BpSUadyE.css">
 </head>
 <body>
   <div class="app-shell">
-    <header class="top-bar glass">
-      <div class="brand"><span class="dot"></span><h1>Lithic Lab</h1></div>
-      <div class="mode-switch" id="viewModes"></div>
-      <button class="ghost-btn" id="exportJson">Export Mesh JSON</button>
-      <button class="ghost-btn" id="exportBlocks">Export Individual Blocks</button>
+    <header class="modeling-chrome">
+      <div class="menu-bar">
+        <div class="brand"><span class="dot"></span><h1>Lithic Lab</h1></div>
+        <div class="chrome-actions">
+          <button class="ghost-btn" id="exportJson">Export JSON</button>
+          <button class="ghost-btn" id="exportBlocks">Export Blocks</button>
+        </div>
+      </div>
+      <div class="tool-ribbon" aria-label="Modeling toolbar">
+        <button title="Zoom extents" id="zoomExtentsTop">□↗</button>
+        <span>Zoom Extents</span>
+      </div>
     </header>
 
     <main class="workspace">
-      <aside class="panel controls glass">
-        <h2>Generator Controls</h2>
+      <aside class="panel controls glass dock-panel" data-dock="left">
+        <div class="dock-head">
+          <h2>Tools</h2>
+          <button class="dock-toggle" data-dock-toggle="left" title="Collapse tools">×</button>
+        </div>
         <div class="tool-tabs" id="toolTabs">
           <button class="ghost-btn active" data-tab="catalog">Catalog</button>
           <button class="ghost-btn" data-tab="import">Import</button>
@@ -117,59 +127,188 @@
         </div>
         <div class="section" data-tool-group="params">
           <h3>Vault Parameters</h3>
-          <div class="grid-2">
-            <label>Span <input type="range" id="span" min="4" max="60" value="22" /></label>
-            <label>Rise <input type="range" id="rise" min="2" max="30" value="10" /></label>
-            <label>Depth <input type="range" id="length" min="4" max="80" value="28" /></label>
-            <label>Thickness <input type="range" id="thickness" min="0.2" max="4" step="0.05" value="1.1" /></label>
-            <label>Courses <input type="range" id="courseCount" min="4" max="48" value="16" /></label>
-            <label>Blocks/Course <input type="range" id="blockCount" min="6" max="40" value="18" /></label>
-            <label>Subdivision Density <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" /></label>
-            <label>Keystone Size <input type="range" id="keystoneSize" min="0" max="1" step="0.05" value="0.45" /></label>
-            <label>Bounding Cube Scale <input type="number" id="cubeScale" min="0.1" step="0.1" value="1" /></label>
-            <label>Array U x V <input type="text" id="arrayUV" value="1x1" /></label>
-            <label>Springing Angle (deg) <input type="number" id="springingAngle" min="0" max="50" step="1" value="0" /></label>
-            <label>Arch Type
-              <select id="archType">
-                <option>Semicircular</option>
-                <option>Segmental</option>
-                <option>Pointed</option>
-                <option>Elliptical</option>
-              </select>
-            </label>
-            <label>Target Block Width (m) <input type="number" id="targetBlockWidth" min="0.1" max="5" step="0.05" value="1.2" /></label>
-            <label>Barrel Pattern Option
-              <select id="barrelBondMode">
-                <option value="1">1 - Orthogonal Ring Courses</option>
-                <option value="2">2 - Staggered Ring Courses</option>
-                <option value="3">3 - Progressive Drift Courses</option>
-                <option value="4">4 - Crown-Fan Courses</option>
-              </select>
-            </label>
-            <label>Thickness Side
-              <select id="barrelOffsetSide">
-                <option>Inside</option>
-                <option>Outside</option>
-              </select>
-            </label>
-            <label>Drag Sensitivity
-              <select id="dragSensitivity">
-                <option>Precise</option>
-                <option selected>Normal</option>
-                <option>Fast</option>
-              </select>
-            </label>
-            <label>Wall Thickness (m) <input type="number" id="wallThickness" min="0.1" max="4" step="0.05" value="0.45" /></label>
-            <label>Wall Height Offset (m) <input type="number" id="wallHeightOffset" min="-2" max="4" step="0.05" value="0" /></label>
-            <label>Bay Ratio X:Y <input type="text" id="bayRatio" value="1:1" /></label>
-            <label>Rib Count <input type="number" id="ribCount" min="2" max="48" step="1" value="8" /></label>
-            <label>Lierne Density <input type="number" id="lierneDensity" min="0" max="1" step="0.05" value="0.4" /></label>
-            <label>Net Frequency <input type="number" id="netFrequency" min="1" max="24" step="1" value="10" /></label>
-            <label>Tile Layers <input type="number" id="tileLayers" min="1" max="6" step="1" value="3" /></label>
-            <label>Extrados Offset (m) <input type="number" id="extradosOffset" min="0" step="0.01" value="0.15" /></label>
-            <label>Support Topology <select id="supportTopology"><option>4 corners</option><option>continuous walls</option><option>piers + walls</option></select></label>
-            <label>Mallorcan Groin Morph <input type="number" id="groinMorph" min="0" max="1" step="0.05" value="0" /></label>
-            <label>L-Interlock Bias <input type="number" id="lInterlockBias" min="0" max="1" step="0.05" value="0.35" /></label>
+          <div class="param-sections">
+            <details class="param-section" open>
+              <summary>Geometry</summary>
+              <div class="grid-1">
+                <label data-param-control="span">Span
+                  <div class="dual-input-row">
+                    <input type="range" id="span" min="4" max="60" step="0.1" value="22" />
+                    <input type="number" id="spanNum" min="4" max="60" step="0.1" value="22" />
+                  </div>
+                </label>
+                <label data-param-control="rise">Rise
+                  <div class="dual-input-row">
+                    <input type="range" id="rise" min="2" max="30" step="0.1" value="10" />
+                    <input type="number" id="riseNum" min="2" max="30" step="0.1" value="10" />
+                  </div>
+                </label>
+                <label data-param-control="length">Depth
+                  <div class="dual-input-row">
+                    <input type="range" id="length" min="4" max="80" step="0.1" value="28" />
+                    <input type="number" id="lengthNum" min="4" max="80" step="0.1" value="28" />
+                  </div>
+                </label>
+                <label data-param-control="springingAngle">Springing Angle (deg)
+                  <div class="dual-input-row">
+                    <input type="range" id="springingAngle" min="0" max="50" step="1" value="0" />
+                    <input type="number" id="springingAngleNum" min="0" max="50" step="1" value="0" />
+                  </div>
+                </label>
+                <label data-param-control="taperScale">Taper End Scale
+                  <div class="dual-input-row">
+                    <input type="range" id="taperScale" min="0.25" max="1.5" step="0.01" value="0.55" />
+                    <input type="number" id="taperScaleNum" min="0.25" max="1.5" step="0.01" value="0.55" />
+                  </div>
+                </label>
+                <label data-param-control="bayRatio">Bay Ratio X:Y <input type="text" id="bayRatio" value="1:1" /></label>
+                <label data-param-control="archType">Arch Type
+                  <select id="archType">
+                    <option>Semicircular</option>
+                    <option>Segmental</option>
+                    <option>Pointed</option>
+                    <option>Elliptical</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Structure</summary>
+              <div class="grid-1">
+                <label data-param-control="thickness">Thickness
+                  <div class="dual-input-row">
+                    <input type="range" id="thickness" min="0.2" max="4" step="0.05" value="1.1" />
+                    <input type="number" id="thicknessNum" min="0.2" max="4" step="0.05" value="1.1" />
+                  </div>
+                </label>
+                <label data-param-control="keystoneSize">Keystone Size
+                  <div class="dual-input-row">
+                    <input type="range" id="keystoneSize" min="0" max="1" step="0.05" value="0.45" />
+                    <input type="number" id="keystoneSizeNum" min="0" max="1" step="0.05" value="0.45" />
+                  </div>
+                </label>
+                <label data-param-control="wallThickness">Wall Thickness (m)
+                  <div class="dual-input-row">
+                    <input type="range" id="wallThickness" min="0.1" max="4" step="0.05" value="0.45" />
+                    <input type="number" id="wallThicknessNum" min="0.1" max="4" step="0.05" value="0.45" />
+                  </div>
+                </label>
+                <label data-param-control="wallHeightOffset">Wall Height Offset (m)
+                  <div class="dual-input-row">
+                    <input type="range" id="wallHeightOffset" min="-2" max="4" step="0.05" value="0" />
+                    <input type="number" id="wallHeightOffsetNum" min="-2" max="4" step="0.05" value="0" />
+                  </div>
+                </label>
+                <label data-param-control="ribCount">Rib Count
+                  <div class="dual-input-row">
+                    <input type="range" id="ribCount" min="2" max="48" step="1" value="8" />
+                    <input type="number" id="ribCountNum" min="2" max="48" step="1" value="8" />
+                  </div>
+                </label>
+                <label data-param-control="lierneDensity">Lierne Density
+                  <div class="dual-input-row">
+                    <input type="range" id="lierneDensity" min="0" max="1" step="0.05" value="0.4" />
+                    <input type="number" id="lierneDensityNum" min="0" max="1" step="0.05" value="0.4" />
+                  </div>
+                </label>
+                <label data-param-control="netFrequency">Net Frequency
+                  <div class="dual-input-row">
+                    <input type="range" id="netFrequency" min="1" max="24" step="1" value="10" />
+                    <input type="number" id="netFrequencyNum" min="1" max="24" step="1" value="10" />
+                  </div>
+                </label>
+                <label data-param-control="groinMorph">Mallorcan Groin Morph
+                  <div class="dual-input-row">
+                    <input type="range" id="groinMorph" min="0" max="1" step="0.05" value="0" />
+                    <input type="number" id="groinMorphNum" min="0" max="1" step="0.05" value="0" />
+                  </div>
+                </label>
+                <label data-param-control="lInterlockBias">L-Interlock Bias
+                  <div class="dual-input-row">
+                    <input type="range" id="lInterlockBias" min="0" max="1" step="0.05" value="0.35" />
+                    <input type="number" id="lInterlockBiasNum" min="0" max="1" step="0.05" value="0.35" />
+                  </div>
+                </label>
+                <label>Support Topology <select id="supportTopology"><option>4 corners</option><option>continuous walls</option><option>piers + walls</option></select></label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Fabrication</summary>
+              <div class="grid-1">
+                <label data-param-control="courseCount">Courses
+                  <div class="dual-input-row">
+                    <input type="range" id="courseCount" min="4" max="48" step="1" value="16" />
+                    <input type="number" id="courseCountNum" min="4" max="48" step="1" value="16" />
+                  </div>
+                </label>
+                <label data-param-control="blockCount">Blocks/Course
+                  <div class="dual-input-row">
+                    <input type="range" id="blockCount" min="6" max="40" step="1" value="18" />
+                    <input type="number" id="blockCountNum" min="6" max="40" step="1" value="18" />
+                  </div>
+                </label>
+                <label data-param-control="subdivisionDensity">Subdivision Density
+                  <div class="dual-input-row">
+                    <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" />
+                    <input type="number" id="subdivisionDensityNum" min="0.5" max="2.5" step="0.1" value="1" />
+                  </div>
+                </label>
+                <label data-param-control="targetBlockWidth">Target Block Width (m)
+                  <div class="dual-input-row">
+                    <input type="range" id="targetBlockWidth" min="0.1" max="5" step="0.05" value="1.2" />
+                    <input type="number" id="targetBlockWidthNum" min="0.1" max="5" step="0.05" value="1.2" />
+                  </div>
+                </label>
+                <label data-param-control="tileLayers">Tile Layers
+                  <div class="dual-input-row">
+                    <input type="range" id="tileLayers" min="1" max="6" step="1" value="3" />
+                    <input type="number" id="tileLayersNum" min="1" max="6" step="1" value="3" />
+                  </div>
+                </label>
+                <label data-param-control="extradosOffset">Extrados Offset (m)
+                  <div class="dual-input-row">
+                    <input type="range" id="extradosOffset" min="0" max="4" step="0.01" value="0.15" />
+                    <input type="number" id="extradosOffsetNum" min="0" max="4" step="0.01" value="0.15" />
+                  </div>
+                </label>
+                <label data-param-control="barrelBondMode">Barrel Pattern Option
+                  <select id="barrelBondMode">
+                    <option value="1">1 - Orthogonal Ring Courses</option>
+                    <option value="2">2 - Staggered Ring Courses</option>
+                    <option value="3">3 - Progressive Drift Courses</option>
+                    <option value="4">4 - Crown-Fan Courses</option>
+                  </select>
+                </label>
+                <label data-param-control="barrelOffsetSide">Thickness Side
+                  <select id="barrelOffsetSide">
+                    <option>Inside</option>
+                    <option>Outside</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Display</summary>
+              <div class="grid-1">
+                <label>Bounding Cube Scale
+                  <div class="dual-input-row">
+                    <input type="range" id="cubeScale" min="0.1" max="4" step="0.1" value="1" />
+                    <input type="number" id="cubeScaleNum" min="0.1" max="4" step="0.1" value="1" />
+                  </div>
+                </label>
+                <label>Array U x V <input type="text" id="arrayUV" value="1x1" /></label>
+                <label>Drag Sensitivity
+                  <select id="dragSensitivity">
+                    <option>Precise</option>
+                    <option selected>Normal</option>
+                    <option>Fast</option>
+                  </select>
+                </label>
+              </div>
+            </details>
           </div>
         </div>
 
@@ -217,12 +356,24 @@
         </div>
         </div>
       </aside>
+      <div class="splitter" data-splitter="left" title="Resize tools"></div>
 
       <section class="modelspace">
         <article class="panel-window glass">
-          <div class="window-head">
-            <h2>2D Stereotomic Layout</h2>
-            <span>UV Editor</span>
+          <div class="window-head viewport-titlebar">
+            <details class="viewport-menu">
+              <summary>Top <span>▾</span></summary>
+              <div class="viewport-menu-list">
+                <button data-layout-style="Rhino Gray">Rhino Gray</button>
+                <button data-layout-style="Blueprint">Blueprint</button>
+                <button data-layout-style="Paper">Paper</button>
+                <button data-layout-style="High Contrast">High Contrast</button>
+              </div>
+            </details>
+            <div class="viewport-actions">
+              <button class="mini-btn" data-layout-style="Rhino Gray">Grid</button>
+              <span>UV Editor</span>
+            </div>
           </div>
           <svg id="layout2d" viewBox="0 0 1000 700" preserveAspectRatio="none"></svg>
           <div class="floating glass" id="diagramPanel">
@@ -237,12 +388,26 @@
             <svg id="forceDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
           </div>
         </article>
+        <div class="viewport-splitter" data-viewport-splitter title="Resize viewports"></div>
 
         <article class="panel-window glass">
-          <div class="window-head">
-            <h2>3D Vault Visualization</h2>
-            <div>
-              <button class="ghost-btn" id="zoomExtents">Zoom Extents</button>
+          <div class="window-head viewport-titlebar">
+            <details class="viewport-menu">
+              <summary>Perspective <span>▾</span></summary>
+              <div class="viewport-menu-list">
+                <button data-display-preset="Wireframe">Wireframe</button>
+                <button data-display-preset="Shaded">Shaded</button>
+                <button data-display-preset="Rendered">Rendered</button>
+                <button data-display-preset="Ghosted">Ghosted</button>
+                <button data-display-preset="XRay">X-Ray</button>
+                <hr />
+                <button data-toggle-view="grid">Grid</button>
+                <button data-toggle-view="edges">Mesh Wires</button>
+                <button data-toggle-view="boxes">Bounding Boxes</button>
+              </div>
+            </details>
+            <div class="viewport-actions">
+              <button class="mini-btn" id="zoomExtents">Zoom Extents</button>
               <span>Three.js</span>
             </div>
           </div>
@@ -250,13 +415,22 @@
           <div class="floating inspector glass" id="inspector"></div>
         </article>
       </section>
+      <div class="splitter" data-splitter="right" title="Resize properties"></div>
 
-      <aside class="panel analysis glass">
-        <h2>Fabrication + Analysis</h2>
-        <div class="section docked-display">
+      <aside class="panel analysis glass dock-panel" data-dock="right">
+        <div class="dock-head">
+          <h2 id="rightPanelTitle">Properties</h2>
+          <button class="dock-toggle" data-dock-toggle="right" title="Collapse properties">×</button>
+        </div>
+        <div class="section" data-right-section="vault-tools">
+          <h3>Active Vault Tools</h3>
+          <div id="activeVaultTools" class="hint"></div>
+        </div>
+        <div class="section docked-display" data-right-section="display">
           <h3>Display Settings</h3>
           <label>Lighting
             <select id="lightingPreset">
+              <option>Rhino Studio</option>
               <option>Studio Soft</option>
               <option>Three-Point</option>
               <option>Clay Neutral</option>
@@ -266,11 +440,11 @@
           </label>
           <label>Display
             <select id="displayPreset">
-              <option>Shaded + Edges</option>
-              <option>Clay</option>
-              <option>Technical Wire</option>
-              <option>Analysis Heatmap</option>
-              <option>Fabrication IDs</option>
+              <option>Shaded</option>
+              <option>XRay</option>
+              <option>Wireframe</option>
+              <option selected>Rendered</option>
+              <option>Ghosted</option>
             </select>
           </label>
           <label>2D View Style
@@ -281,9 +455,14 @@
               <option>High Contrast</option>
             </select>
           </label>
-          <label>Foil Gradient A <input id="foilColorA" type="color" value="#d8dce4" /></label>
-          <label>Foil Gradient B <input id="foilColorB" type="color" value="#8fb7d9" /></label>
-          <label>Foil Gradient Mix <input id="foilMix" type="range" min="0" max="1" step="0.01" value="0.55" /></label>
+          <label>Foil Gradient A <input id="foilColorA" type="color" value="#d9dde2" /></label>
+          <label>Foil Gradient B <input id="foilColorB" type="color" value="#c1c7cf" /></label>
+          <label>Foil Gradient Mix
+            <div class="dual-input-row">
+              <input id="foilMix" type="range" min="0" max="1" step="0.01" value="0.5" />
+              <input id="foilMixNum" type="number" min="0" max="1" step="0.01" value="0.5" />
+            </div>
+          </label>
           <div class="display-toggles">
             <label class="toggle-row"><span>Base Grid</span><input id="toggleBaseGrid" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Bounding Boxes</span><input id="toggleBoundingBoxes" type="checkbox" /></label>
@@ -294,28 +473,74 @@
             <label class="toggle-row"><span>Seam Debug</span><input id="toggleSeamDebug" type="checkbox" checked /></label>
           </div>
         </div>
-        <div class="metrics" id="metrics"></div>
+        <div class="metrics" id="metrics" data-right-section="metrics"></div>
 
-        <div class="section">
+        <div class="section" data-right-section="constraints">
           <h3>Fabrication Constraints</h3>
           <div class="grid-1">
-            <label>Max Block Length (m) <input id="maxLength" type="number" value="2.4" step="0.1" /></label>
-            <label>Max Block Width (m) <input id="maxWidth" type="number" value="1.2" step="0.1" /></label>
-            <label>Min Block Thickness (m) <input id="minThickness" type="number" value="0.3" step="0.05" /></label>
-            <label>Max Block Weight (kg) <input id="maxWeight" type="number" value="520" step="10" /></label>
-            <label>Allowable Taper (deg) <input id="maxTaper" type="number" value="8" step="0.1" /></label>
-            <label>Min Edge Length (m) <input id="minEdgeLength" type="number" value="0.18" step="0.01" /></label>
-            <label>Fab Tolerance (m) <input id="fabTolerance" type="number" value="0.008" step="0.001" /></label>
+            <label>Max Block Length (m)
+              <div class="dual-input-row">
+                <input id="maxLengthSlider" type="range" min="0.5" max="6" step="0.1" value="2.4" />
+                <input id="maxLength" type="number" min="0.5" max="6" value="2.4" step="0.1" />
+              </div>
+            </label>
+            <label>Max Block Width (m)
+              <div class="dual-input-row">
+                <input id="maxWidthSlider" type="range" min="0.3" max="4" step="0.1" value="1.2" />
+                <input id="maxWidth" type="number" min="0.3" max="4" value="1.2" step="0.1" />
+              </div>
+            </label>
+            <label>Min Block Thickness (m)
+              <div class="dual-input-row">
+                <input id="minThicknessSlider" type="range" min="0.1" max="1.5" step="0.01" value="0.3" />
+                <input id="minThickness" type="number" min="0.1" max="1.5" value="0.3" step="0.05" />
+              </div>
+            </label>
+            <label>Max Block Weight (kg)
+              <div class="dual-input-row">
+                <input id="maxWeightSlider" type="range" min="50" max="2500" step="10" value="520" />
+                <input id="maxWeight" type="number" min="50" max="2500" value="520" step="10" />
+              </div>
+            </label>
+            <label>Allowable Taper (deg)
+              <div class="dual-input-row">
+                <input id="maxTaperSlider" type="range" min="0" max="20" step="0.1" value="8" />
+                <input id="maxTaper" type="number" min="0" max="20" value="8" step="0.1" />
+              </div>
+            </label>
+            <label>Min Edge Length (m)
+              <div class="dual-input-row">
+                <input id="minEdgeLengthSlider" type="range" min="0.01" max="1" step="0.005" value="0.18" />
+                <input id="minEdgeLength" type="number" min="0.01" max="1" value="0.18" step="0.01" />
+              </div>
+            </label>
+            <label>Fab Tolerance (m)
+              <div class="dual-input-row">
+                <input id="fabToleranceSlider" type="range" min="0.001" max="0.05" step="0.001" value="0.008" />
+                <input id="fabTolerance" type="number" min="0.001" max="0.05" value="0.008" step="0.001" />
+              </div>
+            </label>
           </div>
           <button class="ghost-btn" id="runChecks">Run Checks</button>
           <ul id="warnings"></ul>
         </div>
-        <div class="section">
+        <div class="section" data-right-section="precedent">
           <h3>Stereotomic Precedent</h3>
           <div id="precedentDetails" class="hint"></div>
         </div>
       </aside>
     </main>
+    <footer class="status-bar">
+      <div class="status-label">Viewport Tools</div>
+      <div class="status-toggles" aria-label="Modeling aids">
+        <label><input type="checkbox" data-status-toggle="grid" checked /> Grid</label>
+        <label><input type="checkbox" data-status-toggle="gumball" checked /> Gumball</label>
+      </div>
+      <div class="dock-buttons">
+        <button data-dock-toggle="left">Tools</button>
+        <button data-dock-toggle="right">Properties</button>
+      </div>
+    </footer>
   </div>
 
 </body>

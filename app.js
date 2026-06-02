@@ -20,6 +20,7 @@ const state = {
   springingAngle: 0,
   archType: "Semicircular",
   targetBlockWidth: 1.2,
+  taperScale: 0.55,
   barrelOffsetSide: "Inside",
   wallThickness: 0.45,
   wallHeightOffset: 0,
@@ -63,10 +64,10 @@ const state = {
   importedSurfaceBbox: null,
   view2d: { x: 0, y: 0, w: 1000, h: 700 },
   pan2d: null,
-  lightingPreset: "Three-Point",
-  displayPreset: "Shaded + Edges",
+  lightingPreset: "Rhino Studio",
+  displayPreset: "Rendered",
   layoutStyle: "Rhino Gray",
-  foilGradient: { a: "#d8dce4", b: "#8fb7d9", mix: 0.55 },
+  foilGradient: { a: "#d9dde2", b: "#c1c7cf", mix: 0.5 },
   display: {
     baseGrid: true,
     boundingBoxes: false,
@@ -79,7 +80,7 @@ const state = {
 };
 
 const patterns = ["Courses", "Radial joints", "Running bond", "Diagonal joints", "Hex / NGon", "Rib-aligned", "Keystone zones"];
-const viewModes = ["Geometry", "Structure", "Fabrication", "Assembly", "Material", "Printability"];
+const isBarrelLikeVault = (vaultType = state.vaultType) => vaultType === "Barrel Vault" || vaultType === "Tapered Barrel Vault";
 const vaultLibrary = {
   "Barrel Vault": {
     name: "Barrel Vault",
@@ -90,6 +91,16 @@ const vaultLibrary = {
     parameters: ["span", "rise", "length", "thickness", "archType", "courseHeight", "targetBlockWidth", "barrelBondMode", "barrelOffsetSide", "wallThickness", "wallHeightOffset"].map((key) => ({ key })),
     allowedPatterns: ["Courses", "Running bond", "Radial joints", "Keystone zones"],
     startup: { params: { span: 22, rise: 10, length: 28, thickness: 0.9, courseCount: 20, blockCount: 22, subdivisionDensity: 1.1, keystoneSize: 0.35 } },
+  },
+  "Tapered Barrel Vault": {
+    name: "Tapered Barrel Vault",
+    construction2D: "Longitudinal courses lofted between full-size and scaled barrel end profiles.",
+    construction3D: "Tapered barrel shell from two parallel 2D barrel curves joined by a loft.",
+    forceFlowType: "Compression lines",
+    stereotomyType: "Courses",
+    parameters: ["span", "rise", "length", "thickness", "archType", "taperScale", "courseHeight", "targetBlockWidth", "barrelBondMode", "barrelOffsetSide", "wallThickness", "wallHeightOffset"].map((key) => ({ key })),
+    allowedPatterns: ["Courses", "Running bond", "Radial joints", "Keystone zones"],
+    startup: { params: { span: 24, rise: 10, length: 30, thickness: 0.9, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.35 }, taperScale: 0.55 },
   },
   "Groin Vault": {
     name: "Groin Vault",
@@ -293,7 +304,6 @@ const nodes = {
   metrics: byId("metrics"),
   warnings: byId("warnings"),
   inspector: byId("inspector"),
-  viewModes: byId("viewModes"),
   precedentDetails: byId("precedentDetails"),
   workflowSteps: byId("workflowSteps"),
   formDiagram: byId("formDiagram"),
@@ -301,12 +311,12 @@ const nodes = {
   diagramMode: byId("diagramMode"),
   toolTabs: byId("toolTabs"),
   pipelineStatus: byId("pipelineStatus"),
+  activeVaultTools: byId("activeVaultTools"),
+  rightPanelTitle: byId("rightPanelTitle"),
 };
 
 byId("vaultType").innerHTML = vaultTypes.map((v) => `<option>${v}</option>`).join("");
 byId("subdivision").innerHTML = patterns.map((v) => `<option>${v}</option>`).join("");
-nodes.viewModes.innerHTML = viewModes.map((v) => `<button data-mode="${v}">${v}</button>`).join("");
-[...nodes.viewModes.querySelectorAll("button")][0]?.classList.add("active");
 
 const setToolTab = (tab) => {
   if (!nodes.toolTabs) return;
@@ -318,6 +328,88 @@ const setToolTab = (tab) => {
 
 const setPipelineStatus = (txt) => {
   if (nodes.pipelineStatus) nodes.pipelineStatus.textContent = txt;
+};
+
+const parameterLabelMap = {
+  span: "Span",
+  rise: "Rise",
+  length: "Length",
+  thickness: "Thickness",
+  archType: "Arch Type",
+  taperScale: "Taper End Scale",
+  courseHeight: "Course Height",
+  targetBlockWidth: "Target Block Width",
+  courseCount: "Courses",
+  blockCount: "Blocks/Course",
+  subdivisionDensity: "Subdivision Density",
+  keystoneSize: "Keystone Size",
+  springingAngle: "Springing Angle",
+  barrelBondMode: "Barrel Pattern Option",
+  barrelOffsetSide: "Thickness Side",
+  wallThickness: "Wall Thickness",
+  wallHeightOffset: "Wall Height Offset",
+  bayRatio: "Bay Ratio",
+  ribCount: "Rib Count",
+  lierneDensity: "Lierne Density",
+  netFrequency: "Net Frequency",
+  tileLayers: "Tile Layers",
+  groinMorph: "Groin Morph",
+  lInterlockBias: "L-Interlock Bias",
+};
+
+const renderActiveVaultTools = () => {
+  if (!nodes.activeVaultTools) return;
+  const def = vaultLibrary[state.vaultType];
+  const params = (def?.parameters || []).map((p) => parameterLabelMap[p.key] || p.key);
+  const patternsAllowed = vaultPatternAllowed[state.vaultType] || patterns;
+  nodes.activeVaultTools.innerHTML = [
+    `<div><b>Vault:</b> ${state.vaultType}</div>`,
+    `<div><b>2D Logic:</b> ${def?.construction2D || "n/a"}</div>`,
+    `<div><b>3D Logic:</b> ${def?.construction3D || "n/a"}</div>`,
+    `<div><b>Force Flow:</b> ${def?.forceFlowType || "n/a"}</div>`,
+    `<div><b>Stereotomy:</b> ${def?.stereotomyType || "n/a"}</div>`,
+    `<div><b>Active Parameters:</b> ${params.length ? params.join(", ") : "n/a"}</div>`,
+    `<div><b>Allowed Patterns:</b> ${patternsAllowed.join(", ")}</div>`,
+  ].join("");
+};
+
+const applyRightPanelToolVisibility = () => {
+  if (nodes.rightPanelTitle) {
+    nodes.rightPanelTitle.textContent = state.designMode === "Custom Import"
+      ? "Import + Analysis"
+      : "Vault Tools + Analysis";
+  }
+  const isCustom = state.designMode === "Custom Import" || state.vaultType === "Custom Imported Rhino Surface";
+  document.querySelectorAll("[data-right-section]").forEach((sec) => {
+    const key = sec.getAttribute("data-right-section");
+    let show = true;
+    if (key === "vault-tools" || key === "precedent") show = !isCustom;
+    if (key === "constraints") show = true;
+    if (key === "display" || key === "metrics") show = true;
+    sec.setAttribute("data-hidden", show ? "0" : "1");
+  });
+  renderActiveVaultTools();
+};
+
+const linkRangeAndNumber = (rangeId, numberId, onInput) => {
+  const r = byId(rangeId);
+  const n = byId(numberId);
+  if (!r || !n) return;
+  const apply = (v, fromRange = false) => {
+    const num = Number(v);
+    if (!Number.isFinite(num)) return;
+    r.value = String(num);
+    n.value = String(num);
+    if (onInput) onInput(num);
+    else if (fromRange) n.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  r.addEventListener("input", (e) => apply(e.target.value, true));
+  n.addEventListener("input", (e) => apply(e.target.value, false));
+};
+
+const syncInputPair = (id, value) => {
+  if (byId(id)) byId(id).value = String(value);
+  if (byId(`${id}Num`)) byId(`${id}Num`).value = String(value);
 };
 
 const runPipelineStage = (stage) => {
@@ -404,6 +496,9 @@ renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
+renderer.physicallyCorrectLights = true;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = true;
@@ -441,7 +536,16 @@ scene.add(bboxHelpersGroup);
 
 const applyLightingPreset = (preset) => {
   state.lightingPreset = preset;
-  if (preset === "Studio Soft") {
+  if (preset === "Rhino Studio") {
+    scene.background = new THREE.Color(0x283444);
+    scene.fog = new THREE.FogExp2(0x202b38, 0.0085);
+    ambient.intensity = 0.68;
+    renderer.toneMappingExposure = 1.24;
+    hemi.color.set(0xe4efff); hemi.groundColor.set(0x18202b); hemi.intensity = 0.34;
+    key.color.set(0xffffff); key.intensity = 1.35; key.position.set(24, 26, 16);
+    fill.color.set(0xd6e6ff); fill.intensity = 0.58; fill.position.set(-18, 13, 12);
+    rim.color.set(0xf9fbff); rim.intensity = 0.56; rim.position.set(-2, 20, -28);
+  } else if (preset === "Studio Soft") {
     scene.background = new THREE.Color(0x243041);
     scene.fog = new THREE.FogExp2(0x1b2634, 0.01);
     ambient.intensity = 0.62;
@@ -520,6 +624,12 @@ const precedentDb = {
     blockLogic: "Longitudinal voussoir courses with repeated arch rings.",
     jointPatterns: "Radial bed joints, longitudinal running joints.",
     constructionMethods: "Centering/formwork with sequential ring closure from springing lines.",
+  },
+  "Tapered Barrel Vault": {
+    historicalReferences: [],
+    blockLogic: "Longitudinal courses lofted between full-size and scaled barrel sections.",
+    jointPatterns: "Transverse arch rings gradually change width along the taper.",
+    constructionMethods: "Duplicate the barrel profile, scale the far end profile, then loft intrados/extrados surfaces.",
   },
   "Groin Vault": {
     historicalReferences: [
@@ -631,27 +741,12 @@ const evalBarrelArchProfile = (nx) => {
     return Math.pow(Math.max(0, 1 - x ** 2), 1.25);
   }
   if (state.archType === "Pointed") {
-    // Two-arc pointed profile with a small rounded apex cap (C1-smooth).
-    const c = 0.42;
-    const radius2 = (1 + c) * (1 + c) + c * c;
-    const baseFn = (xx) => {
-      const inside = radius2 - (xx + c) * (xx + c);
-      return Math.max(0, -c + Math.sqrt(Math.max(0, inside)));
-    };
-    const w = 0.085;
-    if (x >= w) return baseFn(x);
-    const h = 0.002;
-    const yW = baseFn(w);
-    const dW = (baseFn(Math.min(1, w + h)) - baseFn(Math.max(0, w - h))) / (2 * h);
-    // y = 1 + b x^2 + c4 x^4, with y(0)=1, y'(0)=0 and matching y,dy at x=w.
-    const w2 = w * w;
-    const w3 = w2 * w;
-    const w4 = w2 * w2;
-    const rhs1 = yW - 1;
-    const rhs2 = dW;
-    const c4 = (rhs2 - (2 * rhs1) / Math.max(1e-8, w)) / (2 * w3);
-    const b = (rhs1 - c4 * w4) / Math.max(1e-8, w2);
-    return clamp(1 + b * x * x + c4 * x * x * x * x, 0, 1);
+    // DXF-calibrated pointed profile (piecewise quadratic, C0 at apex).
+    // Control ratio from "pointer arch .dxf": yc/apex = 26.41583180471286 / 30.74196557076337.
+    const yc = 0.8592909561274998;
+    const t = Math.sqrt(Math.max(0, 1 - x)); // x=1 springing, x=0 apex
+    const y = 2 * (1 - t) * t * yc + t * t;
+    return Math.max(0, Math.min(1, y));
   }
   if (state.archType === "Elliptical" || state.archType === "Catenary") {
     // Legacy "Catenary" option maps to Elliptical behavior.
@@ -759,17 +854,21 @@ const offsetJoinedPolyline = (pts, dist, miterLimit = 3.0) => {
   return out;
 };
 
-const buildBarrelSectionPolyline = (scale = state.cubeScale) => {
+const buildBarrelSectionPolyline = (scale = state.cubeScale, includeLegs = true) => {
   const span = state.params.span * scale;
   const rise = state.params.rise * scale * (Math.cos((state.springingAngle * Math.PI) / 180) || 1);
   const springY = getBarrelSpringingY(scale);
   const halfW = span * 0.5;
   const legN = 12;
-  const archN = 180;
+  // Denser sampling improves crown/springing shading quality.
+  // Keep pointed odd so no sample sits exactly on the cusp.
+  const archN = state.archType === "Pointed" ? 361 : 240;
   const pts = [];
-  for (let i = 0; i <= legN; i++) {
-    const t = i / legN;
-    pts.push(new THREE.Vector2(-halfW, t * springY));
+  if (includeLegs) {
+    for (let i = 0; i <= legN; i++) {
+      const t = i / legN;
+      pts.push(new THREE.Vector2(-halfW, t * springY));
+    }
   }
   // Cosine-reparameterized sampling concentrates points near springings,
   // removing the visible "extra segment" artifact at leg/arch transitions.
@@ -781,9 +880,11 @@ const buildBarrelSectionPolyline = (scale = state.cubeScale) => {
     const y = springY + rise * Math.max(0, evalBarrelArchProfile(nx));
     pts.push(new THREE.Vector2(x, y));
   }
-  for (let i = 0; i <= legN; i++) {
-    const t = i / legN;
-    pts.push(new THREE.Vector2(halfW, springY * (1 - t)));
+  if (includeLegs) {
+    for (let i = 0; i <= legN; i++) {
+      const t = i / legN;
+      pts.push(new THREE.Vector2(halfW, springY * (1 - t)));
+    }
   }
   return { pts, halfW, springY, rise };
 };
@@ -852,8 +953,27 @@ const barrelVaultPoint = (u, v) => {
   const y = springY + sRise * springFactor * Math.max(0, profile);
   return new THREE.Vector3(x, y, z);
 };
+
+const taperedBarrelVaultPoint = (u, v) => {
+  const { span, rise, length } = state.params;
+  const scale = state.cubeScale;
+  const taper = THREE.MathUtils.lerp(1, clamp(state.taperScale, 0.25, 1.5), clamp(v, 0, 1));
+  const sSpan = span * scale * taper;
+  const sRise = rise * scale;
+  const sLength = length * scale;
+  const x = (u - 0.5) * sSpan;
+  const z = (v - 0.5) * sLength;
+  const nx = clamp(Math.abs(u - 0.5) * 2, 0, 1);
+  const springFactor = Math.cos((state.springingAngle * Math.PI) / 180) || 1;
+  const profile = evalBarrelArchProfile(nx);
+  const springY = getBarrelSpringingY(scale);
+  const y = springY + sRise * springFactor * Math.max(0, profile);
+  return new THREE.Vector3(x, y, z);
+};
+
 const vaultEvaluators = {
   "Barrel Vault": barrelVaultPoint,
+  "Tapered Barrel Vault": taperedBarrelVaultPoint,
   "Groin Vault": (u, v) => {
     const { span, rise, length } = state.params;
     const x = (u - 0.5) * span * state.bayRatioX;
@@ -1140,7 +1260,7 @@ const generatePatternBlocks = () => {
       let u1 = (c + 1) / cols;
       let v0 = r / rows;
       let v1 = (r + 1) / rows;
-      if (state.vaultType === "Barrel Vault") {
+      if (isBarrelLikeVault()) {
         if (state.barrelBondMode === "2") {
           const sh = (r % 2 ? 0.5 : 0) / cols;
           u0 += sh;
@@ -1287,7 +1407,7 @@ const archOverlayConfig = {
 const buildBarrelSectionGizmo3d = () => {
   clearGroup(sectionGizmoGroup);
   clearGroup(sectionActiveGizmoGroup);
-  if (state.vaultType !== "Barrel Vault") return;
+  if (!isBarrelLikeVault()) return;
   const scale = state.cubeScale;
   const span = state.params.span * scale;
   const { pts: sectionPts, halfW, springY, rise } = buildBarrelSectionPolyline(scale);
@@ -1300,18 +1420,33 @@ const buildBarrelSectionGizmo3d = () => {
   const offsetPts = offsetJoinedPolyline(sectionPts, shellT, 2.2);
   const refPts = (useInsideRef ? sectionPts : offsetPts).map((p) => new THREE.Vector3(p.x, p.y, z));
   const otherPts = (useInsideRef ? offsetPts : sectionPts).map((p) => new THREE.Vector3(p.x, p.y, z));
+  const mkOverlayMat = (color, opacity) => new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthTest: false,
+    depthWrite: false,
+  });
   const profileGeo = new THREE.BufferGeometry().setFromPoints(refPts);
-  const profile = new THREE.Line(profileGeo, new THREE.LineBasicMaterial({ color: 0xffdf9f, transparent: true, opacity: 0.95 }));
+  const profile = new THREE.Line(profileGeo, mkOverlayMat(0xffdf9f, 0.95));
+  profile.renderOrder = 9000;
   sectionGizmoGroup.add(profile);
   const altGeo = new THREE.BufferGeometry().setFromPoints(otherPts);
-  sectionGizmoGroup.add(new THREE.Line(altGeo, new THREE.LineBasicMaterial({ color: 0x9eb2c9, transparent: true, opacity: 0.65 })));
+  const altLine = new THREE.Line(altGeo, mkOverlayMat(0x9eb2c9, 0.65));
+  altLine.renderOrder = 9000;
+  sectionGizmoGroup.add(altLine);
   const baseGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-halfW, 0, z), new THREE.Vector3(halfW, 0, z)]);
-  const base = new THREE.Line(baseGeo, new THREE.LineBasicMaterial({ color: 0xd2bd8a, transparent: true, opacity: 0.7 }));
+  const base = new THREE.Line(baseGeo, mkOverlayMat(0xd2bd8a, 0.7));
+  base.renderOrder = 9000;
   sectionGizmoGroup.add(base);
   const xAxisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, springY, z), new THREE.Vector3(Math.max(2, halfW * 0.45), springY, z)]);
-  sectionGizmoGroup.add(new THREE.Line(xAxisGeo, new THREE.LineBasicMaterial({ color: 0xff6b6b, transparent: true, opacity: 0.85 })));
+  const xAxis = new THREE.Line(xAxisGeo, mkOverlayMat(0xff6b6b, 0.85));
+  xAxis.renderOrder = 9000;
+  sectionGizmoGroup.add(xAxis);
   const yAxisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, springY, z), new THREE.Vector3(0, springY + Math.max(2, rise * 0.75), z)]);
-  sectionGizmoGroup.add(new THREE.Line(yAxisGeo, new THREE.LineBasicMaterial({ color: 0x76d275, transparent: true, opacity: 0.85 })));
+  const yAxis = new THREE.Line(yAxisGeo, mkOverlayMat(0x76d275, 0.85));
+  yAxis.renderOrder = 9000;
+  sectionGizmoGroup.add(yAxis);
   const mat = new THREE.MeshStandardMaterial({ color: 0xffdf9f, emissive: 0x3b2d16, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.1 });
   const r = Math.max(0.18, span * 0.014);
   const handleGeo = new THREE.SphereGeometry(r, 14, 14);
@@ -1350,7 +1485,7 @@ const buildBarrelSectionGizmo3d = () => {
 };
 
 const buildBarrelArchOverlay2d = () => {
-  if (state.vaultType !== "Barrel Vault") return [];
+  if (!isBarrelLikeVault()) return [];
   const { cx, baseY, spanScalePxPerM, riseScalePxPerM, minHalfW, maxHalfW, minRisePx, maxRisePx } = archOverlayConfig;
   const halfW = clamp(state.params.span * spanScalePxPerM * 0.5, minHalfW, maxHalfW);
   const risePx = clamp(state.params.rise * riseScalePxPerM, minRisePx, maxRisePx);
@@ -1522,13 +1657,21 @@ const build3d = () => {
 
 const buildSupportWalls = () => {
   const def = vaultLibrary[state.vaultType];
-  if (!def?.construction3D?.toLowerCase().includes("extrud") && state.vaultType !== "Barrel Vault") return;
-  if (state.vaultType === "Barrel Vault") return;
+  if (!def?.construction3D?.toLowerCase().includes("extrud") && !isBarrelLikeVault()) return;
+  if (isBarrelLikeVault()) {
+    // Barrel now derives wall continuity from the joined section profile itself.
+    // Do not add separate support-wall boxes here, or we get duplicate/offset walls.
+    return;
+  }
 };
 
 const buildSolidVaultMesh = () => {
   if (state.vaultType === "Barrel Vault") {
     buildBarrelSolidExtrusionMesh();
+    return;
+  }
+  if (state.vaultType === "Tapered Barrel Vault") {
+    buildTaperedBarrelSolidLoftMesh();
     return;
   }
   const cyclicU = state.vaultType === "Dome";
@@ -1596,6 +1739,12 @@ const buildSolidVaultMesh = () => {
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: true, opacity: 0.95 }));
   mesh.name = "solid-vault";
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 26),
+    new THREE.LineBasicMaterial({ color: 0xeff4ff, transparent: true, opacity: 0.2 })
+  );
+  edges.name = "solid-edges";
+  mesh.add(edges);
   solidVaultGroup.add(mesh);
 };
 
@@ -1604,7 +1753,7 @@ const buildBarrelSolidExtrusionMesh = () => {
   const length = state.params.length * scale;
   const z0 = -length * 0.5;
   const z1 = length * 0.5;
-  const { pts: sectionPts } = buildBarrelSectionPolyline(scale);
+  const { pts: sectionPts } = buildBarrelSectionPolyline(scale, true);
   const profileN = sectionPts.length - 1;
   const zN = Math.max(10, Math.floor((state.params.courseCount || 16) * 1.2));
   const offset = Math.max(0.1, state.params.thickness * scale);
@@ -1646,13 +1795,14 @@ const buildBarrelSolidExtrusionMesh = () => {
     const b1 = a1 + stride;
     quad(a1, botBase + a1, botBase + b1, b1);
   }
+  // Close barrel ends so shell thickness reads clearly in Rendered/Shaded modes.
   for (let c = 0; c < profileN; c++) {
     const a = c;
     const b = c + 1;
-    quad(botBase + a, botBase + b, b, a);
-    const aR = zN * stride + c;
-    const bR = aR + 1;
-    quad(aR, bR, botBase + bR, botBase + aR);
+    quad(a, b, botBase + b, botBase + a);
+    const ar = zN * stride + c;
+    const br = ar + 1;
+    quad(botBase + ar, botBase + br, br, ar);
   }
   const pos = new Float32Array(vertices.length * 3);
   vertices.forEach((v, i) => {
@@ -1664,8 +1814,93 @@ const buildBarrelSolidExtrusionMesh = () => {
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geometry.setIndex(idx);
   geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: true, opacity: 0.95 }));
+  geometry.normalizeNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: false, opacity: 1 }));
   mesh.name = "solid-vault";
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 26),
+    new THREE.LineBasicMaterial({ color: 0xeff4ff, transparent: true, opacity: 0.2 })
+  );
+  edges.name = "solid-edges";
+  mesh.add(edges);
+  solidVaultGroup.add(mesh);
+};
+
+const buildTaperedBarrelSolidLoftMesh = () => {
+  const scale = state.cubeScale;
+  const length = state.params.length * scale;
+  const z0 = -length * 0.5;
+  const z1 = length * 0.5;
+  const { pts: sectionPts } = buildBarrelSectionPolyline(scale, true);
+  const profileN = sectionPts.length - 1;
+  const zN = Math.max(10, Math.floor((state.params.courseCount || 16) * 1.2));
+  const offset = Math.max(0.1, state.params.thickness * scale);
+  const useInsideRef = state.barrelOffsetSide !== "Outside";
+  const offsetPts = offsetJoinedPolyline(sectionPts, offset, 2.2);
+  const taperEnd = clamp(state.taperScale, 0.25, 1.5);
+  const scaleSectionPoint = (p, t) => new THREE.Vector2(p.x * THREE.MathUtils.lerp(1, taperEnd, t), p.y);
+  const top = [];
+  const bot = [];
+  for (let r = 0; r <= zN; r++) {
+    const t = r / zN;
+    const z = THREE.MathUtils.lerp(z0, z1, t);
+    for (let c = 0; c < sectionPts.length; c++) {
+      const ref2 = scaleSectionPoint(useInsideRef ? sectionPts[c] : offsetPts[c], t);
+      const off2 = scaleSectionPoint(useInsideRef ? offsetPts[c] : sectionPts[c], t);
+      top.push(new THREE.Vector3(ref2.x, ref2.y, z));
+      bot.push(new THREE.Vector3(off2.x, off2.y, z));
+    }
+  }
+  const vertices = [...top, ...bot];
+  const stride = profileN + 1;
+  const botBase = top.length;
+  const idx = [];
+  const quad = (a, b, c, d) => { idx.push(a, b, c, a, c, d); };
+  for (let r = 0; r < zN; r++) {
+    for (let c = 0; c < profileN; c++) {
+      const a = r * stride + c;
+      const b = a + 1;
+      const d = a + stride;
+      const c2 = d + 1;
+      quad(a, b, c2, d);
+      quad(botBase + d, botBase + c2, botBase + b, botBase + a);
+    }
+  }
+  for (let r = 0; r < zN; r++) {
+    const a0 = r * stride;
+    const b0 = a0 + stride;
+    quad(botBase + a0, a0, b0, botBase + b0);
+    const a1 = r * stride + profileN;
+    const b1 = a1 + stride;
+    quad(a1, botBase + a1, botBase + b1, b1);
+  }
+  for (let c = 0; c < profileN; c++) {
+    const a = c;
+    const b = c + 1;
+    quad(a, b, botBase + b, botBase + a);
+    const ar = zN * stride + c;
+    const br = ar + 1;
+    quad(botBase + ar, botBase + br, br, ar);
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((v, i) => {
+    pos[i * 3] = v.x;
+    pos[i * 3 + 1] = v.y;
+    pos[i * 3 + 2] = v.z;
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(idx);
+  geometry.computeVertexNormals();
+  geometry.normalizeNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.42, metalness: 0.08, transparent: false, opacity: 1 }));
+  mesh.name = "solid-vault";
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 26),
+    new THREE.LineBasicMaterial({ color: 0xeff4ff, transparent: true, opacity: 0.2 })
+  );
+  edges.name = "solid-edges";
+  mesh.add(edges);
   solidVaultGroup.add(mesh);
 };
 
@@ -1685,8 +1920,8 @@ const createFoilMaterial = (color) => {
     sheen: 0.6,
     sheenColor,
     transmission: 0,
-    transparent: true,
-    opacity: 0.96,
+    transparent: false,
+    opacity: 1,
   });
 };
 
@@ -1720,6 +1955,11 @@ const applyLayoutStyle = () => {
 };
 
 const applyDisplayPreset = () => {
+  // Backward-compat mapping for older saved presets.
+  const mappedPreset = state.displayPreset === "Shaded + Edges" ? "Shaded"
+    : state.displayPreset === "Technical Wire" ? "Wireframe"
+      : state.displayPreset;
+  state.displayPreset = mappedPreset;
   const foilBase = getFoilGradientColor(0.5);
   const foilFail = foilBase.clone().lerp(new THREE.Color(0xd8b078), 0.5);
   state.blocks.forEach((b, i) => {
@@ -1728,7 +1968,37 @@ const applyDisplayPreset = () => {
     const seam = b.mesh.getObjectByName("seam");
     if (b.mesh.material) b.mesh.material.dispose();
     const sideMode = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
-    if (state.displayPreset === "Clay") {
+    if (state.displayPreset === "Rendered") {
+      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(failed ? foilFail : foilBase) : new THREE.MeshStandardMaterial({
+        color: failed ? 0xd5a86f : 0xc7ced6, roughness: 0.42, metalness: 0.14, transparent: false,
+      });
+      b.mesh.material.side = sideMode;
+      if (seam) seam.visible = false;
+    } else if (state.displayPreset === "Shaded") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: failed ? 0xd5a86f : 0xc6ccd4, roughness: 0.62, metalness: 0.03, transparent: false,
+      });
+      b.mesh.material.side = sideMode;
+      if (seam) seam.visible = state.display.seamDebug;
+    } else if (state.displayPreset === "XRay") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: failed ? 0xe0a58d : 0xcfd6e0, roughness: 0.55, metalness: 0.02, transparent: true, opacity: 0.28,
+      });
+      b.mesh.material.side = THREE.DoubleSide;
+      if (seam) seam.visible = true;
+    } else if (state.displayPreset === "Wireframe") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: 0xb9c5d4, roughness: 0.3, metalness: 0.05, wireframe: true, transparent: false, opacity: 1,
+      });
+      b.mesh.material.side = sideMode;
+      if (seam) seam.visible = false;
+    } else if (state.displayPreset === "Ghosted") {
+      b.mesh.material = new THREE.MeshStandardMaterial({
+        color: failed ? 0xd5a86f : 0xc8cfd8, roughness: 0.5, metalness: 0.03, transparent: true, opacity: 0.58,
+      });
+      b.mesh.material.side = THREE.DoubleSide;
+      if (seam) seam.visible = true;
+    } else if (state.displayPreset === "Clay") {
       b.mesh.material = state.display.foilMaterial ? createFoilMaterial(failed ? foilFail : foilBase) : new THREE.MeshStandardMaterial({
         color: failed ? 0xd5a86f : 0xd9d4cc, roughness: 0.86, metalness: 0.02, transparent: false,
       });
@@ -1769,10 +2039,18 @@ const applyDisplayPreset = () => {
   importedSurfaceGroup.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh) || !obj.material) return;
     obj.material.side = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
-    if (state.display.meshWires || state.displayPreset === "Technical Wire") {
+    if (state.display.meshWires || state.displayPreset === "Wireframe" || state.displayPreset === "Technical Wire") {
       obj.material.wireframe = true;
       obj.material.transparent = true;
       obj.material.opacity = 0.88;
+    } else if (state.displayPreset === "XRay") {
+      obj.material.wireframe = false;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.22;
+    } else if (state.displayPreset === "Ghosted") {
+      obj.material.wireframe = false;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.45;
     } else {
       obj.material.wireframe = false;
       obj.material.transparent = true;
@@ -1782,27 +2060,69 @@ const applyDisplayPreset = () => {
   });
   solidVaultGroup.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
+    const solidEdges = obj.getObjectByName("solid-edges");
+    obj.castShadow = true;
+    obj.receiveShadow = true;
     if (obj.material) obj.material.dispose();
     const sideMode = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
-    const c = getFoilGradientColor(0.45);
-    obj.material = state.display.foilMaterial
-      ? createFoilMaterial(c)
-      : new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.44, metalness: 0.06, transparent: true, opacity: 0.92 });
-    obj.material.side = sideMode;
-    if (state.display.meshWires || state.displayPreset === "Technical Wire") {
+    const c = getFoilGradientColor(0.5);
+    if (state.displayPreset === "Shaded") {
+      obj.material = new THREE.MeshStandardMaterial({ color: 0xc6ccd4, roughness: 0.62, metalness: 0.03, transparent: false, opacity: 1 });
+    } else if (state.displayPreset === "XRay") {
+      obj.material = new THREE.MeshStandardMaterial({ color: 0xcfd6e0, roughness: 0.55, metalness: 0.02, transparent: true, opacity: 0.24 });
+    } else if (state.displayPreset === "Wireframe") {
+      obj.material = new THREE.MeshStandardMaterial({ color: 0xb9c5d4, roughness: 0.3, metalness: 0.05, wireframe: true, transparent: false, opacity: 1 });
+    } else if (state.displayPreset === "Ghosted") {
+      obj.material = new THREE.MeshStandardMaterial({ color: 0xc8cfd8, roughness: 0.5, metalness: 0.03, transparent: true, opacity: 0.55 });
+    } else {
+      obj.material = state.display.foilMaterial
+        ? createFoilMaterial(c)
+        : new THREE.MeshStandardMaterial({ color: 0xc7ced6, roughness: 0.44, metalness: 0.06, transparent: false, opacity: 1 });
+    }
+    obj.material.polygonOffset = true;
+    obj.material.polygonOffsetFactor = 1;
+    obj.material.polygonOffsetUnits = 1;
+    obj.material.side = (state.displayPreset === "Rendered" || state.displayPreset === "Shaded")
+      ? THREE.DoubleSide
+      : sideMode;
+    if (state.displayPreset === "XRay" || state.displayPreset === "Ghosted") {
+      obj.material.side = THREE.DoubleSide;
+    }
+    if (state.display.meshWires || state.displayPreset === "Wireframe" || state.displayPreset === "Technical Wire") {
       obj.material.wireframe = true;
       obj.material.transparent = true;
       obj.material.opacity = 0.88;
     }
     obj.material.needsUpdate = true;
+    if (solidEdges?.material) {
+      solidEdges.visible = state.displayPreset !== "Wireframe";
+      solidEdges.material.transparent = true;
+      solidEdges.material.opacity = state.displayPreset === "Rendered" ? 0.24
+        : state.displayPreset === "Shaded" ? 0.18
+          : state.displayPreset === "Ghosted" ? 0.35
+            : state.displayPreset === "XRay" ? 0.42
+              : 0.12;
+      solidEdges.material.depthTest = true;
+      solidEdges.material.needsUpdate = true;
+    }
   });
   supportWallGroup.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     obj.material.side = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
-    if (state.display.meshWires || state.displayPreset === "Technical Wire") {
+    if (state.display.meshWires || state.displayPreset === "Wireframe" || state.displayPreset === "Technical Wire") {
       obj.material.wireframe = true;
       obj.material.transparent = true;
       obj.material.opacity = 0.85;
+    } else if (state.displayPreset === "XRay") {
+      obj.material.wireframe = false;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.2;
+      obj.material.side = THREE.DoubleSide;
+    } else if (state.displayPreset === "Ghosted") {
+      obj.material.wireframe = false;
+      obj.material.transparent = true;
+      obj.material.opacity = 0.48;
+      obj.material.side = THREE.DoubleSide;
     } else {
       obj.material.wireframe = false;
       obj.material.transparent = true;
@@ -1928,39 +2248,47 @@ const renderPrecedent = () => {
 const syncInputsFromState = () => {
   syncWallThicknessWithVault();
   ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
-    if (byId(id)) byId(id).value = state.params[id];
+    syncInputPair(id, state.params[id]);
   });
   if (byId("vaultType")) byId("vaultType").value = state.vaultType;
   if (byId("subdivision")) byId("subdivision").value = state.pattern;
   if (byId("jointMode")) byId("jointMode").value = state.jointMode;
-  if (byId("cubeScale")) byId("cubeScale").value = String(state.cubeScale);
+  syncInputPair("cubeScale", state.cubeScale);
   if (byId("arrayUV")) byId("arrayUV").value = `${state.arrayU}x${state.arrayV}`;
-  if (byId("springingAngle")) byId("springingAngle").value = String(state.springingAngle);
+  syncInputPair("springingAngle", state.springingAngle);
+  syncInputPair("taperScale", state.taperScale);
   if (byId("archType")) byId("archType").value = state.archType;
-  if (byId("targetBlockWidth")) byId("targetBlockWidth").value = String(state.targetBlockWidth);
+  syncInputPair("targetBlockWidth", state.targetBlockWidth);
   if (byId("barrelBondMode")) byId("barrelBondMode").value = state.barrelBondMode;
   if (byId("dragSensitivity")) byId("dragSensitivity").value = state.dragSensitivity;
   if (byId("barrelOffsetSide")) byId("barrelOffsetSide").value = state.barrelOffsetSide;
-  if (byId("wallThickness")) byId("wallThickness").value = String(state.wallThickness);
-  if (byId("wallHeightOffset")) byId("wallHeightOffset").value = String(state.wallHeightOffset);
+  syncInputPair("wallThickness", state.wallThickness);
+  syncInputPair("wallHeightOffset", state.wallHeightOffset);
   if (byId("bayRatio")) byId("bayRatio").value = `${state.bayRatioX}:${state.bayRatioY}`;
-  if (byId("ribCount")) byId("ribCount").value = String(state.ribCount);
-  if (byId("lierneDensity")) byId("lierneDensity").value = String(state.lierneDensity);
-  if (byId("netFrequency")) byId("netFrequency").value = String(state.netFrequency);
-  if (byId("tileLayers")) byId("tileLayers").value = String(state.tileLayers);
-  if (byId("extradosOffset")) byId("extradosOffset").value = String(state.extradosOffset);
+  syncInputPair("ribCount", state.ribCount);
+  syncInputPair("lierneDensity", state.lierneDensity);
+  syncInputPair("netFrequency", state.netFrequency);
+  syncInputPair("tileLayers", state.tileLayers);
+  syncInputPair("extradosOffset", state.extradosOffset);
   if (byId("supportTopology")) byId("supportTopology").value = state.supportTopology;
-  if (byId("groinMorph")) byId("groinMorph").value = String(state.groinMorph);
-  if (byId("lInterlockBias")) byId("lInterlockBias").value = String(state.lInterlockBias);
+  syncInputPair("groinMorph", state.groinMorph);
+  syncInputPair("lInterlockBias", state.lInterlockBias);
   if (byId("lightingPreset")) byId("lightingPreset").value = state.lightingPreset;
   if (byId("displayPreset")) byId("displayPreset").value = state.displayPreset;
   if (byId("layoutStyle")) byId("layoutStyle").value = state.layoutStyle;
   if (byId("foilColorA")) byId("foilColorA").value = state.foilGradient.a;
   if (byId("foilColorB")) byId("foilColorB").value = state.foilGradient.b;
   if (byId("foilMix")) byId("foilMix").value = String(state.foilGradient.mix);
+  if (byId("foilMixNum")) byId("foilMixNum").value = String(state.foilGradient.mix);
+  ["maxLength", "maxWidth", "minThickness", "maxWeight", "maxTaper", "minEdgeLength", "fabTolerance"].forEach((k) => {
+    if (byId(k)) byId(k).value = String(state.constraints[k]);
+    if (byId(`${k}Slider`)) byId(`${k}Slider`).value = String(state.constraints[k]);
+  });
   if (byId("toggleBaseGrid")) byId("toggleBaseGrid").checked = state.display.baseGrid;
+  document.querySelectorAll('[data-status-toggle="grid"]').forEach((el) => { el.checked = state.display.baseGrid; });
   if (byId("toggleBoundingBoxes")) byId("toggleBoundingBoxes").checked = state.display.boundingBoxes;
   if (byId("toggleLatticeControls")) byId("toggleLatticeControls").checked = state.display.latticeControls;
+  document.querySelectorAll('[data-status-toggle="gumball"]').forEach((el) => { el.checked = state.display.latticeControls; });
   if (byId("toggleMeshWires")) byId("toggleMeshWires").checked = state.display.meshWires;
   if (byId("toggleFoilMaterial")) byId("toggleFoilMaterial").checked = state.display.foilMaterial;
   if (byId("toggleBackFaces")) byId("toggleBackFaces").checked = state.display.backFaces;
@@ -1981,7 +2309,7 @@ const applyReferencePreset = (name) => {
   if (typeof preset.bayRatioY === "number") state.bayRatioY = preset.bayRatioY;
   state.designMode = "Generated";
   state.patternAppliedToModel = false;
-  if (state.vaultType === "Barrel Vault") state.barrelOffsetSide = "Inside";
+  if (isBarrelLikeVault()) state.barrelOffsetSide = "Inside";
   syncWallThicknessWithVault();
   byId("designMode").value = "Generated";
   syncInputsFromState();
@@ -2003,9 +2331,10 @@ const applyVaultStartupSolution = (vaultType) => {
   if (typeof sol.netFrequency === "number") state.netFrequency = sol.netFrequency;
   if (typeof sol.tileLayers === "number") state.tileLayers = sol.tileLayers;
   if (typeof sol.groinMorph === "number") state.groinMorph = sol.groinMorph;
+  if (typeof sol.taperScale === "number") state.taperScale = sol.taperScale;
   if (typeof sol.bayRatioX === "number") state.bayRatioX = sol.bayRatioX;
   if (typeof sol.bayRatioY === "number") state.bayRatioY = sol.bayRatioY;
-  if (vaultType === "Barrel Vault") state.barrelOffsetSide = "Inside";
+  if (isBarrelLikeVault(vaultType)) state.barrelOffsetSide = "Inside";
   if (byId("subdivision")) byId("subdivision").value = state.pattern;
   if (byId("structuralDirection")) byId("structuralDirection").value = state.structuralDirection;
   syncWallThicknessWithVault();
@@ -2014,7 +2343,7 @@ const applyVaultStartupSolution = (vaultType) => {
 
 const fitStartupParamsToConstraints = (vaultType) => {
   const c = state.constraints;
-  if (vaultType === "Barrel Vault") {
+  if (isBarrelLikeVault(vaultType)) {
     const w = clamp(state.targetBlockWidth || 1.2, 0.1, 5);
     const h = clamp(c.courseHeight || 0.65, 0.1, 5);
     state.params.blockCount = clamp(Math.round(state.params.span / w), 6, 60);
@@ -2040,23 +2369,25 @@ const applyVaultParamRules = () => {
   const map = {
     span: "span", rise: "rise", length: "length", thickness: "thickness",
     courseCount: "courseCount", blockCount: "blockCount", subdivisionDensity: "subdivisionDensity", keystoneSize: "keystoneSize",
-    springingAngle: "springingAngle", archType: "archType", targetBlockWidth: "targetBlockWidth", barrelBondMode: "barrelBondMode", barrelOffsetSide: "barrelOffsetSide", wallThickness: "wallThickness", wallHeightOffset: "wallHeightOffset", courseHeight: "courseHeight", bayRatio: "bayRatio", ribCount: "ribCount",
+    springingAngle: "springingAngle", archType: "archType", taperScale: "taperScale", targetBlockWidth: "targetBlockWidth", barrelBondMode: "barrelBondMode", barrelOffsetSide: "barrelOffsetSide", wallThickness: "wallThickness", wallHeightOffset: "wallHeightOffset", courseHeight: "courseHeight", bayRatio: "bayRatio", ribCount: "ribCount",
     lierneDensity: "lierneDensity", netFrequency: "netFrequency", tileLayers: "tileLayers", groinMorph: "groinMorph", lInterlockBias: "lInterlockBias",
   };
   Object.entries(map).forEach(([key, id]) => {
     const el = byId(id);
-    if (!el) return;
     const on = allowed.has(key);
-    el.disabled = !on;
-    const label = el.closest("label");
+    if (el) el.disabled = !on;
+    if (byId(`${id}Num`)) byId(`${id}Num`).disabled = !on;
+    const control = document.querySelector(`[data-param-control="${key}"]`);
+    const label = control || el?.closest("label");
     if (label) label.style.opacity = on ? "1" : "0.45";
   });
-  // Barrel vault uses explicit inside/outside shell side; hide extrados offset there.
+  // Barrel-like vaults use explicit inside/outside shell side; hide extrados offset there.
   const extradosEl = byId("extradosOffset");
   if (extradosEl) {
     const extradosLabel = extradosEl.closest("label");
-    const showExtrados = state.vaultType !== "Barrel Vault";
+    const showExtrados = !isBarrelLikeVault();
     extradosEl.disabled = !showExtrados;
+    if (byId("extradosOffsetNum")) byId("extradosOffsetNum").disabled = !showExtrados;
     if (extradosLabel) extradosLabel.style.display = showExtrados ? "" : "none";
   }
   const allowedPatterns = vaultPatternAllowed[state.vaultType] || patterns;
@@ -2066,6 +2397,7 @@ const applyVaultParamRules = () => {
     if (!allowedPatterns.includes(state.pattern)) state.pattern = allowedPatterns[0];
     subEl.value = state.pattern;
   }
+  applyRightPanelToolVisibility();
 };
 
 const applyWorkflowStep = (step) => {
@@ -2194,7 +2526,7 @@ const pick3d = (event) => {
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
   const gizmoHit = raycaster.intersectObjects(sectionGizmoGroup.children, true).find((x) => x.object.userData.gizmoHandle);
-  if (gizmoHit && state.vaultType === "Barrel Vault") {
+  if (gizmoHit && isBarrelLikeVault()) {
     event.preventDefault();
     event.stopPropagation();
     if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
@@ -2232,7 +2564,7 @@ nodes.layout2d.addEventListener("pointerdown", (e) => {
   state.dragging = { id: handle.dataset.id, vertex: Number(handle.dataset.vertex) };
 });
 window.addEventListener("pointermove", (e) => {
-  if (!state.draggingSectionHandle && state.vaultType === "Barrel Vault") {
+  if (!state.draggingSectionHandle && isBarrelLikeVault()) {
     const rect3 = renderer.domElement.getBoundingClientRect();
     const inside3d = e.clientX >= rect3.left && e.clientX <= rect3.right && e.clientY >= rect3.top && e.clientY <= rect3.bottom;
     if (inside3d) {
@@ -2247,7 +2579,7 @@ window.addEventListener("pointermove", (e) => {
       showActiveHandleGizmo(state.draggingSectionHandle || null);
     }
   }
-  if (state.draggingSectionHandle && state.vaultType === "Barrel Vault") {
+  if (state.draggingSectionHandle && isBarrelLikeVault()) {
     const rect3 = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect3.left) / rect3.width) * 2 - 1;
     mouse.y = -((e.clientY - rect3.top) / rect3.height) * 2 + 1;
@@ -2272,7 +2604,7 @@ window.addEventListener("pointermove", (e) => {
       const h = clamp(sectionDragPoint.y, 0.3, 40 * scale);
       state.wallHeightOffset = clamp((h - rise) / Math.max(0.001, scale), -2, 4);
     }
-    fitStartupParamsToConstraints("Barrel Vault");
+    fitStartupParamsToConstraints(state.vaultType);
     syncInputsFromState();
     rebuild();
     return;
@@ -2338,18 +2670,66 @@ window.addEventListener("pointerup", () => { state.pan2d = null; });
 nodes.layout2d.addEventListener("contextmenu", (e) => e.preventDefault());
 
 ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
-  byId(id).addEventListener("input", (e) => {
-    state.params[id] = Number(e.target.value);
-    if (id === "thickness") syncWallThicknessWithVault();
+  linkRangeAndNumber(id, `${id}Num`, (value) => {
+    state.params[id] = value;
+    if (id === "thickness") {
+      syncWallThicknessWithVault();
+      syncInputPair("wallThickness", state.wallThickness);
+    }
     rebuild();
   });
 });
+linkRangeAndNumber("springingAngle", "springingAngleNum", (value) => { state.springingAngle = value; rebuild(); });
+linkRangeAndNumber("taperScale", "taperScaleNum", (value) => {
+  state.taperScale = clamp(value, 0.25, 1.5);
+  syncInputPair("taperScale", state.taperScale);
+  rebuild();
+});
+linkRangeAndNumber("targetBlockWidth", "targetBlockWidthNum", (value) => {
+  state.targetBlockWidth = Math.max(0.1, value);
+  if (isBarrelLikeVault()) fitStartupParamsToConstraints(state.vaultType);
+  syncInputsFromState();
+  rebuild();
+});
+linkRangeAndNumber("wallThickness", "wallThicknessNum", (value) => {
+  state.params.thickness = Math.max(0.1, value);
+  syncWallThicknessWithVault();
+  syncInputPair("thickness", state.params.thickness);
+  syncInputPair("wallThickness", state.wallThickness);
+  rebuild();
+});
+linkRangeAndNumber("wallHeightOffset", "wallHeightOffsetNum", (value) => {
+  state.wallHeightOffset = value;
+  rebuild();
+});
+linkRangeAndNumber("ribCount", "ribCountNum", (value) => { state.ribCount = Math.max(2, value); syncInputPair("ribCount", state.ribCount); rebuild(); });
+linkRangeAndNumber("lierneDensity", "lierneDensityNum", (value) => { state.lierneDensity = clamp(value, 0, 1); syncInputPair("lierneDensity", state.lierneDensity); rebuild(); });
+linkRangeAndNumber("netFrequency", "netFrequencyNum", (value) => { state.netFrequency = Math.max(1, value); syncInputPair("netFrequency", state.netFrequency); rebuild(); });
+linkRangeAndNumber("tileLayers", "tileLayersNum", (value) => {
+  state.tileLayers = Math.max(1, value);
+  state.params.thickness = Math.max(0.15, 0.18 * state.tileLayers);
+  syncInputsFromState();
+  rebuild();
+});
+linkRangeAndNumber("extradosOffset", "extradosOffsetNum", (value) => { state.extradosOffset = Math.max(0, value); syncInputPair("extradosOffset", state.extradosOffset); rebuild(); });
+linkRangeAndNumber("groinMorph", "groinMorphNum", (value) => { state.groinMorph = clamp(value, 0, 1); syncInputPair("groinMorph", state.groinMorph); rebuild(); });
+linkRangeAndNumber("lInterlockBias", "lInterlockBiasNum", (value) => { state.lInterlockBias = clamp(value, 0, 1); syncInputPair("lInterlockBias", state.lInterlockBias); rebuild(); });
+linkRangeAndNumber("cubeScale", "cubeScaleNum", (value) => { state.cubeScale = Math.max(0.1, value); syncInputPair("cubeScale", state.cubeScale); rebuild(); });
 ["maxLength", "maxWidth", "minThickness", "maxWeight", "jointGap", "bedDepth", "courseHeight", "taperAngle", "maxTaper", "minEdgeLength", "fabTolerance"].forEach((id) => {
   byId(id).addEventListener("input", (e) => { state.constraints[id] = Number(e.target.value); rebuild(); });
 });
+[
+  ["maxLengthSlider", "maxLength"],
+  ["maxWidthSlider", "maxWidth"],
+  ["minThicknessSlider", "minThickness"],
+  ["maxWeightSlider", "maxWeight"],
+  ["maxTaperSlider", "maxTaper"],
+  ["minEdgeLengthSlider", "minEdgeLength"],
+  ["fabToleranceSlider", "fabTolerance"],
+].forEach(([sliderId, numberId]) => linkRangeAndNumber(sliderId, numberId));
 if (byId("courseHeight")) byId("courseHeight").addEventListener("input", () => {
-  if (state.vaultType === "Barrel Vault") {
-    fitStartupParamsToConstraints("Barrel Vault");
+  if (isBarrelLikeVault()) {
+    fitStartupParamsToConstraints(state.vaultType);
     syncInputsFromState();
     rebuild();
   }
@@ -2361,7 +2741,6 @@ if (byId("courseHeight")) byId("courseHeight").addEventListener("input", () => {
     rebuild();
   });
 });
-byId("cubeScale").addEventListener("input", (e) => { state.cubeScale = Math.max(0.1, Number(e.target.value)); rebuild(); });
 byId("arrayUV").addEventListener("input", (e) => {
   const m = String(e.target.value).toLowerCase().match(/(\d+)\s*x\s*(\d+)/);
   if (!m) return;
@@ -2369,14 +2748,7 @@ byId("arrayUV").addEventListener("input", (e) => {
   state.arrayV = Math.max(1, Number(m[2]));
   rebuild();
 });
-byId("springingAngle").addEventListener("input", (e) => { state.springingAngle = Number(e.target.value); rebuild(); });
 if (byId("archType")) byId("archType").addEventListener("change", (e) => { state.archType = e.target.value; rebuild(); });
-if (byId("targetBlockWidth")) byId("targetBlockWidth").addEventListener("input", (e) => {
-  state.targetBlockWidth = Math.max(0.1, Number(e.target.value));
-  if (state.vaultType === "Barrel Vault") fitStartupParamsToConstraints("Barrel Vault");
-  syncInputsFromState();
-  rebuild();
-});
 if (byId("barrelBondMode")) byId("barrelBondMode").addEventListener("change", (e) => {
   state.barrelBondMode = e.target.value;
   rebuild();
@@ -2388,15 +2760,6 @@ if (byId("barrelOffsetSide")) byId("barrelOffsetSide").addEventListener("change"
 if (byId("dragSensitivity")) byId("dragSensitivity").addEventListener("change", (e) => {
   state.dragSensitivity = ["Precise", "Normal", "Fast"].includes(e.target.value) ? e.target.value : "Normal";
 });
-if (byId("wallThickness")) byId("wallThickness").addEventListener("input", (e) => {
-  state.params.thickness = Math.max(0.1, Number(e.target.value));
-  syncWallThicknessWithVault();
-  rebuild();
-});
-if (byId("wallHeightOffset")) byId("wallHeightOffset").addEventListener("input", (e) => {
-  state.wallHeightOffset = Number(e.target.value);
-  rebuild();
-});
 byId("bayRatio").addEventListener("input", (e) => {
   const m = String(e.target.value).match(/([\d.]+)\s*:\s*([\d.]+)/);
   if (!m) return;
@@ -2404,15 +2767,8 @@ byId("bayRatio").addEventListener("input", (e) => {
   state.bayRatioY = Math.max(0.2, Number(m[2]));
   rebuild();
 });
-byId("ribCount").addEventListener("input", (e) => { state.ribCount = Math.max(2, Number(e.target.value)); rebuild(); });
-byId("lierneDensity").addEventListener("input", (e) => { state.lierneDensity = clamp(Number(e.target.value), 0, 1); rebuild(); });
-byId("netFrequency").addEventListener("input", (e) => { state.netFrequency = Math.max(1, Number(e.target.value)); rebuild(); });
-byId("tileLayers").addEventListener("input", (e) => { state.tileLayers = Math.max(1, Number(e.target.value)); state.params.thickness = Math.max(0.15, 0.18 * state.tileLayers); syncInputsFromState(); rebuild(); });
-if (byId("extradosOffset")) byId("extradosOffset").addEventListener("input", (e) => { state.extradosOffset = Math.max(0, Number(e.target.value)); rebuild(); });
 if (byId("supportTopology")) byId("supportTopology").addEventListener("change", (e) => { state.supportTopology = e.target.value; rebuild(); });
-if (byId("groinMorph")) byId("groinMorph").addEventListener("input", (e) => { state.groinMorph = clamp(Number(e.target.value), 0, 1); rebuild(); });
-if (byId("lInterlockBias")) byId("lInterlockBias").addEventListener("input", (e) => { state.lInterlockBias = clamp(Number(e.target.value), 0, 1); rebuild(); });
-byId("designMode").addEventListener("change", (e) => { state.designMode = e.target.value; rebuild(); });
+byId("designMode").addEventListener("change", (e) => { state.designMode = e.target.value; applyRightPanelToolVisibility(); rebuild(); });
 if (byId("customPatternSource")) byId("customPatternSource").addEventListener("change", (e) => { state.customPatternSource = e.target.value; rebuild(); });
 if (byId("supportCount")) byId("supportCount").addEventListener("input", (e) => { state.supportCount = Math.max(3, Number(e.target.value)); rebuild(); });
 if (byId("forceLmin")) byId("forceLmin").addEventListener("input", (e) => { state.forceLmin = Math.max(0.01, Number(e.target.value)); rebuild(); });
@@ -2434,25 +2790,90 @@ if (byId("displayPreset")) byId("displayPreset").addEventListener("change", (e) 
   state.displayPreset = e.target.value;
   applyDisplayPreset();
 });
+document.querySelectorAll("[data-display-preset]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.displayPreset = button.dataset.displayPreset;
+    syncInputsFromState();
+    applyDisplayPreset();
+    button.closest("details")?.removeAttribute("open");
+  });
+});
 if (byId("layoutStyle")) byId("layoutStyle").addEventListener("change", (e) => {
   state.layoutStyle = e.target.value;
   applyLayoutStyle();
   draw2d();
 });
+document.querySelectorAll("[data-layout-style]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.layoutStyle = button.dataset.layoutStyle;
+    syncInputsFromState();
+    applyLayoutStyle();
+    draw2d();
+    button.closest("details")?.removeAttribute("open");
+  });
+});
 if (byId("foilColorA")) byId("foilColorA").addEventListener("input", (e) => { state.foilGradient.a = e.target.value; applyDisplayPreset(); });
 if (byId("foilColorB")) byId("foilColorB").addEventListener("input", (e) => { state.foilGradient.b = e.target.value; applyDisplayPreset(); });
-if (byId("foilMix")) byId("foilMix").addEventListener("input", (e) => { state.foilGradient.mix = Number(e.target.value); applyDisplayPreset(); });
-if (byId("toggleBaseGrid")) byId("toggleBaseGrid").addEventListener("change", (e) => { state.display.baseGrid = !!e.target.checked; applyDisplayPreset(); draw2d(); });
+linkRangeAndNumber("foilMix", "foilMixNum", (num) => { state.foilGradient.mix = clamp(num, 0, 1); applyDisplayPreset(); });
+if (byId("toggleBaseGrid")) byId("toggleBaseGrid").addEventListener("change", (e) => {
+  state.display.baseGrid = !!e.target.checked;
+  document.querySelectorAll('[data-status-toggle="grid"]').forEach((el) => { el.checked = state.display.baseGrid; });
+  applyDisplayPreset();
+  draw2d();
+});
 if (byId("toggleBoundingBoxes")) byId("toggleBoundingBoxes").addEventListener("change", (e) => { state.display.boundingBoxes = !!e.target.checked; applyDisplayPreset(); });
-if (byId("toggleLatticeControls")) byId("toggleLatticeControls").addEventListener("change", (e) => { state.display.latticeControls = !!e.target.checked; applyDisplayPreset(); });
+if (byId("toggleLatticeControls")) byId("toggleLatticeControls").addEventListener("change", (e) => {
+  state.display.latticeControls = !!e.target.checked;
+  document.querySelectorAll('[data-status-toggle="gumball"]').forEach((el) => { el.checked = state.display.latticeControls; });
+  applyDisplayPreset();
+});
 if (byId("toggleMeshWires")) byId("toggleMeshWires").addEventListener("change", (e) => { state.display.meshWires = !!e.target.checked; applyDisplayPreset(); });
 if (byId("toggleFoilMaterial")) byId("toggleFoilMaterial").addEventListener("change", (e) => { state.display.foilMaterial = !!e.target.checked; applyDisplayPreset(); });
 if (byId("toggleBackFaces")) byId("toggleBackFaces").addEventListener("change", (e) => { state.display.backFaces = !!e.target.checked; applyDisplayPreset(); });
 if (byId("toggleSeamDebug")) byId("toggleSeamDebug").addEventListener("change", (e) => { state.display.seamDebug = !!e.target.checked; applyDisplayPreset(); });
+document.querySelectorAll("[data-toggle-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const key = button.dataset.toggleView;
+    if (key === "grid") {
+      state.display.baseGrid = !state.display.baseGrid;
+      if (byId("toggleBaseGrid")) byId("toggleBaseGrid").checked = state.display.baseGrid;
+      document.querySelectorAll('[data-status-toggle="grid"]').forEach((el) => { el.checked = state.display.baseGrid; });
+      applyDisplayPreset();
+      draw2d();
+    }
+    if (key === "edges") {
+      state.display.meshWires = !state.display.meshWires;
+      if (byId("toggleMeshWires")) byId("toggleMeshWires").checked = state.display.meshWires;
+      applyDisplayPreset();
+    }
+    if (key === "boxes") {
+      state.display.boundingBoxes = !state.display.boundingBoxes;
+      if (byId("toggleBoundingBoxes")) byId("toggleBoundingBoxes").checked = state.display.boundingBoxes;
+      applyDisplayPreset();
+    }
+    button.closest("details")?.removeAttribute("open");
+  });
+});
+document.querySelectorAll("[data-status-toggle]").forEach((toggle) => {
+  toggle.addEventListener("change", () => {
+    if (toggle.dataset.statusToggle === "grid") {
+      state.display.baseGrid = !!toggle.checked;
+      if (byId("toggleBaseGrid")) byId("toggleBaseGrid").checked = state.display.baseGrid;
+      applyDisplayPreset();
+      draw2d();
+    }
+    if (toggle.dataset.statusToggle === "gumball") {
+      state.display.latticeControls = !!toggle.checked;
+      if (byId("toggleLatticeControls")) byId("toggleLatticeControls").checked = state.display.latticeControls;
+      applyDisplayPreset();
+    }
+  });
+});
 byId("structuralDirection").addEventListener("change", (e) => { state.structuralDirection = e.target.value; rebuild(); });
 const generateVaultBtn = byId("generateVault");
 if (generateVaultBtn) generateVaultBtn.addEventListener("click", () => rebuild());
 byId("zoomExtents").addEventListener("click", () => zoomExtents());
+if (byId("zoomExtentsTop")) byId("zoomExtentsTop").addEventListener("click", () => zoomExtents());
 if (byId("ffFullscreen")) byId("ffFullscreen").addEventListener("click", () => {
   document.body.classList.toggle("ff-fullscreen");
 });
@@ -2496,6 +2917,7 @@ byId("import2d").addEventListener("change", async (e) => {
   await on2dImport(f);
   state.designMode = "Custom Import";
   byId("designMode").value = "Custom Import";
+  applyRightPanelToolVisibility();
   rebuild();
 });
 byId("import3d").addEventListener("change", async (e) => {
@@ -2504,6 +2926,7 @@ byId("import3d").addEventListener("change", async (e) => {
   await load3DObject(f);
   state.designMode = "Custom Import";
   byId("designMode").value = "Custom Import";
+  applyRightPanelToolVisibility();
   rebuild();
 });
 
@@ -2566,10 +2989,6 @@ byId("exportBlocks").addEventListener("click", () => {
   });
 });
 
-nodes.viewModes.addEventListener("click", (e) => {
-  if (!(e.target instanceof HTMLButtonElement)) return;
-  [...nodes.viewModes.querySelectorAll("button")].forEach((b) => b.classList.toggle("active", b === e.target));
-});
 if (nodes.toolTabs) {
   nodes.toolTabs.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
@@ -2577,6 +2996,60 @@ if (nodes.toolTabs) {
     setToolTab(b.dataset.tab);
   });
 }
+document.querySelectorAll("[data-dock-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const dock = button.dataset.dockToggle;
+    document.body.classList.toggle(`${dock}-collapsed`);
+    requestAnimationFrame(resize);
+  });
+});
+
+let activeSplitter = null;
+let activeViewportSplitter = false;
+document.querySelectorAll("[data-splitter]").forEach((splitter) => {
+  splitter.addEventListener("pointerdown", (e) => {
+    activeSplitter = splitter.dataset.splitter;
+    splitter.setPointerCapture(e.pointerId);
+    document.body.style.userSelect = "none";
+  });
+});
+document.querySelectorAll("[data-viewport-splitter]").forEach((splitter) => {
+  splitter.addEventListener("pointerdown", (e) => {
+    activeViewportSplitter = true;
+    splitter.setPointerCapture(e.pointerId);
+    document.body.style.userSelect = "none";
+  });
+});
+window.addEventListener("pointermove", (e) => {
+  if (activeSplitter) {
+    const bounds = document.querySelector(".workspace")?.getBoundingClientRect();
+    if (!bounds) return;
+    if (activeSplitter === "left" && !document.body.classList.contains("left-collapsed")) {
+      const width = clamp(e.clientX - bounds.left, 240, 520);
+      document.documentElement.style.setProperty("--left-pane", `${width}px`);
+    }
+    if (activeSplitter === "right" && !document.body.classList.contains("right-collapsed")) {
+      const width = clamp(bounds.right - e.clientX, 260, 560);
+      document.documentElement.style.setProperty("--right-pane", `${width}px`);
+    }
+    resize();
+  }
+  if (activeViewportSplitter) {
+    const bounds = document.querySelector(".modelspace")?.getBoundingClientRect();
+    if (!bounds) return;
+    const isStacked = window.matchMedia("(max-width: 900px)").matches;
+    const next = isStacked
+      ? clamp(((e.clientY - bounds.top) / bounds.height) * 100, 24, 76)
+      : clamp(((e.clientX - bounds.left) / bounds.width) * 100, 24, 76);
+    document.documentElement.style.setProperty("--top-view-pane", `${next}%`);
+    resize();
+  }
+});
+window.addEventListener("pointerup", () => {
+  activeSplitter = null;
+  activeViewportSplitter = false;
+  document.body.style.userSelect = "";
+});
 if (byId("pipeTrace")) byId("pipeTrace").addEventListener("click", () => runPipelineStage(1));
 if (byId("pipeIntrados")) byId("pipeIntrados").addEventListener("click", () => runPipelineStage(2));
 if (byId("pipeProject")) byId("pipeProject").addEventListener("click", () => runPipelineStage(3));

@@ -4,12 +4,13 @@ Lithic-Lab is a computational stereotomy and vault-design workspace that combine
 
 ## Features
 - Split 2D/3D modeling workspace with synchronized edits
+- Seven-stage stereotomic setup flow: geometry/supports, force flow, pattern topology, tessellation, voussoir solids, fabrication checks, stability review
 - Vault library (barrel, groin, cloister, sail, dome, rib, fan, lierne, net, Catalan, Guastavino)
 - Custom import mode for SVG/DXF patterns and OBJ/STL/GLB surfaces
 - Conforming 2D-first stereotomic tiling mapped to 3D vaults
 - Joint workflow modes: `Visual seams` (tight fit) and `Physical cut` (mitered geometric offsets)
 - Form/Force mini-diagrams with lockable edges and deviation heatmap
-- Fabrication checks (size, thickness, weight, taper, tolerance)
+- Fabrication checks (size, thickness, weight, taper, tolerance, convexity, ruled joint-face metadata)
 - Export full mesh JSON and per-block JSON
 
 ## Getting Started

@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-cs4z0-Qm.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BpSUadyE.css">
+  <script type="module" crossorigin src="/assets/index-D6immTP9.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-cvaiuk0D.css">
 </head>
 <body>
   <div class="app-shell">
@@ -38,37 +38,27 @@
           <button class="ghost-btn" data-tab="workflow">Workflow</button>
           <button class="ghost-btn" data-tab="params">Params</button>
           <button class="ghost-btn" data-tab="pattern">Pattern</button>
+          <button class="ghost-btn" data-tab="layers">Layers</button>
         </div>
         <div class="tool-scroll">
         <div class="section" data-tool-group="catalog">
-          <h3>Vault Catalog</h3>
+          <h3>Source Library</h3>
           <select id="vaultType">
-            <option>Barrel Vault</option>
-            <option>Groin Vault</option>
-            <option>Cloister Vault</option>
-            <option>Sail Vault</option>
-            <option>Dome</option>
-            <option>Rib Vault</option>
-            <option>Fan Vault</option>
-            <option>Lierne Vault</option>
-            <option>Net Vault</option>
-            <option>Catalan Vault</option>
-            <option>Guastavino Vault</option>
-            <option>Custom Imported Rhino Surface</option>
+            <option value="Barrel Vault">Built-in: Barrel Vault</option>
+            <option value="Groin Vault">Built-in: Groin Vault</option>
+            <option value="Custom Imported Rhino Surface">Uploaded Model Source</option>
           </select>
-          <div class="hint">Use "Default Groin Vault (Solid First)" to open a full mass model before stereotomic subdivision.</div>
+          <div class="hint">Barrel and Groin remain built-in test sources. Uploaded models become the source geometry for additional vaults, walls, columns, and assemblies.</div>
+          <label>2D Construction Template
+            <select id="constructionTemplate"></select>
+          </label>
+          <div class="template-card" id="constructionTemplateDetails"></div>
           <label>Reference Preset
             <select id="referencePreset">
               <option>Custom</option>
               <option>Default Groin Vault (Solid First)</option>
               <option>Aqueduc Barrel Stereotomy</option>
               <option>Groined Plate XXIV</option>
-              <option>Arc de Cloitre</option>
-              <option>Fan Vault Bath</option>
-              <option>Catalan Running Bond</option>
-              <option>Guastavino Thin Tile</option>
-              <option>Lierne Gothic Nodework</option>
-              <option>Net Vault Lattice</option>
             </select>
           </label>
           <button class="ghost-btn" id="resetRecommended">Reset To Recommended</button>
@@ -78,38 +68,59 @@
           </div>
         </div>
         <div class="section" data-tool-group="import">
-          <h3>Custom Design Import Mode</h3>
+          <h3>Uploaded Model Source</h3>
           <label>Mode
             <select id="designMode">
               <option>Generated</option>
               <option>Custom Import</option>
             </select>
           </label>
+          <div class="source-card">
+            <b>Source Model Workflow</b>
+            <span>Import a mesh, project block strategies onto its surface, then use optional 2D layouts or UV grids to control the stereotomy.</span>
+          </div>
           <div class="grid-1">
-            <label>2D Layout File (SVG / DXF)
-              <input id="import2d" type="file" accept=".svg,.dxf" />
-            </label>
-            <label>3D Surface File (OBJ / STL / GLB)
+            <label>3D Source Model (OBJ / STL / GLB)
               <input id="import3d" type="file" accept=".obj,.stl,.glb,.gltf" />
             </label>
-            <div class="hint">Rhino 3DM planned for future support.</div>
-            <label>Custom Pattern Source
+            <label>Optional 2D Pattern Layout (SVG / DXF)
+              <input id="import2d" type="file" accept=".svg,.dxf" />
+            </label>
+            <div class="hint">For best results, provide named/separate meshes such as intrados, extrados, ribs, columns, walls, springing guides, and support zones. Rhino 3DM remains planned for future support.</div>
+            <label>Stereotomy Strategy Source
               <select id="customPatternSource">
-                <option>Imported 2D Layout</option>
                 <option>UV Form Grid</option>
+                <option>Imported 2D Layout</option>
                 <option>NGon Adaptive</option>
               </select>
             </label>
+            <details class="param-section" open>
+              <summary>Source Transform</summary>
+              <div class="grid-1">
+                <div class="grid-2">
+                  <label>X <input id="sourceTx" type="number" step="0.1" value="0" /></label>
+                  <label>Y <input id="sourceTy" type="number" step="0.1" value="0" /></label>
+                  <label>Z <input id="sourceTz" type="number" step="0.1" value="0" /></label>
+                  <label>Scale <input id="sourceScale" type="number" min="0.001" step="0.01" value="1" /></label>
+                  <label>Rot X <input id="sourceRx" type="number" step="1" value="0" /></label>
+                  <label>Rot Y <input id="sourceRy" type="number" step="1" value="0" /></label>
+                  <label>Rot Z <input id="sourceRz" type="number" step="1" value="0" /></label>
+                </div>
+                <button class="ghost-btn" id="resetSourceTransform">Reset Source Transform</button>
+              </div>
+            </details>
             <label>Support Vertex Count <input id="supportCount" type="number" min="3" max="24" step="1" value="4" /></label>
             <label>Force Edge lmin <input id="forceLmin" type="number" min="0.01" step="0.01" value="0.15" /></label>
             <label>Force Edge lmax <input id="forceLmax" type="number" min="0.02" step="0.01" value="0.75" /></label>
           </div>
           <div class="grid-1" id="customPipeline">
-            <button class="ghost-btn" id="pipeTrace">1 Trace Form/Force</button>
-            <button class="ghost-btn" id="pipeIntrados">2 Generate Intrados Cuts</button>
-            <button class="ghost-btn" id="pipeProject">3 Project to Extrados</button>
-            <button class="ghost-btn" id="pipeCleanup">4 Transition Cleanup</button>
-            <button class="ghost-btn" id="pipeAssembly">5 Assembly + Tolerance Check</button>
+            <button class="ghost-btn" id="pipeTrace">1 Geometry + Supports</button>
+            <button class="ghost-btn" id="pipeIntrados">2 Force Flow</button>
+            <button class="ghost-btn" id="pipeProject">3 Pattern Topology</button>
+            <button class="ghost-btn" id="pipeCleanup">4 Masonry Tessellation</button>
+            <button class="ghost-btn" id="pipeAssembly">5 Voussoir Solids</button>
+            <button class="ghost-btn" id="pipeFabrication">6 Fabrication Checks</button>
+            <button class="ghost-btn" id="pipeStability">7 Stability Report</button>
             <div class="hint" id="pipelineStatus">Pipeline idle.</div>
           </div>
         </div>
@@ -117,13 +128,14 @@
         <div class="section" data-tool-group="workflow">
           <h3>Workflow</h3>
           <div class="grid-1" id="workflowSteps">
-            <button class="ghost-btn" data-step="1">1 Pattern</button>
+            <button class="ghost-btn" data-step="1">1 Pattern Topology</button>
             <button class="ghost-btn" data-step="2">2 Supports</button>
-            <button class="ghost-btn" data-step="3">3 Forces</button>
+            <button class="ghost-btn" data-step="3">3 Force Flow</button>
             <button class="ghost-btn" data-step="4">4 Equilibrium</button>
-            <button class="ghost-btn" data-step="5">5 Thickness</button>
-            <button class="ghost-btn" data-step="6">6 Checks</button>
+            <button class="ghost-btn" data-step="5">5 Voussoir Thickness</button>
+            <button class="ghost-btn" data-step="6">6 Checks + Stability</button>
           </div>
+          <div class="trait-steps-panel" id="traitConstructionSteps"></div>
         </div>
         <div class="section" data-tool-group="params">
           <h3>Vault Parameters</h3>
@@ -218,7 +230,7 @@
                     <input type="number" id="netFrequencyNum" min="1" max="24" step="1" value="10" />
                   </div>
                 </label>
-                <label data-param-control="groinMorph">Mallorcan Groin Morph
+                <label data-param-control="groinMorph">Groin Curve Type
                   <div class="dual-input-row">
                     <input type="range" id="groinMorph" min="0" max="1" step="0.05" value="0" />
                     <input type="number" id="groinMorphNum" min="0" max="1" step="0.05" value="0" />
@@ -316,6 +328,7 @@
           <h3>2D Subdivision Pattern</h3>
           <select id="subdivision">
             <option>Courses</option>
+            <option>Groin-line courses</option>
             <option>Radial joints</option>
             <option>Running bond</option>
             <option>Diagonal joints</option>
@@ -323,6 +336,83 @@
             <option>Rib-aligned</option>
             <option>Keystone zones</option>
           </select>
+          <details class="param-section" open>
+            <summary>2D Construction View</summary>
+            <div class="grid-1">
+              <label>Drawing Mode
+                <select id="drawingMode2d">
+                  <option>Plan</option>
+                  <option>Section</option>
+                  <option>Elevation</option>
+                  <option>Trait / Epure</option>
+                  <option>Surface Development</option>
+                  <option>Block / Voussoir Layout</option>
+                </select>
+              </label>
+              <label>Surface Principle
+                <select id="surfacePrinciple">
+                  <option>Plane</option>
+                  <option>Cylinder</option>
+                  <option>Cone</option>
+                  <option>Sphere</option>
+                  <option>Ruled Surface</option>
+                  <option>Compound / Intersection</option>
+                </select>
+              </label>
+              <label>Trait Step
+                <select id="traitStep">
+                  <option>All Trait Lines</option>
+                  <option>Section Curves</option>
+                  <option>Projection Rays</option>
+                  <option>Course Divisions</option>
+                  <option>Joint Normals</option>
+                  <option>Surface Development</option>
+                </select>
+              </label>
+              <label>Stereotomy Step
+                <select id="stereotomyStep">
+                  <option>All Stereotomy</option>
+                  <option>Courses</option>
+                  <option>Bed Joints</option>
+                  <option>Head Joints</option>
+                  <option>Keystone Zone</option>
+                  <option>True-Shape Panels</option>
+                </select>
+              </label>
+              <label title="Joint normals describe the geometric direction of each joint: radial, normal to a curve, skewed, generatrix-based, or otherwise controlled by the trait.">Joint Principle
+                <select id="jointPrinciple"></select>
+              </label>
+              <button class="ghost-btn" id="applyJointPrinciple">Apply Joint Principle</button>
+              <div class="joint-card" id="jointPrincipleDetails"></div>
+              <label>Block Generation
+                <select id="blockStep">
+                  <option>Generated Voussoirs</option>
+                  <option>Editable Blocks</option>
+                  <option>Numbered Blocks</option>
+                  <option>Fabrication Preview</option>
+                </select>
+              </label>
+              <label>Fabrication Check
+                <select id="fabricationCheck">
+                  <option>All Checks</option>
+                  <option>Length</option>
+                  <option>Width</option>
+                  <option>Thickness</option>
+                  <option>Weight</option>
+                  <option>Taper</option>
+                  <option>Min Edge</option>
+                  <option>Bed Depth</option>
+                  <option>Convexity</option>
+                </select>
+              </label>
+              <label title="Hypography and development operations transfer 3D surface logic into 2D trait, underside, or unrolled drawings.">Projection / Development Operation
+                <select id="projectionOperation"></select>
+              </label>
+              <button class="ghost-btn" id="applyProjectionOperation">Apply Projection Operation</button>
+              <div class="projection-card" id="projectionOperationDetails"></div>
+              <button class="ghost-btn" id="generateBlocksFromTrait">Generate Blocks From Trait</button>
+            </div>
+          </details>
           <div class="grid-2">
             <label>Joint Thickness (m) <input id="jointGap" type="number" step="0.005" value="0.02" /></label>
             <label>Joint Mode
@@ -354,6 +444,109 @@
             <label>Align Rotation (deg) <input id="alignRotation" type="number" step="1" value="0" /></label>
           </div>
         </div>
+        <div class="section" data-tool-group="layers">
+          <h3>Layer Drawer</h3>
+          <div class="layer-drawer">
+            <details class="param-section" open>
+              <summary>Visual Style</summary>
+              <div class="grid-1">
+                <div class="grid-2">
+                  <label>Block Line <input id="blockLineColor2d" type="color" value="#ffffff" /></label>
+                  <label>Block Fill <input id="blockFillColor2d" type="color" value="#ffffff" /></label>
+                </div>
+                <label>Fill Opacity
+                  <div class="dual-input-row">
+                    <input id="blockFillOpacity2d" type="range" min="0" max="0.6" step="0.01" value="0.16" />
+                    <input id="blockFillOpacity2dNum" type="number" min="0" max="0.6" step="0.01" value="0.16" />
+                  </div>
+                </label>
+                <label>Guide Density
+                  <div class="dual-input-row">
+                    <input id="guideDensity2d" type="range" min="3" max="18" step="1" value="8" />
+                    <input id="guideDensity2dNum" type="number" min="3" max="18" step="1" value="8" />
+                  </div>
+                </label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Reference Geometry</summary>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Reference Geometry</span><input id="show2dReference" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Construction Guides</span><input id="show2dGuides" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Trait Lines</span><input id="show2dTraitLines" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Labels</span><input id="show2dLabels" type="checkbox" checked /></label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Named Reference Entities</summary>
+              <div class="layer-note">Toggle and recolor the named construction geometry used by the trait.</div>
+            <div class="entity-controls">
+              <label class="entity-row"><input id="entitySpringing" type="checkbox" checked /><span>Springing Line</span><input id="entitySpringingColor" type="color" value="#ffffff" /></label>
+              <label class="entity-row"><input id="entityAxis" type="checkbox" checked /><span>Axis / Centerline</span><input id="entityAxisColor" type="color" value="#afd2ff" /></label>
+              <label class="entity-row"><input id="entityApex" type="checkbox" checked /><span>Apex / Crown</span><input id="entityApexColor" type="color" value="#ffe2a0" /></label>
+              <label class="entity-row" title="Intrados: the inner visible surface or underside curve of the vault."><input id="entityIntrados" type="checkbox" checked /><span>Intrados Curve</span><input id="entityIntradosColor" type="color" value="#ffffff" /></label>
+              <label class="entity-row" title="Extrados: the outer surface curve offset from the intrados by masonry thickness."><input id="entityExtrados" type="checkbox" checked /><span>Extrados Curve</span><input id="entityExtradosColor" type="color" value="#ffe2a0" /></label>
+              <label class="entity-row"><input id="entityNeutral" type="checkbox" checked /><span>Neutral / Reference Curve</span><input id="entityNeutralColor" type="color" value="#9fd8ff" /></label>
+              <label class="entity-row"><input id="entityImposts" type="checkbox" checked /><span>Impost Points</span><input id="entityImpostsColor" type="color" value="#ffffff" /></label>
+              <label class="entity-row"><input id="entitySkewAxis" type="checkbox" /><span>Skew Axis</span><input id="entitySkewAxisColor" type="color" value="#89f5d1" /></label>
+              <label class="entity-row"><input id="entityGroinLine" type="checkbox" checked /><span>Groin Line</span><input id="entityGroinLineColor" type="color" value="#89f5d1" /></label>
+            </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Projection / Development</summary>
+              <div class="display-toggles">
+                <label class="toggle-row" title="Hypography: the underside drawing used to transfer intrados geometry into the working trait."><span>Projection Rays</span><input id="show2dProjectionRays" type="checkbox" /></label>
+                <label class="toggle-row" title="Development lines show the unrolled surface construction used to make true templates."><span>Development Lines</span><input id="show2dDevelopmentLines" type="checkbox" /></label>
+                <label class="toggle-row" title="Panneaux: developed true-shape templates used to mark or cut individual faces."><span>True-Shape Panels</span><input id="show2dTrueShapePanels" type="checkbox" /></label>
+                <label class="toggle-row" title="Joint normals: construction directions perpendicular or radial to the surface/course logic."><span>Joint Normals</span><input id="show2dJointNormals" type="checkbox" /></label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Derived Stereotomy</summary>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Derived Stereotomy</span><input id="show2dDerivedStereotomy" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Course Divisions</span><input id="show2dCourseDivisions" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Bed Joints</span><input id="show2dBedJoints" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Head Joints</span><input id="show2dHeadJoints" type="checkbox" checked /></label>
+                <label class="toggle-row" title="Keystone zone: the crown compression area or central locking course family."><span>Keystone Zone</span><input id="show2dKeystoneZone" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Cut Lines</span><input id="show2dCutLines" type="checkbox" checked /></label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Blocks / Fabrication</summary>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Blocks</span><input id="show2dBlocks" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Block IDs</span><input id="show2dBlockIds" type="checkbox" /></label>
+                <label class="toggle-row"><span>Block Metrics</span><input id="show2dBlockMetrics" type="checkbox" /></label>
+                <label class="toggle-row"><span>Fabrication Checks</span><input id="show2dFabricationChecks" type="checkbox" /></label>
+                <label class="toggle-row"><span>Check Legend</span><input id="show2dFabricationLegend" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Vertex Edit Points</span><input id="show2dVertices" type="checkbox" /></label>
+              </div>
+            </details>
+
+            <details class="param-section" open>
+              <summary>Measurements / Annotations</summary>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Drafting Annotations</span><input id="show2dAnnotations" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Span Dimension</span><input id="show2dSpanDimension" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Rise Dimension</span><input id="show2dRiseDimension" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Thickness Dimension</span><input id="show2dThicknessDimension" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Angle Labels</span><input id="show2dAngleLabels" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Radius Labels</span><input id="show2dRadiusLabels" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Course Count</span><input id="show2dCourseCount" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Block Width</span><input id="show2dBlockWidth" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Joint Gap</span><input id="show2dJointGap" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>True Length</span><input id="show2dTrueLength" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Surface Family</span><input id="show2dSurfaceFamilyLabel" type="checkbox" checked /></label>
+              </div>
+            </details>
+          </div>
+        </div>
         </div>
       </aside>
       <div class="splitter" data-splitter="left" title="Resize tools"></div>
@@ -371,6 +564,14 @@
               </div>
             </details>
             <div class="viewport-actions">
+              <div class="drawing-presets" aria-label="2D drawing presets">
+                <button class="mini-btn" data-drawing-preset="Clean Trait" title="Show only the primary reference geometry and trait curves.">Clean Trait</button>
+                <button class="mini-btn" data-drawing-preset="Full Epure" title="Show reference, projection, courses, joints, and derived stereotomy.">Full Epure</button>
+                <button class="mini-btn" data-drawing-preset="Development" title="Show surface unrolling and true-shape panneaux.">Development</button>
+                <button class="mini-btn" data-drawing-preset="Fabrication Check" title="Show generated blocks, IDs, metrics, and fabrication checks.">Fabrication Check</button>
+                <button class="mini-btn" data-drawing-preset="Teaching View" title="Show explanatory labels and measurements for review or instruction.">Teaching View</button>
+              </div>
+              <div class="trait-state-chip" id="currentTraitState"></div>
               <button class="mini-btn" data-layout-style="Rhino Gray">Grid</button>
               <span>UV Editor</span>
             </div>
@@ -412,6 +613,25 @@
             </div>
           </div>
           <canvas id="viewport"></canvas>
+          <div class="floating transform-toolbar glass" id="transformToolbar" aria-label="Transform tools">
+            <div class="toolbar-group" aria-label="Edit mode">
+              <button class="tool-btn active" data-transform-tool="select" title="Select">Select</button>
+              <button class="tool-btn" data-transform-tool="move" title="Move">Move</button>
+              <button class="tool-btn" data-transform-tool="rotate" title="Rotate">Rotate</button>
+              <button class="tool-btn" data-transform-tool="scale" title="Scale">Scale</button>
+            </div>
+            <div class="toolbar-group" aria-label="Geometry actions">
+              <button class="tool-btn" id="copyGeometry" title="Copy active geometry">Copy</button>
+            </div>
+            <div class="toolbar-group snap-tools" aria-label="Snaps">
+              <button class="tool-btn active" data-snap="end" title="End snap">End</button>
+              <button class="tool-btn active" data-snap="mid" title="Midpoint snap">Mid</button>
+              <button class="tool-btn" data-snap="perpendicular" title="Perpendicular snap">Perp</button>
+              <button class="tool-btn active" data-snap="vertex" title="Vertex snap">Vertex</button>
+              <button class="tool-btn active" data-snap="point" title="Point snap">Point</button>
+              <button class="tool-btn" data-snap="intersection" title="Intersection snap">Intersect</button>
+            </div>
+          </div>
           <div class="floating inspector glass" id="inspector"></div>
         </article>
       </section>
@@ -472,6 +692,15 @@
             <label class="toggle-row"><span>Back Faces</span><input id="toggleBackFaces" type="checkbox" /></label>
             <label class="toggle-row"><span>Seam Debug</span><input id="toggleSeamDebug" type="checkbox" checked /></label>
           </div>
+          <h3 class="subhead">Layers</h3>
+          <div class="display-toggles">
+            <label class="toggle-row"><span>Source Model</span><input id="layerSourceModel" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Built-In Form</span><input id="layerBuiltInForm" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Blocks</span><input id="layerBlocks" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Copied Geometry</span><input id="layerCopies" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Supports</span><input id="layerSupports" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Guides + Grid</span><input id="layerGuides" type="checkbox" checked /></label>
+          </div>
         </div>
         <div class="metrics" id="metrics" data-right-section="metrics"></div>
 
@@ -522,6 +751,7 @@
             </label>
           </div>
           <button class="ghost-btn" id="runChecks">Run Checks</button>
+          <div class="historical-validation" id="historicalValidation"></div>
           <ul id="warnings"></ul>
         </div>
         <div class="section" data-right-section="precedent">

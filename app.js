@@ -3,6 +3,9 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { Rhino3dmLoader } from "three/examples/jsm/loaders/3DMLoader.js";
+import rhino3dmFactory from "three/examples/jsm/libs/rhino3dm/rhino3dm.module.js";
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from "three-mesh-bvh";
 import { Brush, Evaluator, INTERSECTION } from "three-bvh-csg";
 
 const byId = (id) => document.getElementById(id);
@@ -18,19 +21,49 @@ const hexToRgba = (hex, alpha = 1) => {
   const [, r, g, b] = m;
   return `rgba(${parseInt(r, 16)},${parseInt(g, 16)},${parseInt(b, 16)},${clamp(alpha, 0, 1)})`;
 };
+
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 const densityKgPerM3 = 2600;
 
 const state = {
   designMode: "Generated",
   vaultType: "Barrel Vault",
+  vaultDesignerPreview: true,
+  blockDesigner: { baseGeometry: "Cuboid", jointType: "Sine Wave Joint", length: 120, width: 65, height: 90, thickness: 30, draft: 2, fillet: 3, clearance: 1, density: 2600, frequency: 3, amplitude: 12, depth: 35, phase: 0, morph: 20, tileMode: "Running Bond", swatch: 5, view: "assembled", activeTileId: null, userCamera: false },
   pattern: "Radial joints",
   structuralDirection: "Compression lines",
   registrationMode: "UV coordinates",
   jointMode: "Visual seams",
-  params: { span: 22, rise: 10, length: 28, thickness: 1.1, courseCount: 16, blockCount: 18, subdivisionDensity: 1, keystoneSize: 0.45 },
+  params: { span: 15, rise: 8, length: 15, thickness: 0.2, courseCount: 16, blockCount: 18, subdivisionDensity: 1, keystoneSize: 0.45 },
   springingAngle: 0,
   archType: "Semicircular",
   targetBlockWidth: 1.2,
+  blockDimensionMode: "applied",
+  blockPreviewCount: 1,
+  strategyViewMode: "uv-layout",
+  customPanel: null,
+  customPanelObject: null,
+  customPanelMorphObject: null,
+  libraryCandidates: { tile: null, host: null },
+  assetLibraryEntries: [],
+  activeLibraryAssetIds: { host: null, panel: null },
+  customPanelSeamAllowance: 0,
+  customPanelThicknessScale: 1,
+  customPanelThicknessOffset: 0,
+  activePanelVariantRole: "base",
+  panelVariantAssignmentMode: "auto",
+  customPanelVariantTransforms: {},
+  panelSubdivisionU: 1,
+  panelSubdivisionV: 1,
+  panelWeightSubdivision: false,
+  panelMorphStrength: 0,
+  panelAttractorResponse: { mode: "apertureMorph", amount: 1 },
+  topologyLattice: { enabled: false, showU: true, showV: true, railWidth: 0.12, railDepth: 0.06, fillet: 0.12, layerGap: 0, opening: 0.55, density: 3, bottomWidth: 0.12, bottomDepth: 0.06, bottomFillet: 0.12, bottomOpening: 0.55, bottomDensity: 3, loopBindings: { enabled: false, family: "both", every: 4, width: 0.08, depth: 0.08, offset: 0, fillet: 0.12 } },
+  supportScaffold: { enabled: false, xCount: 8, yCount: 10, ribDepth: 1.8, ribThickness: 0.08 },
+  ngonCellType: "Hex",
+  ngonShape: 0.5,
   taperScale: 0.55,
   barrelOffsetSide: "Inside",
   wallThickness: 0.45,
@@ -47,6 +80,8 @@ const state = {
   activeTraitConstructionStep: null,
   activeTraitFocus: "all",
   drawingPreset: "Full Epure",
+  viewportLayout: "split",
+  blockPreviewWindow: { x: null, y: null, w: 420, h: 340 },
   pipelineStage: 0,
   stereotomyProcess: {
     stageName: "Idle",
@@ -58,13 +93,68 @@ const state = {
     fabricationFocus: "visual seam review",
     stabilityFocus: "not evaluated",
   },
-  customPatternSource: "Imported 2D Layout",
+  strategy: {
+    host: "procedural-vault",
+    field: "courses",
+    component: "voussoir",
+    componentMode: "single",
+    fill: "quad",
+    rotation: "course-tangent",
+    rotationVariation: "none",
+    scale: "fit-to-cell",
+    thickness: "constant",
+    patchSubdivision: 4,
+    patchSmoothing: 0,
+    topology: "primal",
+    dualBoundaryCleanup: true,
+    boundary: "trim",
+    merge: "separate-blocks",
+  },
+  dualPreviewLoops: [],
+  fieldWeights: {
+    source: "curvature",
+    formula: "0.45 * curvature + 0.25 * crown + 0.2 * support + 0.1 * boundary",
+    smoothing: "none",
+    smoothingIterations: 1,
+    randomSeed: 17,
+    materialStrategy: "weight-bands",
+    driveDensity: false,
+    driveComponent: false,
+    driveThickness: false,
+    driveRotation: false,
+    driveTaper: false,
+    driveZones: true,
+  },
+  attractorField: {
+    elements: [],
+    mode: "select",
+    pendingCurve: [],
+    selectedId: null,
+    radius: 0.18,
+    strength: 1,
+    curvatureMix: 0.25,
+  },
+  contourField: {
+    enabled: true,
+    source: "height",
+    bands: 8,
+    maskMode: "none",
+    showContours: true,
+    showMasks: true,
+    streamlines: true,
+    streamlineSource: "compression",
+    streamlineCount: 9,
+    guideDirectionDeg: 35,
+    reactionDiffusion: false,
+    reactionScale: 0.45,
+  },
+  customPatternSource: "UV Form Grid",
   supportCount: 4,
   forceLmin: 0.15,
   forceLmax: 0.75,
   forceLocks: {},
   patternAppliedToModel: false,
-  barrelBondMode: "1",
+  barrelBondMode: "5",
   dragSensitivity: "Normal",
   groinMorph: 0,
   lInterlockBias: 0.35,
@@ -79,13 +169,23 @@ const state = {
   blocks: [],
   selectedBlockId: null,
   dragging: null,
+  draggingAttractor: null,
   draggingSectionHandle: null,
   suspendViewportFit: false,
+  userDefinedCamera: false,
   draggingPointerId: null,
   hoveredSectionHandle: null,
   imported2DPolys: null,
   importedSurface: null,
   importedSurfaceBbox: null,
+  importedRhinoDoc: null,
+  importedRhinoBrepFaces: null,
+  importedBrepPatches: null,
+  importedTopology: null,
+  importedTopologyPolys: null,
+  importedTissueCells: null,
+  importedTopologyMeshName: "",
+  importedTopologyMeshStats: null,
   importedModelName: "",
   importedModelStats: null,
   sourceTransform: { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, scale: 1 },
@@ -116,6 +216,8 @@ const state = {
     showBedJoints: true,
     showHeadJoints: true,
     showKeystoneZone: true,
+    showContourField: true,
+    showStreamlines: true,
     showTrueShapePanels: false,
     guideDensity: 8,
     blockStroke: "#ffffff",
@@ -159,7 +261,7 @@ const state = {
     boundingBoxes: false,
     latticeControls: false,
     meshWires: false,
-    foilMaterial: true,
+    foilMaterial: false,
     backFaces: false,
     seamDebug: true,
   },
@@ -185,7 +287,43 @@ const state = {
 };
 
 const patterns = ["Courses", "Groin-line courses", "Radial joints", "Running bond", "Diagonal joints", "Hex / NGon", "Rib-aligned", "Keystone zones"];
+const patternDisplayLabels = {
+  "Hex / NGon": "Dual / Polygon Cells",
+};
+const panelQuadSource = "Panel Quad Mesh";
+const legacyPanelQuadSource = "Tissue Quad Mesh";
+const isPanelQuadSource = (value) => value === panelQuadSource || value === legacyPanelQuadSource;
+const panelVariantRoles = [
+  { id: "base", label: "Base" },
+  { id: "left-edge", label: "Left Edge" },
+  { id: "right-edge", label: "Right Edge" },
+  { id: "corner", label: "Corner" },
+  { id: "keystone", label: "Keystone" },
+  { id: "support-adjacent", label: "Support-Adjacent" },
+  { id: "high-curvature", label: "High-Curvature" },
+];
+const defaultPanelVariantTransform = () => ({
+  scaleX: 1,
+  scaleY: 1,
+  scaleZ: 1,
+  rotateDeg: 0,
+  mirrorU: false,
+  mirrorV: false,
+  surfaceOffset: 0,
+  flipNormal: false,
+  align: "strategy",
+});
+const getPanelVariantLabel = (role) => panelVariantRoles.find((item) => item.id === role)?.label || "Base";
 const isBarrelLikeVault = (vaultType = state.vaultType) => vaultType === "Barrel Vault" || vaultType === "Tapered Barrel Vault";
+const isCustomHostWorkflow = () => (
+  state.designMode === "Custom Import" ||
+  state.vaultType === "Custom Imported Rhino Surface" ||
+  state.strategy?.component === "custom" ||
+  !!state.customPanel ||
+  !!state.importedSurface ||
+  !!state.importedTopologyPolys?.length ||
+  !!state.importedTissueCells?.length
+);
 const vaultLibrary = {
   "Barrel Vault": {
     name: "Barrel Vault",
@@ -195,7 +333,7 @@ const vaultLibrary = {
     stereotomyType: "Courses",
     parameters: ["span", "rise", "length", "thickness", "archType", "courseHeight", "targetBlockWidth", "barrelBondMode", "barrelOffsetSide", "wallThickness", "wallHeightOffset"].map((key) => ({ key })),
     allowedPatterns: ["Courses", "Running bond", "Radial joints", "Keystone zones"],
-    startup: { params: { span: 22, rise: 10, length: 28, thickness: 0.9, courseCount: 20, blockCount: 22, subdivisionDensity: 1.1, keystoneSize: 0.35 } },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.2, courseCount: 20, blockCount: 22, subdivisionDensity: 1.1, keystoneSize: 0.35 } },
   },
   "Tapered Barrel Vault": {
     name: "Tapered Barrel Vault",
@@ -205,7 +343,7 @@ const vaultLibrary = {
     stereotomyType: "Courses",
     parameters: ["span", "rise", "length", "thickness", "archType", "taperScale", "courseHeight", "targetBlockWidth", "barrelBondMode", "barrelOffsetSide", "wallThickness", "wallHeightOffset"].map((key) => ({ key })),
     allowedPatterns: ["Courses", "Running bond", "Radial joints", "Keystone zones"],
-    startup: { params: { span: 24, rise: 10, length: 30, thickness: 0.9, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.35 }, taperScale: 0.55 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.9, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.35 }, taperScale: 0.55 },
   },
   "Groin Vault": {
     name: "Groin Vault",
@@ -215,7 +353,7 @@ const vaultLibrary = {
     stereotomyType: "Groin-line courses",
     parameters: ["span", "length", "rise", "thickness", "springingAngle", "groinMorph", "courseHeight", "targetBlockWidth"].map((key) => ({ key })),
     allowedPatterns: ["Groin-line courses", "Diagonal joints", "Rib-aligned", "Keystone zones"],
-    startup: { params: { span: 22, rise: 11, length: 22, thickness: 0.88, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 }, bayRatioX: 1, bayRatioY: 1, groinMorph: 0.35 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.88, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 }, bayRatioX: 1, bayRatioY: 1, groinMorph: 0.35 },
   },
   "Cloister Vault": {
     name: "Cloister Vault",
@@ -225,7 +363,7 @@ const vaultLibrary = {
     stereotomyType: "Rib-aligned",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize", "bayRatio"].map((key) => ({ key })),
     allowedPatterns: ["Radial joints", "Rib-aligned", "Keystone zones"],
-    startup: { params: { span: 22, rise: 10, length: 22, thickness: 0.82, courseCount: 18, blockCount: 16, subdivisionDensity: 1.05, keystoneSize: 0.58 }, bayRatioX: 1, bayRatioY: 1 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.82, courseCount: 18, blockCount: 16, subdivisionDensity: 1.05, keystoneSize: 0.58 }, bayRatioX: 1, bayRatioY: 1 },
   },
   "Sail Vault": {
     name: "Sail Vault",
@@ -235,7 +373,7 @@ const vaultLibrary = {
     stereotomyType: "Rib-aligned",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "bayRatio"].map((key) => ({ key })),
     allowedPatterns: ["Radial joints", "Rib-aligned", "Keystone zones"],
-    startup: { params: { span: 22, rise: 12, length: 22, thickness: 0.78, courseCount: 18, blockCount: 18, subdivisionDensity: 1.08, keystoneSize: 0.52 }, bayRatioX: 1, bayRatioY: 1 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.78, courseCount: 18, blockCount: 18, subdivisionDensity: 1.08, keystoneSize: 0.52 }, bayRatioX: 1, bayRatioY: 1 },
   },
   Dome: {
     name: "Dome",
@@ -245,7 +383,7 @@ const vaultLibrary = {
     stereotomyType: "Radial joints",
     parameters: ["span", "rise", "thickness", "courseCount", "blockCount", "subdivisionDensity"].map((key) => ({ key })),
     allowedPatterns: ["Radial joints", "Courses", "Keystone zones"],
-    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.85, courseCount: 24, blockCount: 24, subdivisionDensity: 1.15, keystoneSize: 0.5 } },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.85, courseCount: 24, blockCount: 24, subdivisionDensity: 1.15, keystoneSize: 0.5 } },
   },
   "Rib Vault": {
     name: "Rib Vault",
@@ -255,7 +393,7 @@ const vaultLibrary = {
     stereotomyType: "Rib-aligned",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "bayRatio"].map((key) => ({ key })),
     allowedPatterns: ["Rib-aligned", "Radial joints", "Diagonal joints"],
-    startup: { params: { span: 20, rise: 11, length: 22, thickness: 0.72, courseCount: 16, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.45 }, ribCount: 8, bayRatioX: 1, bayRatioY: 1 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.72, courseCount: 16, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.45 }, ribCount: 8, bayRatioX: 1, bayRatioY: 1 },
   },
   "Fan Vault": {
     name: "Fan Vault",
@@ -265,7 +403,7 @@ const vaultLibrary = {
     stereotomyType: "Rib-aligned",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount"].map((key) => ({ key })),
     allowedPatterns: ["Rib-aligned", "Radial joints"],
-    startup: { params: { span: 20, rise: 16, length: 20, thickness: 0.72, courseCount: 18, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 12 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.72, courseCount: 18, blockCount: 14, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 12 },
   },
   "Lierne Vault": {
     name: "Lierne Vault",
@@ -275,7 +413,7 @@ const vaultLibrary = {
     stereotomyType: "Hex / NGon",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "ribCount", "lierneDensity"].map((key) => ({ key })),
     allowedPatterns: ["Rib-aligned", "Hex / NGon", "Diagonal joints"],
-    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.78, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 10, lierneDensity: 0.52 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.78, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.55 }, ribCount: 10, lierneDensity: 0.52 },
   },
   "Net Vault": {
     name: "Net Vault",
@@ -285,7 +423,7 @@ const vaultLibrary = {
     stereotomyType: "Hex / NGon",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "netFrequency"].map((key) => ({ key })),
     allowedPatterns: ["Hex / NGon", "Diagonal joints", "Rib-aligned"],
-    startup: { params: { span: 22, rise: 13, length: 22, thickness: 0.8, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.58 }, netFrequency: 8 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.8, courseCount: 18, blockCount: 16, subdivisionDensity: 1, keystoneSize: 0.58 }, netFrequency: 8 },
   },
   "Catalan Vault": {
     name: "Catalan Vault",
@@ -295,7 +433,7 @@ const vaultLibrary = {
     stereotomyType: "Running bond",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"].map((key) => ({ key })),
     allowedPatterns: ["Running bond", "Diagonal joints", "Courses"],
-    startup: { params: { span: 20, rise: 8, length: 24, thickness: 0.54, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.24 }, tileLayers: 3 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.54, courseCount: 22, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.24 }, tileLayers: 3 },
   },
   "Guastavino Vault": {
     name: "Guastavino Vault",
@@ -305,7 +443,7 @@ const vaultLibrary = {
     stereotomyType: "Running bond",
     parameters: ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "tileLayers"].map((key) => ({ key })),
     allowedPatterns: ["Running bond", "Diagonal joints", "Courses"],
-    startup: { params: { span: 24, rise: 9, length: 28, thickness: 0.5, courseCount: 24, blockCount: 26, subdivisionDensity: 1.15, keystoneSize: 0.2 }, tileLayers: 3 },
+    startup: { params: { span: 15, rise: 8, length: 15, thickness: 0.5, courseCount: 24, blockCount: 26, subdivisionDensity: 1.15, keystoneSize: 0.2 }, tileLayers: 3 },
   },
   "Custom Imported Rhino Surface": {
     name: "Custom Imported Rhino Surface",
@@ -313,7 +451,7 @@ const vaultLibrary = {
     construction3D: "Imported mesh/surface projection target.",
     forceFlowType: "Compression lines",
     stereotomyType: "Hex / NGon",
-    parameters: ["thickness", "courseCount", "blockCount", "subdivisionDensity"].map((key) => ({ key })),
+    parameters: ["thickness", "targetBlockWidth", "courseHeight", "courseCount", "blockCount", "subdivisionDensity"].map((key) => ({ key })),
     allowedPatterns: ["Hex / NGon", "Rib-aligned", "Diagonal joints", "Groin-line courses", "Running bond", "Radial joints", "Courses", "Keystone zones"],
     startup: { params: { thickness: 0.75, courseCount: 20, blockCount: 22, subdivisionDensity: 1.15 } },
   },
@@ -465,6 +603,10 @@ const fabricationChecks = [
   { label: "Min Edge", key: "min-edge" },
   { label: "Bed Depth", key: "bed-depth" },
   { label: "Convexity", key: "convexity" },
+  { label: "Stretched Cells", key: "stretched-cell" },
+  { label: "Twisted Patch", key: "twisted-patch" },
+  { label: "Mapping Distortion", key: "mapping-distortion" },
+  { label: "Taper Distortion", key: "taper-distortion" },
 ];
 const fabricationCheckByLabel = Object.fromEntries(fabricationChecks.map((item) => [item.label, item]));
 const fabricationLabelByKey = Object.fromEntries(fabricationChecks.filter((item) => item.key).map((item) => [item.key, item.label]));
@@ -587,7 +729,7 @@ const vaultSurfacePrincipleDefault = {
 };
 const sourceLibraryTypes = [
   ...vaultTypes.filter((name) => name !== "Custom Imported Rhino Surface").map((name) => ({ value: name, label: `Built-in: ${name}` })),
-  { value: "Custom Imported Rhino Surface", label: "Uploaded Model Source" },
+  { value: "Custom Imported Rhino Surface", label: "Uploaded Host Geometry" },
 ];
 const vaultParamRules = Object.fromEntries(vaultTypes.map((name) => [name, (vaultLibrary[name].parameters || []).map((p) => p.key)]));
 const vaultPatternPreset = Object.fromEntries(vaultTypes.map((name) => [name, vaultLibrary[name].stereotomyType]));
@@ -600,7 +742,7 @@ const referencePresets = {
   "Default Groin Vault (Solid First)": {
     vaultType: "Groin Vault",
     pattern: "Groin-line courses",
-    params: { span: 24, rise: 12, length: 24, thickness: 1.05, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 },
+    params: { span: 15, rise: 8, length: 15, thickness: 1.05, courseCount: 22, blockCount: 20, subdivisionDensity: 1.2, keystoneSize: 0.42 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -611,7 +753,7 @@ const referencePresets = {
   "Aqueduc Barrel Stereotomy": {
     vaultType: "Barrel Vault",
     pattern: "Running bond",
-    params: { span: 26, rise: 12, length: 30, thickness: 1.25, courseCount: 16, blockCount: 14, subdivisionDensity: 1.1, keystoneSize: 0.35 },
+    params: { span: 15, rise: 8, length: 15, thickness: 1.25, courseCount: 16, blockCount: 14, subdivisionDensity: 1.1, keystoneSize: 0.35 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -619,7 +761,7 @@ const referencePresets = {
   "Groined Plate XXIV": {
     vaultType: "Groin Vault",
     pattern: "Groin-line courses",
-    params: { span: 24, rise: 12, length: 24, thickness: 1.1, courseCount: 20, blockCount: 16, subdivisionDensity: 1.15, keystoneSize: 0.45 },
+    params: { span: 15, rise: 8, length: 15, thickness: 1.1, courseCount: 20, blockCount: 16, subdivisionDensity: 1.15, keystoneSize: 0.45 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -627,7 +769,7 @@ const referencePresets = {
   "Arc de Cloitre": {
     vaultType: "Cloister Vault",
     pattern: "Rib-aligned",
-    params: { span: 24, rise: 10, length: 24, thickness: 0.95, courseCount: 14, blockCount: 12, subdivisionDensity: 1, keystoneSize: 0.55 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.95, courseCount: 14, blockCount: 12, subdivisionDensity: 1, keystoneSize: 0.55 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -635,7 +777,7 @@ const referencePresets = {
   "Fan Vault Bath": {
     vaultType: "Fan Vault",
     pattern: "Rib-aligned",
-    params: { span: 22, rise: 18, length: 22, thickness: 0.9, courseCount: 24, blockCount: 22, subdivisionDensity: 1.2, keystoneSize: 0.5 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.9, courseCount: 24, blockCount: 22, subdivisionDensity: 1.2, keystoneSize: 0.5 },
     cubeScale: 1,
     arrayU: 2,
     arrayV: 1,
@@ -643,7 +785,7 @@ const referencePresets = {
   "Catalan Running Bond": {
     vaultType: "Catalan Vault",
     pattern: "Running bond",
-    params: { span: 20, rise: 7, length: 26, thickness: 0.55, courseCount: 18, blockCount: 20, subdivisionDensity: 1.1, keystoneSize: 0.2 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.55, courseCount: 18, blockCount: 20, subdivisionDensity: 1.1, keystoneSize: 0.2 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -651,7 +793,7 @@ const referencePresets = {
   "Guastavino Thin Tile": {
     vaultType: "Guastavino Vault",
     pattern: "Running bond",
-    params: { span: 26, rise: 10, length: 30, thickness: 0.5, courseCount: 22, blockCount: 24, subdivisionDensity: 1.2, keystoneSize: 0.2 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.5, courseCount: 22, blockCount: 24, subdivisionDensity: 1.2, keystoneSize: 0.2 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -659,7 +801,7 @@ const referencePresets = {
   "Lierne Gothic Nodework": {
     vaultType: "Lierne Vault",
     pattern: "Hex / NGon",
-    params: { span: 22, rise: 14, length: 22, thickness: 0.85, courseCount: 22, blockCount: 22, subdivisionDensity: 1.25, keystoneSize: 0.6 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.85, courseCount: 22, blockCount: 22, subdivisionDensity: 1.25, keystoneSize: 0.6 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -667,7 +809,7 @@ const referencePresets = {
   "Net Vault Lattice": {
     vaultType: "Net Vault",
     pattern: "Hex / NGon",
-    params: { span: 22, rise: 13, length: 22, thickness: 0.9, courseCount: 24, blockCount: 24, subdivisionDensity: 1.3, keystoneSize: 0.6 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.9, courseCount: 24, blockCount: 24, subdivisionDensity: 1.3, keystoneSize: 0.6 },
     cubeScale: 1,
     arrayU: 1,
     arrayV: 1,
@@ -683,7 +825,7 @@ const constructionTemplateCatalog = {
     traitStep: "Section Curves",
     stereotomyStep: "Head Joints",
     pattern: "Radial joints",
-    params: { span: 18, rise: 3.5, length: 10, thickness: 0.85, courseCount: 7, blockCount: 13, subdivisionDensity: 1, keystoneSize: 0.18 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.85, courseCount: 7, blockCount: 13, subdivisionDensity: 1, keystoneSize: 0.18 },
     jointLogic: "vertical exterior / convergent interior joints",
     operations: ["flat arch springing datum", "convergent joint fan", "wall-face projection", "voussoir proportion check"],
   },
@@ -696,7 +838,7 @@ const constructionTemplateCatalog = {
     traitStep: "Course Divisions",
     stereotomyStep: "Courses",
     pattern: "Hex / NGon",
-    params: { span: 22, rise: 5, length: 22, thickness: 0.55, courseCount: 14, blockCount: 14, subdivisionDensity: 1.15, keystoneSize: 0.35 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.55, courseCount: 14, blockCount: 14, subdivisionDensity: 1.15, keystoneSize: 0.35 },
     jointLogic: "square/concentric topology preserving block identity under deformation",
     operations: ["plane tessellation", "square or circular boundary", "plane-to-cylinder/sphere deformation", "identity preservation check"],
   },
@@ -709,7 +851,7 @@ const constructionTemplateCatalog = {
     traitStep: "Projection Rays",
     stereotomyStep: "Head Joints",
     pattern: "Diagonal joints",
-    params: { span: 22, rise: 10, length: 26, thickness: 0.85, courseCount: 16, blockCount: 14, subdivisionDensity: 1.05, keystoneSize: 0.28 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.85, courseCount: 16, blockCount: 14, subdivisionDensity: 1.05, keystoneSize: 0.28 },
     jointLogic: "oblique/skew joints projected between plan, section, and elevation",
     operations: ["skew axis setup", "plan-to-section projection", "oblique head-joint layout", "true-length check"],
   },
@@ -722,7 +864,7 @@ const constructionTemplateCatalog = {
     traitStep: "All Trait Lines",
     stereotomyStep: "All Stereotomy",
     pattern: "Rib-aligned",
-    params: { span: 20, rise: 11, length: 24, thickness: 0.75, courseCount: 15, blockCount: 16, subdivisionDensity: 1.1, keystoneSize: 0.32 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.75, courseCount: 15, blockCount: 16, subdivisionDensity: 1.1, keystoneSize: 0.32 },
     jointLogic: "spatial cylindrical/conoidal arch joints controlled by ruled generators",
     operations: ["spatial directrix", "ruled-surface sectioning", "intrados/hypography view", "face true-shape check"],
   },
@@ -735,7 +877,7 @@ const constructionTemplateCatalog = {
     traitStep: "All Trait Lines",
     stereotomyStep: "All Stereotomy",
     pattern: "Running bond",
-    params: { span: 26, rise: 12, length: 30, thickness: 1.1, courseCount: 16, blockCount: 18, subdivisionDensity: 1.05, keystoneSize: 0.35 },
+    params: { span: 15, rise: 8, length: 15, thickness: 1.1, courseCount: 16, blockCount: 18, subdivisionDensity: 1.05, keystoneSize: 0.35 },
     jointLogic: "orthogonal/running ring courses with cylindrical development",
     operations: ["barrel profile", "course grid", "running bond", "cylindrical unfolding", "voussoir development"],
   },
@@ -748,7 +890,7 @@ const constructionTemplateCatalog = {
     traitStep: "Projection Rays",
     stereotomyStep: "Head Joints",
     pattern: "Diagonal joints",
-    params: { span: 20, rise: 8, length: 18, thickness: 0.8, courseCount: 12, blockCount: 14, subdivisionDensity: 1.05, keystoneSize: 0.25 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.8, courseCount: 12, blockCount: 14, subdivisionDensity: 1.05, keystoneSize: 0.25 },
     jointLogic: "opening-behind-vault projection with localized lunettes",
     operations: ["rear opening geometry", "convergence point controls", "lunette penetration", "localized panelization"],
   },
@@ -761,7 +903,7 @@ const constructionTemplateCatalog = {
     traitStep: "Surface Development",
     stereotomyStep: "True-Shape Panels",
     pattern: "Radial joints",
-    params: { span: 18, rise: 10, length: 18, thickness: 0.75, courseCount: 14, blockCount: 18, subdivisionDensity: 1.1, keystoneSize: 0.28 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.75, courseCount: 14, blockCount: 18, subdivisionDensity: 1.1, keystoneSize: 0.28 },
     jointLogic: "conic/spherical/ruled corner-transition joints",
     operations: ["corner support transition", "conic development", "false-square cuts", "panel template extraction"],
   },
@@ -774,7 +916,7 @@ const constructionTemplateCatalog = {
     traitStep: "Joint Normals",
     stereotomyStep: "Courses",
     pattern: "Rib-aligned",
-    params: { span: 22, rise: 18, length: 22, thickness: 0.9, courseCount: 24, blockCount: 22, subdivisionDensity: 1.2, keystoneSize: 0.5 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.9, courseCount: 24, blockCount: 22, subdivisionDensity: 1.2, keystoneSize: 0.5 },
     jointLogic: "fan ribs and conoid surface families",
     operations: ["springer fan field", "equal-curve rib layout", "conoid guide surface", "springer block segmentation"],
   },
@@ -787,7 +929,7 @@ const constructionTemplateCatalog = {
     traitStep: "Course Divisions",
     stereotomyStep: "Keystone Zone",
     pattern: "Radial joints",
-    params: { span: 24, rise: 12, length: 24, thickness: 0.9, courseCount: 18, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.45 },
+    params: { span: 15, rise: 8, length: 15, thickness: 0.9, courseCount: 18, blockCount: 24, subdivisionDensity: 1.1, keystoneSize: 0.45 },
     jointLogic: "spherical meridian/parallel joints with crown control",
     operations: ["polar radial joints", "hoop courses", "helical rib option", "elliptical dome ring check"],
   },
@@ -800,7 +942,7 @@ const constructionTemplateCatalog = {
     traitStep: "All Trait Lines",
     stereotomyStep: "All Stereotomy",
     pattern: "Groin-line courses",
-    params: { span: 24, rise: 12, length: 24, thickness: 1.05, courseCount: 20, blockCount: 18, subdivisionDensity: 1.15, keystoneSize: 0.45 },
+    params: { span: 15, rise: 8, length: 15, thickness: 1.05, courseCount: 20, blockCount: 18, subdivisionDensity: 1.15, keystoneSize: 0.45 },
     jointLogic: "groin-line courses and diagonal arris construction",
     operations: ["rib/vault intersection", "compound arch layering", "groin arris extraction", "horizontal and vertical development"],
   },
@@ -987,12 +1129,84 @@ const inferJointPrincipleFromTemplate = (tpl) => {
 const nodes = {
   layout2d: byId("layout2d"),
   metrics: byId("metrics"),
+  diagnosticSummary: byId("diagnosticSummary"),
+  ngonDiagnostics: byId("ngonDiagnostics"),
   warnings: byId("warnings"),
   inspector: byId("inspector"),
   precedentDetails: byId("precedentDetails"),
   historicalValidation: byId("historicalValidation"),
   currentTraitState: byId("currentTraitState"),
+  activeHostName: byId("activeHostName"),
+  activePanelName: byId("activePanelName"),
+  activeMappingName: byId("activeMappingName"),
+  activeMorphName: byId("activeMorphName"),
+  strategyViewLabel: byId("strategyViewLabel"),
+  customPanelStatus: byId("customPanelStatus"),
+  hostLibrarySelect: byId("hostLibrarySelect"),
+  hostLibraryStatus: byId("hostLibraryStatus"),
+  hostLibraryPreview: byId("hostLibraryPreview"),
+  panelLibrarySelect: byId("panelLibrarySelect"),
+  panelLibraryStatus: byId("panelLibraryStatus"),
+  panelLibraryPreview: byId("panelLibraryPreview"),
+  saveTileAsset: byId("saveTileAsset"),
+  saveHostAsset: byId("saveHostAsset"),
+  saveEditedPanelAsset: byId("saveEditedPanelAsset"),
+  duplicatePanelVariant: byId("duplicatePanelVariant"),
+  loadHostAsset: byId("loadHostAsset"),
+  deleteHostAsset: byId("deleteHostAsset"),
+  loadPanelAsset: byId("loadPanelAsset"),
+  deletePanelAsset: byId("deletePanelAsset"),
+  importCustomPanel: byId("importCustomPanel"),
+  importCustomPanelMorph: byId("importCustomPanelMorph"),
+  customPanelSeamAllowance: byId("customPanelSeamAllowance"),
+  customPanelThicknessScale: byId("customPanelThicknessScale"),
+  customPanelThicknessOffset: byId("customPanelThicknessOffset"),
+  panelVariantRole: byId("panelVariantRole"),
+  panelVariantAssignmentMode: byId("panelVariantAssignmentMode"),
+  panelScaleX: byId("panelScaleX"),
+  panelScaleY: byId("panelScaleY"),
+  panelScaleZ: byId("panelScaleZ"),
+  panelRotateDeg: byId("panelRotateDeg"),
+  panelSurfaceOffset: byId("panelSurfaceOffset"),
+  panelLongAxisAlign: byId("panelLongAxisAlign"),
+  panelMirrorU: byId("panelMirrorU"),
+  panelMirrorV: byId("panelMirrorV"),
+  panelFlipNormal: byId("panelFlipNormal"),
+  panelVariantStatus: byId("panelVariantStatus"),
+  panelAttractorResponseMode: byId("panelAttractorResponseMode"),
+  panelAttractorResponseAmount: byId("panelAttractorResponseAmount"),
+  panelAttractorResponseStatus: byId("panelAttractorResponseStatus"),
+  topologyLatticeEnabled: byId("topologyLatticeEnabled"),
+  topologyLatticeShowU: byId("topologyLatticeShowU"),
+  topologyLatticeShowV: byId("topologyLatticeShowV"),
+  topologyLatticeRailWidth: byId("topologyLatticeRailWidth"),
+  topologyLatticeRailDepth: byId("topologyLatticeRailDepth"),
+  topologyLatticeFillet: byId("topologyLatticeFillet"),
+  topologyLatticeLayerGap: byId("topologyLatticeLayerGap"),
+  topologyLatticeOpening: byId("topologyLatticeOpening"),
+  topologyLatticeDensity: byId("topologyLatticeDensity"),
+  topologyLatticeBottomWidth: byId("topologyLatticeBottomWidth"),
+  topologyLatticeBottomDepth: byId("topologyLatticeBottomDepth"),
+  topologyLatticeBottomFillet: byId("topologyLatticeBottomFillet"),
+  topologyLatticeBottomOpening: byId("topologyLatticeBottomOpening"),
+  topologyLatticeBottomDensity: byId("topologyLatticeBottomDensity"),
+  topologyLoopBindingsEnabled: byId("topologyLoopBindingsEnabled"),
+  topologyLoopBindingsFamily: byId("topologyLoopBindingsFamily"),
+  topologyLoopBindingsEvery: byId("topologyLoopBindingsEvery"),
+  topologyLoopBindingsWidth: byId("topologyLoopBindingsWidth"),
+  topologyLoopBindingsDepth: byId("topologyLoopBindingsDepth"),
+  topologyLoopBindingsOffset: byId("topologyLoopBindingsOffset"),
+  topologyLoopBindingsFillet: byId("topologyLoopBindingsFillet"),
+  topologyLatticeGenerate: byId("topologyLatticeGenerate"),
+  topologyLatticeStatus: byId("topologyLatticeStatus"),
+  supportScaffoldEnabled: byId("supportScaffoldEnabled"),
+  supportScaffoldXCount: byId("supportScaffoldXCount"),
+  supportScaffoldYCount: byId("supportScaffoldYCount"),
+  supportScaffoldDepth: byId("supportScaffoldDepth"),
+  supportScaffoldThickness: byId("supportScaffoldThickness"),
+  supportScaffoldStatus: byId("supportScaffoldStatus"),
   constructionTemplateDetails: byId("constructionTemplateDetails"),
+  sourceGeometryDimensions: byId("sourceGeometryDimensions"),
   projectionOperationDetails: byId("projectionOperationDetails"),
   jointPrincipleDetails: byId("jointPrincipleDetails"),
   workflowSteps: byId("workflowSteps"),
@@ -1004,10 +1218,91 @@ const nodes = {
   pipelineStatus: byId("pipelineStatus"),
   activeVaultTools: byId("activeVaultTools"),
   rightPanelTitle: byId("rightPanelTitle"),
+  blockPreview: byId("blockPreview"),
+  blockPreviewPanel: byId("blockPreviewPanel"),
+  blockPreviewInfo: byId("blockPreviewInfo"),
+  blockPreviewTitle: byId("blockPreviewTitle"),
+  blockPreviewResize: byId("blockPreviewResize"),
+  blockPreviewLength: byId("blockPreviewLength"),
+  blockPreviewWidth: byId("blockPreviewWidth"),
+  blockPreviewHeight: byId("blockPreviewHeight"),
+  panelSubdivisionU: byId("panelSubdivisionU"),
+  panelSubdivisionUNum: byId("panelSubdivisionUNum"),
+  panelSubdivisionV: byId("panelSubdivisionV"),
+  panelSubdivisionVNum: byId("panelSubdivisionVNum"),
+  panelWeightSubdivision: byId("panelWeightSubdivision"),
+  panelMorphWeightSource: byId("panelMorphWeightSource"),
+  panelMorphStrength: byId("panelMorphStrength"),
+  panelMorphStrengthNum: byId("panelMorphStrengthNum"),
+  ngonCellType: byId("ngonCellType"),
+  ngonShape: byId("ngonShape"),
+  ngonShapeNum: byId("ngonShapeNum"),
+  strategyComponent: byId("strategyComponent"),
+  strategyComponentMode: byId("strategyComponentMode"),
+  strategyFill: byId("strategyFill"),
+  strategyRotation: byId("strategyRotation"),
+  strategyRotationVariation: byId("strategyRotationVariation"),
+  strategyComponentMapping: byId("strategyComponentMapping"),
+  strategyThickness: byId("strategyThickness"),
+  strategyPatchSubdivision: byId("strategyPatchSubdivision"),
+  strategyPatchSubdivisionNum: byId("strategyPatchSubdivisionNum"),
+  strategyPatchSmoothing: byId("strategyPatchSmoothing"),
+  strategyPatchSmoothingNum: byId("strategyPatchSmoothingNum"),
+  strategyTopology: byId("strategyTopology"),
+  strategyDualBoundaryCleanup: byId("strategyDualBoundaryCleanup"),
+  strategyMerge: byId("strategyMerge"),
+  strategyPreset: byId("strategyPreset"),
+  fieldWeightSource: byId("fieldWeightSource"),
+  fieldWeightFormula: byId("fieldWeightFormula"),
+  fieldWeightSmoothing: byId("fieldWeightSmoothing"),
+  fieldWeightSmoothingIterations: byId("fieldWeightSmoothingIterations"),
+  fieldWeightRandomSeed: byId("fieldWeightRandomSeed"),
+  fieldWeightMaterialStrategy: byId("fieldWeightMaterialStrategy"),
+  fieldWeightDriveDensity: byId("fieldWeightDriveDensity"),
+  fieldWeightDriveComponent: byId("fieldWeightDriveComponent"),
+  fieldWeightDriveThickness: byId("fieldWeightDriveThickness"),
+  fieldWeightDriveRotation: byId("fieldWeightDriveRotation"),
+  fieldWeightDriveTaper: byId("fieldWeightDriveTaper"),
+  fieldWeightDriveZones: byId("fieldWeightDriveZones"),
+  attractorSelect: byId("attractorSelect"),
+  attractorAddPoint: byId("attractorAddPoint"),
+  attractorDrawCurve: byId("attractorDrawCurve"),
+  attractorFinishCurve: byId("attractorFinishCurve"),
+  attractorDelete: byId("attractorDelete"),
+  attractorClear: byId("attractorClear"),
+  attractorRadius: byId("attractorRadius"),
+  attractorStrength: byId("attractorStrength"),
+  attractorCurvatureMix: byId("attractorCurvatureMix"),
+  attractorStatus: byId("attractorStatus"),
+  attractorApplyDensity: byId("attractorApplyDensity"),
+  contourFieldEnabled: byId("contourFieldEnabled"),
+  contourFieldSource: byId("contourFieldSource"),
+  contourFieldBands: byId("contourFieldBands"),
+  contourMaskMode: byId("contourMaskMode"),
+  showContourField: byId("showContourField"),
+  showContourMasks: byId("showContourMasks"),
+  showStreamlines: byId("showStreamlines"),
+  streamlineSource: byId("streamlineSource"),
+  streamlineCount: byId("streamlineCount"),
+  guideDirectionDeg: byId("guideDirectionDeg"),
+  reactionDiffusion: byId("reactionDiffusion"),
+  reactionScale: byId("reactionScale"),
+  editSplitCell: byId("editSplitCell"),
+  editMergeCell: byId("editMergeCell"),
+  editRotateComponent: byId("editRotateComponent"),
+  editPinBoundary: byId("editPinBoundary"),
+  editMarkSupport: byId("editMarkSupport"),
+  editComponentVariant: byId("editComponentVariant"),
+  editAssignVariant: byId("editAssignVariant"),
+  customPatternSource: byId("customPatternSource"),
+  workflowPatternSource: byId("workflowPatternSource"),
 };
 
 byId("vaultType").innerHTML = sourceLibraryTypes.map((v) => `<option value="${v.value}">${v.label}</option>`).join("");
-byId("subdivision").innerHTML = patterns.map((v) => `<option>${v}</option>`).join("");
+if (byId("vaultDesignerType")) {
+  byId("vaultDesignerType").innerHTML = sourceLibraryTypes.map((v) => `<option value="${v.value}">${v.label}</option>`).join("");
+}
+byId("subdivision").innerHTML = patterns.map((v) => `<option value="${v}">${patternDisplayLabels[v] || v}</option>`).join("");
 if (byId("constructionTemplate")) {
   byId("constructionTemplate").innerHTML = constructionTemplateNames.map((name) => `<option>${name}</option>`).join("");
 }
@@ -1020,14 +1315,632 @@ if (byId("jointPrinciple")) {
 
 const setToolTab = (tab) => {
   if (!nodes.toolTabs) return;
-  [...nodes.toolTabs.querySelectorAll("button[data-tab]")].forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  document.querySelectorAll("[data-tool-group]").forEach((section) => {
-    section.classList.toggle("tab-hidden", section.getAttribute("data-tool-group") !== tab);
+  const visibleGroups = {
+    "vault-designer": ["vault-designer"],
+    "block-designer": ["block-designer"],
+    source: ["source", "form"],
+    "panel-library": ["panel-library"],
+    form: ["form"],
+    strategy: ["strategy"],
+    "edit-panels": ["blocks", "editor"],
+    blocks: ["blocks", "editor"],
+    fields: ["fields"],
+    "topology-lattice": ["topology-lattice"],
+    editor: ["editor"],
+    fabrication: ["fabrication"],
+    export: ["export", "display"],
+    display: ["display"],
+    catalog: ["source"],
+    workflow: ["source"],
+    params: ["form"],
+    pattern: ["strategy"],
+    layers: ["display"],
+  }[tab] || [tab];
+  [...nodes.toolTabs.querySelectorAll("button[data-tab]")].forEach((b) => {
+    const isActive = b.dataset.tab === tab;
+    b.classList.toggle("active", isActive);
+    b.setAttribute("aria-selected", String(isActive));
   });
+  document.querySelector(".tool-scroll")?.setAttribute("data-active-tab", tab);
+  document.body.classList.toggle("block-designer-active", tab === "block-designer");
+  byId("blockDesignerWorkbench")?.classList.toggle("hidden", tab !== "block-designer");
+  document.querySelectorAll("[data-tool-group]").forEach((section) => {
+    const groups = (section.getAttribute("data-tool-group") || "").split(/\s+/).filter(Boolean);
+    section.classList.toggle("tab-hidden", !groups.some((group) => visibleGroups.includes(group)));
+  });
+  if (tab === "block-designer") { renderBlockDesigner(); requestAnimationFrame(resize); }
 };
 
 const setPipelineStatus = (txt) => {
   if (nodes.pipelineStatus) nodes.pipelineStatus.textContent = txt;
+};
+
+const strategyViewLabels = {
+  "uv-layout": "UV / Layout",
+  "component-mapping": "Component Mapping",
+  "assembly-sequence": "Assembly Sequence",
+  distortion: "Distortion / Deformation",
+  zones: "Zones / Weights",
+};
+
+const renderCustomPanelStatus = () => {
+  if (!nodes.customPanelStatus) return;
+  const panel = state.customPanel;
+  if (!panel) {
+    nodes.customPanelStatus.textContent = "No custom panel loaded.";
+    return;
+  }
+  const size = panel.size
+    ? `${panel.size.x.toFixed(2)} x ${panel.size.y.toFixed(2)} x ${panel.size.z.toFixed(2)} m`
+    : "size unavailable";
+  const morph = panel.morph
+    ? ` | Morph: ${panel.morph.name} (${panel.morph.compatible ? "matched" : panel.morph.compatibilityReason || "incompatible"})`
+    : "";
+  nodes.customPanelStatus.textContent = `${panel.name} | ${panel.meshCount} mesh(es), ${panel.triangleCount} triangles | ${size}${morph}`;
+};
+
+const setStrategyViewMode = (mode) => {
+  const next = strategyViewLabels[mode] ? mode : "uv-layout";
+  state.strategyViewMode = next;
+  if (nodes.strategyViewLabel) nodes.strategyViewLabel.textContent = strategyViewLabels[next];
+  document.querySelectorAll("[data-strategy-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.strategyView === next);
+  });
+  if (next === "uv-layout") {
+    state.view2dOptions.mode = "Block / Voussoir Layout";
+    state.traitStep = "Course Divisions";
+    state.stereotomyStep = "All Stereotomy";
+    state.view2dOptions.showReferenceGeometry = false;
+    state.view2dOptions.showTraitLines = false;
+    state.view2dOptions.showProjectionRays = false;
+    state.view2dOptions.showDevelopmentLines = false;
+    state.view2dOptions.showTrueShapePanels = false;
+    state.view2dOptions.showCutLines = false;
+    state.view2dOptions.showJointNormals = false;
+    state.view2dOptions.showDerivedStereotomy = true;
+    state.view2dOptions.showCourseDivisions = true;
+    state.view2dOptions.showBedJoints = true;
+    state.view2dOptions.showHeadJoints = true;
+    state.view2dOptions.showKeystoneZone = false;
+    state.view2dOptions.showGuides = true;
+    state.view2dOptions.showBlocks = true;
+    state.view2dOptions.showBlockIds = false;
+    state.view2dOptions.showBlockMetrics = false;
+    state.view2dOptions.showFabricationChecks = false;
+  } else if (next === "component-mapping") {
+    state.view2dOptions.showBlocks = true;
+    state.view2dOptions.showTrueShapePanels = true;
+    state.view2dOptions.showStreamlines = true;
+    state.view2dOptions.showContourField = true;
+    state.view2dOptions.showBlockIds = false;
+    state.view2dOptions.showBlockMetrics = false;
+  } else if (next === "assembly-sequence") {
+    state.view2dOptions.showBlocks = true;
+    state.view2dOptions.showBlockIds = true;
+    state.view2dOptions.showBlockMetrics = true;
+    state.view2dOptions.showFabricationChecks = false;
+  } else if (next === "distortion") {
+    state.view2dOptions.showBlocks = true;
+    state.view2dOptions.showBlockIds = false;
+    state.view2dOptions.showBlockMetrics = true;
+    state.view2dOptions.showFabricationChecks = true;
+    state.view2dOptions.showFabricationLegend = true;
+  } else if (next === "zones") {
+    state.view2dOptions.showBlocks = true;
+    state.view2dOptions.showContourField = true;
+    state.view2dOptions.showStreamlines = true;
+    state.view2dOptions.showBlockIds = false;
+    state.view2dOptions.showBlockMetrics = false;
+  }
+  renderCurrentTraitState();
+  draw2d();
+};
+
+const strategyLabels = {
+  "procedural-vault": "Procedural vault",
+  "uploaded-surface": "Uploaded surface",
+  "surface-field": "Surface field",
+  courses: "Course field",
+  radial: "Radial voussoir field",
+  runningBond: "Running bond field",
+  diagonal: "Diagonal joint field",
+  ngon: "Dual / polygon cell field",
+  "Hex / NGon": "Dual / polygon cells",
+  "NGon Cells": "Dual / polygon cells",
+  "NGon Adaptive": "Adaptive polygon cells",
+  importedTopology: "Imported topology field",
+  tissueQuadMesh: "Panel quad mesh",
+  "Panel Quad Mesh": "Panel quad mesh",
+  "Tissue Quad Mesh": "Panel quad mesh",
+  importedLayout: "Imported 2D layout",
+  freeformCourses: "Freeform courses",
+  surfaceGrid: "Surface UV grid",
+  proceduralVault: "Procedural vault field",
+  ribAligned: "Rib-aligned field",
+  keystoneZones: "Keystone zone field",
+  voussoir: "Tapered voussoir",
+  ashlar: "Ashlar block",
+  keyedVoussoir: "Keyed voussoir",
+  interlock: "Interlocking block",
+  custom: "Custom component",
+  single: "Single component",
+  family: "Component family",
+  zone: "Zone/material driven",
+  quad: "Quad cells",
+  fan: "Fan cells",
+  frame: "Frame cells",
+  patch: "Patch cells",
+  "course-tangent": "Course tangent",
+  "compression-flow": "Compression flow",
+  "surface-uv": "Surface UV",
+  "principal-curvature": "Principal curvature",
+  edgeBending: "Edges bending",
+  edgeDeformation: "Edges deformation",
+  harmonic: "Harmonic",
+  "cell-normal": "Cell normal",
+  none: "No variation",
+  random: "Random",
+  field: "Field driven",
+  alternating: "Alternating",
+  "fit-to-cell": "Fit to cell",
+  "cell-bounds": "Fit to cell",
+  "local-frame": "Local frame",
+  "global-orientation": "Global orientation",
+  "preserve-component-scale": "Preserve component scale",
+  constant: "Constant thickness",
+  relative: "Relative thickness",
+  "relative-cell": "Relative thickness",
+  scale: "Scaled source thickness",
+  offset: "Offset source thickness",
+  "intrados-extrados": "Intrados/extrados",
+  "vertex-field": "Vertex field",
+  primal: "Primal cells",
+  dual: "Dual cells",
+  trim: "Trim at boundary",
+  "separate-blocks": "Separate blocks",
+  "merge-visual": "Merged visual seams",
+  "merge-fabrication": "Merge fabrication mesh",
+  base: "Base",
+  "left-edge": "Left edge",
+  "right-edge": "Right edge",
+  corner: "Corner",
+  keystone: "Keystone",
+  "support-adjacent": "Support-adjacent",
+  "high-curvature": "High-curvature",
+  apertureMorph: "Aperture Morph",
+};
+
+const labelStrategyValue = (value) => strategyLabels[value] || value || "n/a";
+
+const ensurePanelVariantTransforms = () => {
+  panelVariantRoles.forEach(({ id }) => {
+    state.customPanelVariantTransforms[id] = {
+      ...defaultPanelVariantTransform(),
+      ...(state.customPanelVariantTransforms[id] || {}),
+    };
+  });
+  return state.customPanelVariantTransforms;
+};
+
+const getPanelVariantTransform = (role = state.activePanelVariantRole) => {
+  ensurePanelVariantTransforms();
+  return state.customPanelVariantTransforms[role] || state.customPanelVariantTransforms.base;
+};
+
+const setActivePanelVariantTransformValue = (key, value) => {
+  ensurePanelVariantTransforms();
+  const role = state.activePanelVariantRole || "base";
+  state.customPanelVariantTransforms[role] = {
+    ...defaultPanelVariantTransform(),
+    ...(state.customPanelVariantTransforms[role] || {}),
+    [key]: value,
+  };
+};
+
+const resolvePanelVariantRoleForBlock = (block) => {
+  if (block?.manualPanelVariantRole) return block.manualPanelVariantRole;
+  if (state.panelVariantAssignmentMode === "single") return state.activePanelVariantRole || "base";
+  const basis = block?.fieldWeights?.basis || {};
+  const anchor = block?.anchorUv || polygonCentroidUv(block?.uv || [[0.5, 0.5]]);
+  const u = Number(anchor?.[0] ?? basis.u ?? 0.5);
+  if (block?.isKeystone || block?.zone === "crown" || basis.crown > 0.82) return "keystone";
+  if (block?.supportMarked || basis.support > 0.78 || block?.zone === "support") return "support-adjacent";
+  if (basis.boundary > 0.9 && (u < 0.12 || u > 0.88)) return "corner";
+  if (basis.boundary > 0.72) return u < 0.5 ? "left-edge" : "right-edge";
+  if (basis.curvature > 0.72 || block?.zone === "high") return "high-curvature";
+  return "base";
+};
+
+const applyPanelTransformToUv = (u, v, transform) => {
+  let tu = transform.mirrorU ? 1 - u : u;
+  let tv = transform.mirrorV ? 1 - v : v;
+  tu = 0.5 + (tu - 0.5) * clamp(Number(transform.scaleX) || 1, 0.05, 8);
+  tv = 0.5 + (tv - 0.5) * clamp(Number(transform.scaleY) || 1, 0.05, 8);
+  const angle = THREE.MathUtils.degToRad(Number(transform.rotateDeg) || 0);
+  if (Math.abs(angle) > 1e-8) {
+    const x = tu - 0.5;
+    const y = tv - 0.5;
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    tu = 0.5 + x * c - y * s;
+    tv = 0.5 + x * s + y * c;
+  }
+  return [tu, tv];
+};
+
+const renderPanelVariantControls = () => {
+  ensurePanelVariantTransforms();
+  const role = state.activePanelVariantRole || "base";
+  const transform = getPanelVariantTransform(role);
+  setInputValue(nodes.panelVariantRole, role, { force: true });
+  setInputValue(nodes.panelVariantAssignmentMode, state.panelVariantAssignmentMode || "auto", { force: true });
+  setInputValue(nodes.panelScaleX, transform.scaleX);
+  setInputValue(nodes.panelScaleY, transform.scaleY);
+  setInputValue(nodes.panelScaleZ, transform.scaleZ);
+  setInputValue(nodes.panelRotateDeg, transform.rotateDeg);
+  setInputValue(nodes.panelSurfaceOffset, metersToCmInput(transform.surfaceOffset || 0));
+  setInputValue(nodes.panelLongAxisAlign, transform.align || "strategy", { force: true });
+  if (nodes.panelMirrorU) nodes.panelMirrorU.checked = !!transform.mirrorU;
+  if (nodes.panelMirrorV) nodes.panelMirrorV.checked = !!transform.mirrorV;
+  if (nodes.panelFlipNormal) nodes.panelFlipNormal.checked = !!transform.flipNormal;
+  if (nodes.panelVariantStatus) {
+    const mode = state.panelVariantAssignmentMode === "single" ? "used on all cells" : "assigned automatically";
+    nodes.panelVariantStatus.textContent = `${getPanelVariantLabel(role)} variant active; ${mode}.`;
+  }
+};
+
+const renderPanelAttractorResponseControls = () => {
+  const response = state.panelAttractorResponse;
+  setInputValue(nodes.panelAttractorResponseMode, response.mode, { force: true });
+  setInputValue(nodes.panelAttractorResponseAmount, response.amount, { force: true });
+  if (nodes.panelAttractorResponseStatus) {
+    const descriptions = {
+      apertureMorph: "Aperture morph uses a topology-matched Morph Panel; carrier cells stay fixed.",
+      thickness: "Thickness changes along the panel normal; plan footprint is fixed.",
+      offset: "Surface offset changes along the panel normal; plan footprint is fixed.",
+      none: "This panel family ignores the attractor field.",
+    };
+    const data = state.customPanel?.geometryData;
+    const interiorCount = data?.positions?.reduce((count, point) => {
+      const u = getNormalizedAxisValue(point, data.axes.u);
+      const v = getNormalizedAxisValue(point, data.axes.v);
+      return count + (Math.min(u, 1 - u, v, 1 - v) > 0.085 ? 1 : 0);
+    }, 0) || 0;
+    const diagnostic = response.mode === "apertureMorph"
+      ? state.customPanel?.morph?.compatible
+        ? " Morph Panel is topology-compatible and ready for attractor control."
+        : " Load a Morph Panel with the same vertex count and triangle order to activate aperture change."
+      : "";
+    nodes.panelAttractorResponseStatus.textContent = `${descriptions[response.mode] || descriptions.none}${diagnostic}`;
+  }
+};
+
+const inferStrategyHost = () => {
+  if (state.designMode === "Custom Import" || state.vaultType === "Custom Imported Rhino Surface") {
+    return state.importedSurface ? "uploaded-surface" : "surface-field";
+  }
+  return "procedural-vault";
+};
+
+const inferStrategyField = () => {
+  if (isPanelQuadSource(state.customPatternSource) && state.importedTissueCells?.length) return "tissueQuadMesh";
+  if (state.customPatternSource === "Imported Topology Mesh" && state.importedTopologyPolys?.length) return "importedTopology";
+  if (state.customPatternSource === "Imported 2D Layout" && state.imported2DPolys?.length) return "importedLayout";
+  if (state.customPatternSource === "Freeform Courses" && state.importedSurface) return "freeformCourses";
+  if (state.designMode === "Custom Import" && state.customPatternSource === "UV Form Grid") return "surfaceGrid";
+  if (state.customPatternSource === "NGon Cells" || state.customPatternSource === "NGon Adaptive" || state.pattern === "Hex / NGon") return "ngon";
+  if (state.pattern === "Running bond") return "runningBond";
+  if (state.pattern === "Diagonal joints") return "diagonal";
+  if (state.pattern === "Radial joints") return "radial";
+  if (state.pattern === "Rib-aligned") return "ribAligned";
+  if (state.pattern === "Keystone zones") return "keystoneZones";
+  return "courses";
+};
+
+const inferDefaultStrategyComponent = () => {
+  if (state.pattern === "Keystone zones") return "keyedVoussoir";
+  if (state.pattern === "Running bond") return "ashlar";
+  if (state.pattern === "Hex / NGon" || state.customPatternSource?.includes("NGon")) return "interlock";
+  return "voussoir";
+};
+
+const getActiveStrategy = () => ({
+  host: inferStrategyHost(),
+  field: inferStrategyField(),
+  component: state.strategy.component || inferDefaultStrategyComponent(),
+  componentMode: state.strategy.componentMode || "single",
+  fill: state.strategy.fill || "quad",
+  rotation: state.strategy.rotation || (state.structuralDirection === "Compression lines" ? "compression-flow" : "course-tangent"),
+  rotationVariation: state.strategy.rotationVariation || "none",
+  scale: state.strategy.scale === "cell-bounds" ? "fit-to-cell" : (state.strategy.scale || "fit-to-cell"),
+  thickness: state.strategy.thickness || "constant",
+  patchSubdivision: clamp(Math.round(state.strategy.patchSubdivision || 4), 2, 12),
+  patchSmoothing: clamp(Math.round(state.strategy.patchSmoothing || 0), 0, 4),
+  topology: state.strategy.topology || "primal",
+  dualBoundaryCleanup: state.strategy.dualBoundaryCleanup !== false,
+  boundary: state.strategy.boundary || "trim",
+  merge: state.strategy.merge || "separate-blocks",
+});
+
+const updateStrategyFromControls = () => {
+  state.strategy = {
+    ...getActiveStrategy(),
+    component: nodes.strategyComponent?.value || state.strategy.component || inferDefaultStrategyComponent(),
+    componentMode: nodes.strategyComponentMode?.value || state.strategy.componentMode || "single",
+    fill: nodes.strategyFill?.value || state.strategy.fill || "quad",
+    rotation: nodes.strategyRotation?.value || state.strategy.rotation || "course-tangent",
+    rotationVariation: nodes.strategyRotationVariation?.value || state.strategy.rotationVariation || "none",
+    scale: nodes.strategyComponentMapping?.value || state.strategy.scale || "fit-to-cell",
+    thickness: nodes.strategyThickness?.value || state.strategy.thickness || "constant",
+    patchSubdivision: clamp(Number(nodes.strategyPatchSubdivision?.value || state.strategy.patchSubdivision || 4), 2, 12),
+    patchSmoothing: clamp(Number(nodes.strategyPatchSmoothing?.value || state.strategy.patchSmoothing || 0), 0, 4),
+    topology: nodes.strategyTopology?.value || state.strategy.topology || "primal",
+    dualBoundaryCleanup: nodes.strategyDualBoundaryCleanup ? nodes.strategyDualBoundaryCleanup.checked : state.strategy.dualBoundaryCleanup !== false,
+    merge: nodes.strategyMerge?.value || state.strategy.merge || "separate-blocks",
+  };
+  return state.strategy;
+};
+
+const refreshStrategyDescriptor = () => {
+  state.strategy = { ...state.strategy, ...getActiveStrategy() };
+  setInputValue(nodes.strategyComponent, state.strategy.component, { force: true });
+  setInputValue(nodes.strategyComponentMode, state.strategy.componentMode, { force: true });
+  setInputValue(nodes.strategyFill, state.strategy.fill, { force: true });
+  setInputValue(nodes.strategyRotation, state.strategy.rotation, { force: true });
+  setInputValue(nodes.strategyRotationVariation, state.strategy.rotationVariation, { force: true });
+  setInputValue(nodes.strategyComponentMapping, state.strategy.scale, { force: true });
+  setInputValue(nodes.strategyThickness, state.strategy.thickness, { force: true });
+  setInputValue(nodes.strategyPatchSubdivision, state.strategy.patchSubdivision, { force: true });
+  setInputValue(nodes.strategyPatchSubdivisionNum, state.strategy.patchSubdivision, { force: true });
+  setInputValue(nodes.strategyPatchSmoothing, state.strategy.patchSmoothing, { force: true });
+  setInputValue(nodes.strategyPatchSmoothingNum, state.strategy.patchSmoothing, { force: true });
+  setInputValue(nodes.strategyTopology, state.strategy.topology, { force: true });
+  if (nodes.strategyDualBoundaryCleanup) nodes.strategyDualBoundaryCleanup.checked = state.strategy.dualBoundaryCleanup !== false;
+  setInputValue(nodes.strategyMerge, state.strategy.merge, { force: true });
+  setInputValue(nodes.customPanelSeamAllowance, metersToCmInput(state.customPanelSeamAllowance));
+  setInputValue(nodes.customPanelThicknessScale, state.customPanelThicknessScale);
+  setInputValue(nodes.customPanelThicknessOffset, metersToCmInput(state.customPanelThicknessOffset));
+  renderCustomPanelStatus();
+  state.stereotomyProcess.geometryBasis = labelStrategyValue(state.strategy.host);
+  state.stereotomyProcess.tessellationMethod = labelStrategyValue(state.strategy.field);
+  state.stereotomyProcess.voussoirMethod = labelStrategyValue(state.strategy.component);
+  return state.strategy;
+};
+
+const syncFieldWeightControls = () => {
+  const fw = state.fieldWeights;
+  setInputValue(nodes.fieldWeightSource, fw.source, { force: true });
+  setInputValue(nodes.panelMorphWeightSource, fw.source, { force: true });
+  setInputValue(nodes.fieldWeightFormula, fw.formula, { force: true });
+  setInputValue(nodes.fieldWeightSmoothing, fw.smoothing, { force: true });
+  setInputValue(nodes.fieldWeightSmoothingIterations, fw.smoothingIterations, { force: true });
+  setInputValue(nodes.fieldWeightRandomSeed, fw.randomSeed, { force: true });
+  setInputValue(nodes.fieldWeightMaterialStrategy, fw.materialStrategy, { force: true });
+  if (nodes.fieldWeightDriveDensity) nodes.fieldWeightDriveDensity.checked = !!fw.driveDensity;
+  if (nodes.fieldWeightDriveComponent) nodes.fieldWeightDriveComponent.checked = !!fw.driveComponent;
+  if (nodes.fieldWeightDriveThickness) nodes.fieldWeightDriveThickness.checked = !!fw.driveThickness;
+  if (nodes.fieldWeightDriveRotation) nodes.fieldWeightDriveRotation.checked = !!fw.driveRotation;
+  if (nodes.fieldWeightDriveTaper) nodes.fieldWeightDriveTaper.checked = !!fw.driveTaper;
+  if (nodes.fieldWeightDriveZones) nodes.fieldWeightDriveZones.checked = !!fw.driveZones;
+};
+
+const updateFieldWeightsFromControls = () => {
+  state.fieldWeights = {
+    ...state.fieldWeights,
+    source: nodes.fieldWeightSource?.value || state.fieldWeights.source,
+    formula: nodes.fieldWeightFormula?.value || state.fieldWeights.formula,
+    smoothing: nodes.fieldWeightSmoothing?.value || state.fieldWeights.smoothing,
+    smoothingIterations: clamp(Math.round(Number(nodes.fieldWeightSmoothingIterations?.value || state.fieldWeights.smoothingIterations || 0)), 0, 8),
+    randomSeed: Math.round(Number(nodes.fieldWeightRandomSeed?.value || state.fieldWeights.randomSeed || 0)),
+    materialStrategy: nodes.fieldWeightMaterialStrategy?.value || state.fieldWeights.materialStrategy,
+    driveDensity: !!nodes.fieldWeightDriveDensity?.checked,
+    driveComponent: !!nodes.fieldWeightDriveComponent?.checked,
+    driveThickness: !!nodes.fieldWeightDriveThickness?.checked,
+    driveRotation: !!nodes.fieldWeightDriveRotation?.checked,
+    driveTaper: !!nodes.fieldWeightDriveTaper?.checked,
+    driveZones: !!nodes.fieldWeightDriveZones?.checked,
+  };
+  syncFieldWeightControls();
+  return state.fieldWeights;
+};
+
+const getAttractorField = () => state.attractorField;
+const attractorId = () => `field-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+const pointToSegmentDistance = (point, a, b) => {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq < 1e-10) return Math.hypot(point[0] - a[0], point[1] - a[1]);
+  const t = clamp(((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / lengthSq, 0, 1);
+  return Math.hypot(point[0] - (a[0] + dx * t), point[1] - (a[1] + dy * t));
+};
+const getAttractorWeightAt = (uv) => {
+  const elements = getAttractorField().elements || [];
+  return elements.reduce((best, element) => {
+    const points = element.points || [];
+    if (!points.length) return best;
+    const distance = element.type === "curve" && points.length > 1
+      ? points.slice(1).reduce((min, point, index) => Math.min(min, pointToSegmentDistance(uv, points[index], point)), Infinity)
+      : Math.hypot(uv[0] - points[0][0], uv[1] - points[0][1]);
+    const radius = Math.max(0.0001, Number(element.radius) || 0.18);
+    const influence = 1 - smoothstep(0, radius, distance);
+    return Math.max(best, influence * clamp(Number(element.strength) || 0, 0, 1));
+  }, 0);
+};
+const normalizedAttractorWeightAt = (uv) => clamp(getAttractorWeightAt(uv), 0, 1);
+const syncAttractorControls = () => {
+  const field = getAttractorField();
+  const selected = field.elements.find((element) => element.id === field.selectedId);
+  if (selected) {
+    setInputValue(nodes.attractorRadius, selected.radius, { force: true });
+    setInputValue(nodes.attractorStrength, selected.strength, { force: true });
+  } else {
+    setInputValue(nodes.attractorRadius, field.radius, { force: true });
+    setInputValue(nodes.attractorStrength, field.strength, { force: true });
+  }
+  setInputValue(nodes.attractorCurvatureMix, field.curvatureMix, { force: true });
+  [nodes.attractorSelect, nodes.attractorAddPoint, nodes.attractorDrawCurve].forEach((button) => {
+    if (!button) return;
+    const mode = button === nodes.attractorSelect ? "select" : button === nodes.attractorAddPoint ? "point" : "curve";
+    button.classList.toggle("active", field.mode === mode);
+  });
+  if (nodes.attractorStatus) {
+    const count = field.elements.length;
+    const selectedLabel = selected ? ` Selected ${selected.type}: radius ${selected.radius.toFixed(2)}, strength ${selected.strength.toFixed(2)}.` : "";
+    const drawing = field.mode === "curve" && field.pendingCurve.length ? ` Curve: ${field.pendingCurve.length} vertices; click Finish Curve or press Enter.` : "";
+    nodes.attractorStatus.textContent = `${count} control${count === 1 ? "" : "s"} in field.${selectedLabel}${drawing}`;
+  }
+};
+const updateSelectedAttractorParameters = () => {
+  const field = getAttractorField();
+  const selected = field.elements.find((element) => element.id === field.selectedId);
+  const readNumber = (node, fallback) => {
+    const value = Number(node?.value);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const radius = clamp(readNumber(nodes.attractorRadius, field.radius), 0.02, 1);
+  const strength = clamp(readNumber(nodes.attractorStrength, field.strength), 0, 1);
+  field.radius = radius;
+  field.strength = strength;
+  field.curvatureMix = clamp(readNumber(nodes.attractorCurvatureMix, field.curvatureMix), 0, 1);
+  if (selected) Object.assign(selected, { radius, strength });
+  syncAttractorControls();
+};
+const refreshAttractorField = ({ rebuild = true } = {}) => {
+  syncAttractorControls();
+  if (rebuild && state.blocks.length) refreshEditedBlocks();
+  else draw2d();
+};
+const finishPendingAttractorCurve = () => {
+  const field = getAttractorField();
+  if (field.pendingCurve.length < 2) return false;
+  const element = { id: attractorId(), type: "curve", points: field.pendingCurve.map(([u, v]) => [u, v]), radius: field.radius, strength: field.strength };
+  field.elements.push(element);
+  field.selectedId = element.id;
+  field.pendingCurve = [];
+  field.mode = "select";
+  refreshAttractorField();
+  return true;
+};
+
+const syncContourFieldControls = () => {
+  const cf = state.contourField;
+  if (nodes.contourFieldEnabled) nodes.contourFieldEnabled.checked = !!cf.enabled;
+  setInputValue(nodes.contourFieldSource, cf.source, { force: true });
+  setInputValue(nodes.contourFieldBands, cf.bands, { force: true });
+  setInputValue(nodes.contourMaskMode, cf.maskMode, { force: true });
+  if (nodes.showContourField) nodes.showContourField.checked = !!cf.showContours;
+  if (nodes.showContourMasks) nodes.showContourMasks.checked = !!cf.showMasks;
+  if (nodes.showStreamlines) nodes.showStreamlines.checked = !!cf.streamlines;
+  setInputValue(nodes.streamlineSource, cf.streamlineSource, { force: true });
+  setInputValue(nodes.streamlineCount, cf.streamlineCount, { force: true });
+  setInputValue(nodes.guideDirectionDeg, cf.guideDirectionDeg, { force: true });
+  if (nodes.reactionDiffusion) nodes.reactionDiffusion.checked = !!cf.reactionDiffusion;
+  setInputValue(nodes.reactionScale, cf.reactionScale, { force: true });
+};
+
+const updateContourFieldFromControls = () => {
+  state.contourField = {
+    ...state.contourField,
+    enabled: !!nodes.contourFieldEnabled?.checked,
+    source: nodes.contourFieldSource?.value || state.contourField.source,
+    bands: clamp(Math.round(Number(nodes.contourFieldBands?.value || state.contourField.bands || 8)), 2, 24),
+    maskMode: nodes.contourMaskMode?.value || state.contourField.maskMode,
+    showContours: !!nodes.showContourField?.checked,
+    showMasks: !!nodes.showContourMasks?.checked,
+    streamlines: !!nodes.showStreamlines?.checked,
+    streamlineSource: nodes.streamlineSource?.value || state.contourField.streamlineSource,
+    streamlineCount: clamp(Math.round(Number(nodes.streamlineCount?.value || state.contourField.streamlineCount || 9)), 2, 24),
+    guideDirectionDeg: Number(nodes.guideDirectionDeg?.value || state.contourField.guideDirectionDeg || 0),
+    reactionDiffusion: !!nodes.reactionDiffusion?.checked,
+    reactionScale: clamp(Number(nodes.reactionScale?.value || state.contourField.reactionScale || 0), 0, 1),
+  };
+  syncContourFieldControls();
+  return state.contourField;
+};
+
+const strategyPresets = {
+  custom: { label: "Custom" },
+  romanBarrel: {
+    label: "Roman barrel voussoirs",
+    vaultType: "Barrel Vault",
+    pattern: "Radial joints",
+    customPatternSource: "UV Form Grid",
+    barrelBondMode: "1",
+    strategy: { component: "voussoir", componentMode: "single", fill: "quad", rotation: "course-tangent", rotationVariation: "none", scale: "fit-to-cell", thickness: "intrados-extrados", topology: "primal", merge: "separate-blocks" },
+  },
+  keystoneCourse: {
+    label: "Keystone course",
+    vaultType: "Barrel Vault",
+    pattern: "Keystone zones",
+    customPatternSource: "UV Form Grid",
+    barrelBondMode: "5",
+    strategy: { component: "keyedVoussoir", componentMode: "zone", fill: "quad", rotation: "course-tangent", rotationVariation: "field", scale: "local-frame", thickness: "constant", topology: "primal", merge: "separate-blocks" },
+  },
+  herringboneDiagonal: {
+    label: "Herringbone / diagonal bond",
+    vaultType: "Barrel Vault",
+    pattern: "Diagonal joints",
+    customPatternSource: "UV Form Grid",
+    barrelBondMode: "3",
+    strategy: { component: "ashlar", componentMode: "family", fill: "quad", rotation: "surface-uv", rotationVariation: "alternating", scale: "global-orientation", thickness: "constant", topology: "primal", merge: "merge-visual" },
+  },
+  fanVoussoirs: {
+    label: "Fan voussoirs",
+    vaultType: "Barrel Vault",
+    pattern: "Radial joints",
+    customPatternSource: "UV Form Grid",
+    barrelBondMode: "4",
+    strategy: { component: "voussoir", componentMode: "single", fill: "fan", rotation: "compression-flow", rotationVariation: "field", scale: "local-frame", thickness: "relative-cell", topology: "primal", merge: "separate-blocks" },
+  },
+  tissueCustomComponent: {
+    label: "Panel quad component",
+    customPatternSource: panelQuadSource,
+    strategy: { component: "custom", componentMode: "single", fill: "patch", rotation: "surface-uv", rotationVariation: "none", scale: "local-frame", thickness: "constant", patchSubdivision: 4, patchSmoothing: 0, topology: "primal", dualBoundaryCleanup: true, merge: "merge-visual" },
+  },
+  ngonDual: {
+    label: "Hex/NGon dual blocks",
+    pattern: "Hex / NGon",
+    customPatternSource: "NGon Cells",
+    strategy: { component: "interlock", componentMode: "family", fill: "patch", rotation: "cell-normal", rotationVariation: "field", scale: "local-frame", thickness: "relative-cell", patchSubdivision: 6, patchSmoothing: 1, topology: "dual", dualBoundaryCleanup: true, merge: "merge-fabrication" },
+  },
+  interlockingGroin: {
+    label: "Interlocking groin blocks",
+    vaultType: "Groin Vault",
+    pattern: "Groin-line courses",
+    customPatternSource: "UV Form Grid",
+    strategy: { component: "interlock", componentMode: "zone", fill: "frame", rotation: "compression-flow", rotationVariation: "alternating", scale: "local-frame", thickness: "intrados-extrados", topology: "dual", dualBoundaryCleanup: true, merge: "separate-blocks" },
+  },
+};
+
+const applyStrategyPreset = (presetId) => {
+  const preset = strategyPresets[presetId];
+  if (!preset || presetId === "custom") return;
+  if (preset.vaultType) {
+    state.designMode = "Generated";
+    if (byId("designMode")) byId("designMode").value = "Generated";
+    state.vaultType = preset.vaultType;
+    if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+  }
+  if (preset.pattern) state.pattern = preset.pattern;
+  if (preset.customPatternSource) state.customPatternSource = preset.customPatternSource;
+  if (isPanelQuadSource(preset.customPatternSource) && state.importedTissueCells?.length) {
+    state.designMode = "Custom Import";
+    if (byId("designMode")) byId("designMode").value = "Custom Import";
+    state.vaultType = "Custom Imported Rhino Surface";
+    if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+    state.patternAppliedToModel = true;
+  }
+  if (preset.barrelBondMode) state.barrelBondMode = preset.barrelBondMode;
+  state.strategy = { ...state.strategy, ...preset.strategy };
+  state.patternAppliedToModel = true;
+  state.layers.blocks = true;
+  if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+  syncCustomPatternSourceInputs();
+  syncInputsFromState();
+  applyVaultParamRules();
+  setPipelineStatus(`Strategy preset applied: ${preset.label}.`);
+  rebuild();
 };
 
 const apply2dDrawingMode = (mode) => {
@@ -1060,19 +1973,19 @@ const parameterLabelMap = {
   span: "Span",
   rise: "Rise",
   length: "Length",
-  thickness: "Thickness",
+  thickness: "Masonry Thickness (cm)",
   archType: "Arch Type",
   taperScale: "Taper End Scale",
-  courseHeight: "Course Height",
-  targetBlockWidth: "Target Block Width",
-  courseCount: "Courses",
-  blockCount: "Blocks/Course",
-  subdivisionDensity: "Subdivision Density",
-  keystoneSize: "Keystone Size",
+  courseHeight: "Block Width (cm)",
+  targetBlockWidth: "Block Length (cm)",
+  courseCount: "Field U Divisions",
+  blockCount: "Field V Divisions",
+  subdivisionDensity: "Block Density",
+  keystoneSize: "Keystone Width",
   springingAngle: "Springing Angle",
   barrelBondMode: "Barrel Pattern Option",
   barrelOffsetSide: "Thickness Side",
-  wallThickness: "Wall Thickness",
+  wallThickness: "Wall Thickness (cm)",
   wallHeightOffset: "Wall Height Offset",
   bayRatio: "Bay Ratio",
   ribCount: "Rib Count",
@@ -1089,24 +2002,146 @@ const renderActiveVaultTools = () => {
   const params = (def?.parameters || []).map((p) => parameterLabelMap[p.key] || p.key);
   const patternsAllowed = vaultPatternAllowed[state.vaultType] || patterns;
   const process = state.stereotomyProcess;
+  const strategy = refreshStrategyDescriptor();
   const sourceLabel = state.vaultType === "Custom Imported Rhino Surface"
-    ? `Uploaded model${state.importedModelName ? `: ${state.importedModelName}` : ""}`
+    ? `Uploaded host${state.importedModelName ? `: ${state.importedModelName}` : ""}`
     : `Built-in procedural source: ${state.vaultType}`;
   const stats = state.importedModelStats
     ? `<div><b>Model Meshes:</b> ${state.importedModelStats.meshCount}; <b>Triangles:</b> ${state.importedModelStats.triangleCount}</div>`
     : "";
+  const topology = state.importedTopology
+    ? `<div><b>Topology:</b> ${state.importedTopology.boundaryEdgeCount} boundary edges; ${state.importedTopology.featureEdgeCount} feature edges; ${state.importedTopology.nonManifoldEdgeCount} non-manifold edges</div>`
+    : "";
+  const topologyMesh = state.importedTopologyMeshStats
+    ? `<div><b>Pattern Mesh:</b> ${state.importedTopologyMeshStats.faceCount} faces from ${state.importedTopologyMeshName}</div>`
+    : "";
+  const carrier = getTissueCarrierSummary();
+  const carrierStatus = `<div class="carrier-inline ${carrier.statusClass}"><b>Carrier:</b> ${carrier.title}; ${carrier.lines[0] || ""}</div>`;
   nodes.activeVaultTools.innerHTML = [
     `<div><b>Source:</b> ${sourceLabel}</div>`,
     `<div><b>Stage:</b> ${state.pipelineStage || 0} ${process.stageName}</div>`,
     `<div><b>2D Logic:</b> ${def?.construction2D || "n/a"}</div>`,
     `<div><b>3D Logic:</b> ${def?.construction3D || "n/a"}</div>`,
     stats,
+    topology,
+    topologyMesh,
+    carrierStatus,
+    `<div><b>Strategy Host:</b> ${labelStrategyValue(strategy.host)}</div>`,
+    `<div><b>Strategy Field:</b> ${labelStrategyValue(strategy.field)}</div>`,
+    `<div><b>Block Component:</b> ${labelStrategyValue(strategy.component)}; ${labelStrategyValue(strategy.componentMode)}</div>`,
+    `<div><b>Fill + Merge:</b> ${labelStrategyValue(strategy.fill)}; ${labelStrategyValue(strategy.merge)}</div>`,
+    `<div><b>Mapping:</b> ${labelStrategyValue(strategy.rotation)}; ${labelStrategyValue(strategy.rotationVariation)}; ${labelStrategyValue(strategy.scale)}; ${labelStrategyValue(strategy.thickness)}</div>`,
     `<div><b>Force Flow:</b> ${process.forceFlowDiagram}</div>`,
     `<div><b>Tessellation:</b> ${process.tessellationMethod}</div>`,
     `<div><b>Voussoir:</b> ${process.voussoirMethod}</div>`,
     `<div><b>Fabrication:</b> ${process.fabricationFocus}</div>`,
     `<div><b>Active Parameters:</b> ${params.length ? params.join(", ") : "n/a"}</div>`,
     `<div><b>Allowed Patterns:</b> ${patternsAllowed.join(", ")}</div>`,
+  ].join("");
+};
+
+const usesSourceSizeInputs = () => state.designMode !== "Custom Import" && state.vaultType !== "Custom Imported Rhino Surface";
+
+const getBaseSourceDimensions = () => {
+  const shellThickness = state.params.thickness || 0;
+  const springingHeight = getBarrelSpringingY(1);
+  return {
+    span: state.params.span || 0,
+    outsideSpan: (state.params.span || 0) + shellThickness * 2,
+    rise: state.params.rise || 0,
+    outsideHeight: springingHeight + (state.params.rise || 0) + shellThickness,
+    length: state.params.length || 0,
+    shellThickness,
+    wallThickness: state.wallThickness || shellThickness,
+    wallHeight: getBarrelWallHeight(1),
+  };
+};
+
+const getTissueCarrierSummary = () => {
+  const cells = state.importedTissueCells || [];
+  const stats = state.importedTopologyMeshStats;
+  if (!cells.length) {
+    return {
+      statusClass: state.importedSurface ? "warn" : "neutral",
+      title: state.importedSurface ? "No panel carrier mesh" : "No uploaded carrier mesh",
+      lines: state.importedSurface
+        ? ["The host is loaded, but no reusable OBJ face layout was detected for panel mapping."]
+        : ["Upload an OBJ host with quad faces to use panel-based component mapping."],
+    };
+  }
+  const counts = cells.reduce((acc, cell) => {
+    const n = cell.points?.length || 0;
+    acc[n] = (acc[n] || 0) + 1;
+    return acc;
+  }, {});
+  const total = cells.length;
+  const quads = counts[4] || 0;
+  const tris = counts[3] || 0;
+  const quadRatio = quads / Math.max(1, total);
+  const triRatio = tris / Math.max(1, total);
+  const mixed = Object.keys(counts).length > 1;
+  const statusClass = quadRatio >= 0.9 ? "ok" : triRatio >= 0.75 ? "bad" : "warn";
+  const title = statusClass === "ok"
+    ? "Panel carrier ready"
+    : statusClass === "bad"
+      ? "Triangulated carrier warning"
+      : "Mixed carrier mesh";
+  const faceText = Object.entries(counts)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([verts, count]) => `${count} ${verts}-vertex`)
+    .join(", ");
+  const lines = [
+    `${total} carrier face(s): ${faceText}.`,
+    `${quads} quad face(s), ${tris} triangle face(s).`,
+  ];
+  if (statusClass === "ok") {
+    lines.push("Good for panel-based component mapping.");
+  } else if (statusClass === "bad") {
+    lines.push("Re-export a quad mesh from Blender/Rhino; triangulated hosts cannot preserve panel patch mapping cleanly.");
+  } else if (mixed) {
+    lines.push("Mapping will work, but quad-dominant meshes give the most predictable component deformation.");
+  }
+  if (stats?.source) lines.push(`Source: ${stats.source}.`);
+  return { statusClass, title, lines };
+};
+
+const renderSourceGeometryDimensions = () => {
+  if (!nodes.sourceGeometryDimensions) return;
+  const fmtM = (value) => `${Number(value || 0).toFixed(2)} m`;
+  const scale = Math.max(0.001, Number(state.sourceTransform.scale) || 1);
+  const base = getBaseSourceDimensions();
+  const scaled = Object.fromEntries(Object.entries(base).map(([key, value]) => [key, value * scale]));
+  const importedBox = state.importedSurfaceBbox && !state.importedSurfaceBbox.isEmpty()
+    ? state.importedSurfaceBbox.getSize(new THREE.Vector3())
+    : null;
+  const carrier = getTissueCarrierSummary();
+  nodes.sourceGeometryDimensions.innerHTML = [
+    `<b>Base Geometry Dimensions</b>`,
+    `<div class="dimension-grid">`,
+    `<span>Span: <b>${fmtM(base.span)}</b></span>`,
+    `<span>Outside span: <b>${fmtM(base.outsideSpan)}</b></span>`,
+    `<span>Rise: <b>${fmtM(base.rise)}</b></span>`,
+    `<span>Outside height: <b>${fmtM(base.outsideHeight)}</b></span>`,
+    `<span>Length: <b>${fmtM(base.length)}</b></span>`,
+    `<span>Vault thickness: <b>${fmtM(base.shellThickness)}</b></span>`,
+    `<span>Wall thickness: <b>${fmtM(base.wallThickness)}</b></span>`,
+    `<span>Wall height: <b>${fmtM(base.wallHeight)}</b></span>`,
+    `</div>`,
+    `<b>With Source Scale ${scale.toFixed(3)}</b>`,
+    `<div class="dimension-grid">`,
+    `<span>Span: <b>${fmtM(scaled.span)}</b></span>`,
+    `<span>Outside span: <b>${fmtM(scaled.outsideSpan)}</b></span>`,
+    `<span>Rise: <b>${fmtM(scaled.rise)}</b></span>`,
+    `<span>Outside height: <b>${fmtM(scaled.outsideHeight)}</b></span>`,
+    `<span>Length: <b>${fmtM(scaled.length)}</b></span>`,
+    `<span>Thickness: <b>${fmtM(scaled.shellThickness)}</b></span>`,
+    `</div>`,
+    importedBox ? `<b>Uploaded Source Bounds</b>` : "",
+    importedBox ? `<div class="dimension-grid"><span>X: <b>${fmtM(importedBox.x)}</b></span><span>Y: <b>${fmtM(importedBox.z)}</b></span><span>Z: <b>${fmtM(importedBox.y)}</b></span></div>` : "",
+    `<div class="carrier-summary ${carrier.statusClass}">`,
+    `<b>${carrier.title}</b>`,
+    ...carrier.lines.map((line) => `<span>${line}</span>`),
+    `</div>`,
   ].join("");
 };
 
@@ -1314,7 +2349,7 @@ const drawingPresetConfigs = {
     projectionOperation: "Generate Panel Templates / Panneaux",
     layers: { showGuides: true, showLabels: true, showTraitLines: true, showDevelopmentLines: true, showDerivedStereotomy: true, showTrueShapePanels: true, showBlocks: true, showAnnotations: true, showTrueLength: true, showSurfaceFamilyLabel: true },
   },
-  "Fabrication Check": {
+  Fabrication: {
     mode: "Block / Voussoir Layout",
     focus: "validation",
     traitStep: "Course Divisions",
@@ -1322,7 +2357,7 @@ const drawingPresetConfigs = {
     blockStep: "Fabrication Preview",
     layers: { showGuides: true, showLabels: false, showDerivedStereotomy: true, showBlocks: true, showBlockIds: true, showBlockMetrics: true, showFabricationChecks: true, showFabricationLegend: true, showAnnotations: true, showBlockWidth: true, showJointGap: true, showSurfaceFamilyLabel: true },
   },
-  "Teaching View": {
+  Teaching: {
     mode: "Trait / Epure",
     focus: "teaching",
     traitStep: "All Trait Lines",
@@ -1334,7 +2369,24 @@ const drawingPresetConfigs = {
 const renderDrawingPresetButtons = () => {
   document.querySelectorAll("[data-drawing-preset]").forEach((button) => {
     button.classList.toggle("active", button.dataset.drawingPreset === state.drawingPreset);
+    button.setAttribute("aria-pressed", String(button.dataset.drawingPreset === state.drawingPreset));
   });
+};
+
+const renderViewportLayoutButtons = () => {
+  document.querySelectorAll("[data-view-layout]").forEach((button) => {
+    const isActive = button.dataset.viewLayout === state.viewportLayout;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+};
+
+const applyViewportLayout = (layout = state.viewportLayout) => {
+  state.viewportLayout = ["2d", "split", "3d"].includes(layout) ? layout : "split";
+  document.body.classList.toggle("view-2d-only", state.viewportLayout === "2d");
+  document.body.classList.toggle("view-3d-only", state.viewportLayout === "3d");
+  renderViewportLayoutButtons();
+  requestAnimationFrame(resize);
 };
 
 const applyDrawingPreset = (name) => {
@@ -1360,8 +2412,12 @@ const applyDrawingPreset = (name) => {
 const renderCurrentTraitState = () => {
   if (!nodes.currentTraitState) return;
   const focus = state.activeTraitFocus && state.activeTraitFocus !== "all" ? ` | ${state.activeTraitFocus}` : "";
-  nodes.currentTraitState.textContent = `${state.vaultType} | ${state.surfacePrinciple} | ${state.view2dOptions.mode} | ${state.jointPrinciple} | ${state.drawingPreset}${focus}`;
+  const view = strategyViewLabels[state.strategyViewMode] || "UV / Layout";
+  const drawingLabel = state.strategyViewMode === "uv-layout" ? "Block / Voussoir Layout" : state.drawingPreset;
+  nodes.currentTraitState.textContent = `${view} | ${state.vaultType} | ${state.surfacePrinciple} | ${state.jointPrinciple} | ${drawingLabel}${focus}`;
 };
+
+const isTeachingDrawingPreset = () => state.drawingPreset === "Teaching" || state.drawingPreset === "Teaching View";
 
 const renderTraitFocusControls = () => {
   document.querySelectorAll(".control-focus").forEach((el) => el.classList.remove("control-focus"));
@@ -1534,10 +2590,11 @@ const linkRangeAndNumber = (rangeId, numberId, onInput) => {
   const n = byId(numberId);
   if (!r || !n) return;
   const apply = (v, fromRange = false) => {
+    if (String(v).trim() === "") return;
     const num = Number(v);
     if (!Number.isFinite(num)) return;
     r.value = String(num);
-    n.value = String(num);
+    if (fromRange) n.value = String(num);
     if (onInput) onInput(num);
     else if (fromRange) n.dispatchEvent(new Event("input", { bubbles: true }));
   };
@@ -1545,10 +2602,73 @@ const linkRangeAndNumber = (rangeId, numberId, onInput) => {
   n.addEventListener("input", (e) => apply(e.target.value, false));
 };
 
-const syncInputPair = (id, value) => {
-  if (byId(id)) byId(id).value = String(value);
-  if (byId(`${id}Num`)) byId(`${id}Num`).value = String(value);
+const setInputValue = (el, value, { force = false } = {}) => {
+  if (!el) return;
+  if (!force && document.activeElement === el) return;
+  el.value = String(value);
 };
+
+const syncInputPair = (id, value) => {
+  setInputValue(byId(id), value);
+  setInputValue(byId(`${id}Num`), value);
+};
+
+const metersToCmInput = (value) => String(Number((value * 100).toFixed(2)));
+const cmInputToMeters = (value) => Number(value) / 100;
+const syncCmInputPair = (id, meters) => syncInputPair(id, metersToCmInput(meters));
+const syncCmInput = (id, meters) => {
+  setInputValue(byId(id), metersToCmInput(meters));
+};
+
+const syncCustomPatternSourceInputs = () => {
+  if (state.customPatternSource === legacyPanelQuadSource) state.customPatternSource = panelQuadSource;
+  setInputValue(nodes.customPatternSource, state.customPatternSource, { force: true });
+  setInputValue(nodes.workflowPatternSource, state.customPatternSource, { force: true });
+};
+
+const setCustomPatternSource = (value, { shouldRebuild = true } = {}) => {
+  state.customPatternSource = value === legacyPanelQuadSource ? panelQuadSource : value;
+  syncCustomPatternSourceInputs();
+  ensureImportedFreeformApplied();
+  if (["Freeform Courses", "NGon Cells", "NGon Adaptive"].includes(state.customPatternSource)) {
+    updateFreeformCountsFromBlockDimensions();
+  }
+  if (shouldRebuild) rebuild();
+};
+
+const activateNgonPatternSource = () => {
+  if (
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    state.importedSurface &&
+    !["NGon Cells", "NGon Adaptive"].includes(state.customPatternSource)
+  ) {
+    state.customPatternSource = "NGon Cells";
+    syncCustomPatternSourceInputs();
+  }
+  ensureImportedFreeformApplied();
+};
+
+const linkCmRangeAndNumber = (rangeId, numberId, onInput) => linkRangeAndNumber(rangeId, numberId, (valueCm) => {
+  const meters = cmInputToMeters(valueCm);
+  if (onInput) onInput(meters, valueCm);
+});
+const linkCmNumber = (id, onInput) => {
+  const el = byId(id);
+  if (!el) return;
+  el.addEventListener("input", (e) => {
+    if (String(e.target.value).trim() === "") return;
+    const valueCm = Number(e.target.value);
+    if (!Number.isFinite(valueCm)) return;
+    if (onInput) onInput(cmInputToMeters(valueCm), valueCm);
+  });
+};
+
+document.addEventListener("focusout", (e) => {
+  if (e.target instanceof HTMLInputElement && e.target.type === "number") {
+    syncInputsFromState();
+  }
+});
 
 const syncTransformToolbar = () => {
   document.querySelectorAll("[data-transform-tool]").forEach((button) => {
@@ -1672,8 +2792,8 @@ const runPipelineStage = (stage) => {
     if (byId("structuralDirection")) byId("structuralDirection").value = state.structuralDirection;
     state.forceLmin = Math.max(0.12, state.forceLmin);
     state.forceLmax = Math.max(state.forceLmin + 0.25, state.forceLmax);
-    if (byId("forceLmin")) byId("forceLmin").value = state.forceLmin.toFixed(2);
-    if (byId("forceLmax")) byId("forceLmax").value = state.forceLmax.toFixed(2);
+    setInputValue(byId("forceLmin"), state.forceLmin.toFixed(2));
+    setInputValue(byId("forceLmax"), state.forceLmax.toFixed(2));
   }
   if (stage === 3) {
     state.pattern = vaultPatternPreset[state.vaultType] || state.pattern;
@@ -1719,6 +2839,26 @@ const runSolidToStereotomicWorkflow = () => {
   rebuild();
 };
 
+const renderVaultDesigner = () => {
+  const def = vaultLibrary[state.vaultType];
+  if (!def) return;
+  const selector = byId("vaultDesignerType");
+  if (selector) selector.value = state.vaultType;
+  const definition = byId("vaultDesignerDefinition");
+  if (definition) {
+    definition.innerHTML = `<b>${def.name}</b><span>${def.construction2D || "Construction logic is generated from the active vault profile."}</span>`;
+  }
+  const status = byId("vaultDesignerStatus");
+  if (status) status.textContent = state.vaultDesignerPreview ? "Surface ready" : "Handed off";
+  const handoff = byId("vaultDesignerHandoff");
+  if (handoff) handoff.textContent = state.vaultDesignerPreview
+    ? "No blocks generated. The active vault surface is ready for downstream block design."
+    : "Vault surface handed to Block Designer. Block generation remains an explicit downstream action.";
+  document.querySelectorAll("[data-vault-stage]").forEach((step) => {
+    step.classList.toggle("active", Number(step.dataset.vaultStage) <= 4);
+  });
+};
+
 const runVaultSelectionPipeline = (vaultType) => {
   const def = vaultLibrary[vaultType];
   if (!def) return;
@@ -1729,6 +2869,9 @@ const runVaultSelectionPipeline = (vaultType) => {
   state.structuralDirection = def.forceFlowType || state.structuralDirection;
   state.pattern = def.stereotomyType || state.pattern;
   state.patternAppliedToModel = false;
+  state.vaultDesignerPreview = true;
+  state.blocksGeneratedFromTrait = false;
+  state.view2dOptions.showBlocks = false;
   state.selectedBlockId = null;
   if (state.vaultType !== "Custom Imported Rhino Surface") {
     state.designMode = "Generated";
@@ -1736,7 +2879,11 @@ const runVaultSelectionPipeline = (vaultType) => {
   } else {
     state.designMode = "Custom Import";
     if (byId("designMode")) byId("designMode").value = "Custom Import";
-    state.customPatternSource = state.imported2DPolys?.length ? "Imported 2D Layout" : "UV Form Grid";
+    state.customPatternSource = state.imported2DPolys?.length
+      ? "Imported 2D Layout"
+      : state.importedTissueCells?.length
+        ? panelQuadSource
+        : "UV Form Grid";
     if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
   }
   if (byId("subdivision")) byId("subdivision").value = state.pattern;
@@ -1750,6 +2897,7 @@ const runVaultSelectionPipeline = (vaultType) => {
     ? "Uploaded model source active. Import a 3D model or apply a stereotomy strategy to the current source mesh."
     : `Loaded ${def.name}: 2D construction, 3D geometry, force flow, and default stereotomy ready.`);
   rebuild();
+  renderVaultDesigner();
 };
 
 const runChecksAndAssemblyPreview = () => {
@@ -1772,7 +2920,7 @@ const renderer = new THREE.WebGLRenderer({ canvas: byId("viewport"), antialias: 
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.18;
 renderer.physicallyCorrectLights = true;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1787,21 +2935,44 @@ controls.minDistance = 0.05;
 controls.maxDistance = 10000;
 controls.screenSpacePanning = true;
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.addEventListener("start", () => { state.userDefinedCamera = true; });
 renderer.domElement.style.touchAction = "none";
-const ambient = new THREE.AmbientLight(0xffffff, 0.58);
+const ambient = new THREE.AmbientLight(0xffffff, 0.44);
 scene.add(ambient);
-const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x141b28, 0.4);
+const hemi = new THREE.HemisphereLight(0xf2f7ff, 0x28313c, 0.62);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xb6d9ff, 1.18);
-const fill = new THREE.DirectionalLight(0x9cc7ff, 0.45);
-const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+const key = new THREE.DirectionalLight(0xfff8ed, 2.25);
+const fill = new THREE.DirectionalLight(0xbddcff, 0.72);
+const rim = new THREE.DirectionalLight(0xffffff, 1.1);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 1;
+key.shadow.camera.far = 160;
+key.shadow.camera.left = -55;
+key.shadow.camera.right = 55;
+key.shadow.camera.top = 55;
+key.shadow.camera.bottom = -55;
+key.shadow.bias = -0.0002;
 scene.add(key);
 scene.add(fill);
 scene.add(rim);
+const softbox = new THREE.DirectionalLight(0xffffff, 0.95);
+softbox.position.set(-18, 30, 18);
+scene.add(softbox);
 const gridHelper = new THREE.GridHelper(240, 120, 0x3e5f7d, 0x203342);
 const axesHelper = new THREE.AxesHelper(6);
+axesHelper.visible = false;
 scene.add(gridHelper);
 scene.add(axesHelper);
+const shadowPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(260, 260),
+  new THREE.ShadowMaterial({ color: 0x07101a, opacity: 0.22, transparent: true })
+);
+shadowPlane.name = "soft-contact-shadow-plane";
+shadowPlane.rotation.x = -Math.PI / 2;
+shadowPlane.position.y = -0.045;
+shadowPlane.receiveShadow = true;
+scene.add(shadowPlane);
 const bboxHelpersGroup = new THREE.Group();
 const originAxesGroup = new THREE.Group();
 const lightRigHelpers = new THREE.Group();
@@ -1816,23 +2987,25 @@ scene.add(originAxesGroup);
 const applyLightingPreset = (preset) => {
   state.lightingPreset = preset;
   if (preset === "Rhino Studio") {
-    scene.background = new THREE.Color(0x283444);
-    scene.fog = new THREE.FogExp2(0x202b38, 0.0085);
-    ambient.intensity = 0.68;
-    renderer.toneMappingExposure = 1.24;
-    hemi.color.set(0xe4efff); hemi.groundColor.set(0x18202b); hemi.intensity = 0.34;
-    key.color.set(0xffffff); key.intensity = 1.35; key.position.set(24, 26, 16);
-    fill.color.set(0xd6e6ff); fill.intensity = 0.58; fill.position.set(-18, 13, 12);
-    rim.color.set(0xf9fbff); rim.intensity = 0.56; rim.position.set(-2, 20, -28);
+    scene.background = new THREE.Color(0x334153);
+    scene.fog = new THREE.FogExp2(0x2b3747, 0.0065);
+    ambient.intensity = 0.42;
+    renderer.toneMappingExposure = 1.36;
+    hemi.color.set(0xf4f8ff); hemi.groundColor.set(0x2a3440); hemi.intensity = 0.66;
+    key.color.set(0xfff7ea); key.intensity = 2.35; key.position.set(28, 34, 20);
+    fill.color.set(0xc4ddff); fill.intensity = 0.74; fill.position.set(-22, 14, 18);
+    rim.color.set(0xffffff); rim.intensity = 1.18; rim.position.set(-4, 22, -30);
+    softbox.color.set(0xffffff); softbox.intensity = 1.05; softbox.position.set(-18, 32, 18);
   } else if (preset === "Studio Soft") {
-    scene.background = new THREE.Color(0x243041);
-    scene.fog = new THREE.FogExp2(0x1b2634, 0.01);
-    ambient.intensity = 0.62;
-    renderer.toneMappingExposure = 1.18;
-    hemi.color.set(0xcfe6ff); hemi.groundColor.set(0x121822); hemi.intensity = 0.45;
-    key.color.set(0xbfe0ff); key.intensity = 1.05; key.position.set(18, 28, 12);
-    fill.color.set(0x9ec8ff); fill.intensity = 0.48; fill.position.set(-16, 13, 18);
-    rim.color.set(0xffffff); rim.intensity = 0.30; rim.position.set(0, 10, -24);
+    scene.background = new THREE.Color(0x303c4d);
+    scene.fog = new THREE.FogExp2(0x273242, 0.008);
+    ambient.intensity = 0.48;
+    renderer.toneMappingExposure = 1.28;
+    hemi.color.set(0xe6f1ff); hemi.groundColor.set(0x202936); hemi.intensity = 0.58;
+    key.color.set(0xfffbf2); key.intensity = 1.65; key.position.set(18, 30, 14);
+    fill.color.set(0xb7d7ff); fill.intensity = 0.72; fill.position.set(-18, 13, 18);
+    rim.color.set(0xffffff); rim.intensity = 0.72; rim.position.set(0, 16, -26);
+    softbox.color.set(0xffffff); softbox.intensity = 0.86; softbox.position.set(-16, 30, 16);
   } else if (preset === "Three-Point") {
     scene.background = new THREE.Color(0x273243);
     scene.fog = new THREE.FogExp2(0x1f2a39, 0.009);
@@ -1842,6 +3015,7 @@ const applyLightingPreset = (preset) => {
     key.color.set(0xffffff); key.intensity = 1.25; key.position.set(22, 24, 16);
     fill.color.set(0xaed3ff); fill.intensity = 0.62; fill.position.set(-22, 10, 6);
     rim.color.set(0xffffff); rim.intensity = 0.68; rim.position.set(0, 20, -26);
+    softbox.color.set(0xffffff); softbox.intensity = 0.62; softbox.position.set(-18, 28, 14);
   } else if (preset === "Clay Neutral") {
     scene.background = new THREE.Color(0x1a1a1a);
     scene.fog = new THREE.FogExp2(0x161616, 0.018);
@@ -1851,6 +3025,7 @@ const applyLightingPreset = (preset) => {
     key.color.set(0xffffff); key.intensity = 1.10; key.position.set(16, 24, 14);
     fill.color.set(0xffffff); fill.intensity = 0.35; fill.position.set(-12, 10, 8);
     rim.color.set(0xf2f2f2); rim.intensity = 0.25; rim.position.set(6, 14, -20);
+    softbox.color.set(0xffffff); softbox.intensity = 0.55; softbox.position.set(-14, 26, 14);
   } else if (preset === "Overcast Daylight") {
     scene.background = new THREE.Color(0xaeb9c7);
     scene.fog = new THREE.FogExp2(0xaab6c4, 0.012);
@@ -1860,6 +3035,7 @@ const applyLightingPreset = (preset) => {
     key.color.set(0xf5f8ff); key.intensity = 0.62; key.position.set(12, 30, 10);
     fill.color.set(0xe4ecff); fill.intensity = 0.52; fill.position.set(-14, 18, 12);
     rim.color.set(0xdde8ff); rim.intensity = 0.2; rim.position.set(0, 12, -18);
+    softbox.color.set(0xffffff); softbox.intensity = 0.7; softbox.position.set(-18, 34, 12);
   } else if (preset === "Sunset Rim") {
     scene.background = new THREE.Color(0x241820);
     scene.fog = new THREE.FogExp2(0x1f1620, 0.02);
@@ -1869,6 +3045,7 @@ const applyLightingPreset = (preset) => {
     key.color.set(0xffb37a); key.intensity = 0.95; key.position.set(-18, 16, 16);
     fill.color.set(0xa6b9ff); fill.intensity = 0.42; fill.position.set(18, 8, 6);
     rim.color.set(0xffd0b0); rim.intensity = 0.9; rim.position.set(0, 12, -28);
+    softbox.color.set(0xffdcc8); softbox.intensity = 0.48; softbox.position.set(-20, 22, 18);
   }
   lightRigHelpers.visible = !!state.display.latticeControls;
 };
@@ -1876,6 +3053,8 @@ const applyLightingPreset = (preset) => {
 const blockGroup = new THREE.Group();
 const solidVaultGroup = new THREE.Group();
 const supportWallGroup = new THREE.Group();
+const scaffoldGroup = new THREE.Group();
+const topologyLatticeGroup = new THREE.Group();
 const importedSurfaceGroup = new THREE.Group();
 const copiedGeometryGroup = new THREE.Group();
 const sectionGizmoGroup = new THREE.Group();
@@ -1883,10 +3062,56 @@ const sectionActiveGizmoGroup = new THREE.Group();
 scene.add(blockGroup);
 scene.add(solidVaultGroup);
 scene.add(supportWallGroup);
+scene.add(scaffoldGroup);
+scene.add(topologyLatticeGroup);
 scene.add(importedSurfaceGroup);
 scene.add(copiedGeometryGroup);
 scene.add(sectionGizmoGroup);
 scene.add(sectionActiveGizmoGroup);
+
+const blockPreviewScene = new THREE.Scene();
+blockPreviewScene.background = new THREE.Color(0x111927);
+const blockPreviewCamera = new THREE.PerspectiveCamera(45, 1, 0.05, 500);
+blockPreviewCamera.position.set(4, 3, 5);
+const blockPreviewRenderer = nodes.blockPreview
+  ? new THREE.WebGLRenderer({ canvas: nodes.blockPreview, antialias: true, alpha: true })
+  : null;
+if (blockPreviewRenderer) {
+  blockPreviewRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+  blockPreviewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  blockPreviewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  blockPreviewRenderer.toneMappingExposure = 1.18;
+}
+const blockPreviewControls = blockPreviewRenderer ? new OrbitControls(blockPreviewCamera, blockPreviewRenderer.domElement) : null;
+if (blockPreviewControls) {
+  blockPreviewControls.enableDamping = true;
+  blockPreviewControls.enablePan = false;
+  blockPreviewControls.enableZoom = true;
+  blockPreviewControls.minDistance = 0.2;
+  blockPreviewControls.maxDistance = 80;
+}
+const blockPreviewGroup = new THREE.Group();
+blockPreviewScene.add(new THREE.AmbientLight(0xffffff, 0.74));
+const blockPreviewKey = new THREE.DirectionalLight(0xffffff, 1.2);
+blockPreviewKey.position.set(5, 7, 4);
+blockPreviewScene.add(blockPreviewKey);
+const blockPreviewFill = new THREE.DirectionalLight(0xc9ddff, 0.42);
+blockPreviewFill.position.set(-4, 2, -3);
+blockPreviewScene.add(blockPreviewFill);
+blockPreviewScene.add(blockPreviewGroup);
+
+// Independent Block Designer viewport: a real three-dimensional pair editor.
+const bdModelCanvas = byId("bdModelCanvas");
+const bdModelRenderer = bdModelCanvas ? new THREE.WebGLRenderer({ canvas: bdModelCanvas, antialias: true, alpha: true }) : null;
+const bdModelScene = new THREE.Scene();
+const bdModelCamera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
+const bdModelGroup = new THREE.Group();
+bdModelScene.add(new THREE.HemisphereLight(0xf2f3eb, 0x647067, 2.1));
+const bdModelKey = new THREE.DirectionalLight(0xffffff, 2.6); bdModelKey.position.set(4, 6, 5); bdModelScene.add(bdModelKey);
+const bdModelRim = new THREE.DirectionalLight(0x9bac96, 1.05); bdModelRim.position.set(-5, 2, -4); bdModelScene.add(bdModelRim, bdModelGroup);
+const bdModelControls = bdModelRenderer ? new OrbitControls(bdModelCamera, bdModelRenderer.domElement) : null;
+if (bdModelRenderer) { bdModelRenderer.setPixelRatio(1); bdModelRenderer.outputColorSpace = THREE.SRGBColorSpace; bdModelRenderer.toneMapping = THREE.ACESFilmicToneMapping; }
+if (bdModelControls) { bdModelControls.enableDamping = false; bdModelControls.enablePan = true; bdModelControls.rotateSpeed = 1.18; bdModelControls.minDistance = .4; bdModelControls.maxDistance = 30; bdModelControls.addEventListener("start", () => { state.blockDesigner.userCamera = true; }); }
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -1895,6 +3120,15 @@ const sectionDragPoint = new THREE.Vector3();
 const objLoader = new OBJLoader();
 const stlLoader = new STLLoader();
 const gltfLoader = new GLTFLoader();
+const rhinoLoader = new Rhino3dmLoader();
+rhinoLoader.setLibraryPath("/rhino3dm/");
+let rhinoModulePromise = null;
+const getRhinoModule = () => {
+  if (!rhinoModulePromise) {
+    rhinoModulePromise = rhino3dmFactory({ locateFile: (path) => `/rhino3dm/${path}` });
+  }
+  return rhinoModulePromise;
+};
 
 const precedentDb = {
   "Barrel Vault": {
@@ -2305,30 +3539,39 @@ const makeTextSprite = (text, color = "#ffe2a0") => {
   return sp;
 };
 
+const makePreviewTextSprite = (text, color = "#ffe2a0") => {
+  const sprite = makeTextSprite(text, color);
+  if (!sprite) return null;
+  sprite.scale.set(1.15, 0.3, 1);
+  sprite.renderOrder = 9000;
+  return sprite;
+};
+
 const buildOriginAxes3d = () => {
   clearGroup(originAxesGroup);
   const origin = new THREE.Vector3(0, 0, 0);
-  const axisLen = 8;
-  const headLen = 0.7;
-  const headWidth = 0.34;
+  const axisLen = 2.8;
+  const headLen = 0.28;
+  const headWidth = 0.14;
   [
     { label: "X", dir: new THREE.Vector3(1, 0, 0), color: 0xff5a4f, text: "#ff8f8f" },
-    { label: "Y", dir: new THREE.Vector3(0, 1, 0), color: 0x56e56a, text: "#a7ffad" },
-    { label: "Z", dir: new THREE.Vector3(0, 0, 1), color: 0x4a79ff, text: "#9bb7ff" },
+    { label: "Y", dir: new THREE.Vector3(0, 0, 1), color: 0x4a79ff, text: "#9bb7ff" },
+    { label: "Z", dir: new THREE.Vector3(0, 1, 0), color: 0x56e56a, text: "#a7ffad" },
   ].forEach(({ label, dir, color, text }) => {
     const arrow = new THREE.ArrowHelper(dir, origin, axisLen, color, headLen, headWidth);
     arrow.name = `origin-axis-${label.toLowerCase()}`;
     originAxesGroup.add(arrow);
     const sprite = makeTextSprite(label, text);
     if (sprite) {
-      sprite.position.copy(dir.clone().multiplyScalar(axisLen + 0.85));
+      sprite.position.copy(dir.clone().multiplyScalar(axisLen + 0.32));
+      sprite.scale.set(0.82, 0.22, 1);
       sprite.name = `origin-axis-label-${label.toLowerCase()}`;
       sprite.renderOrder = 9000;
       originAxesGroup.add(sprite);
     }
   });
   const originMarker = new THREE.Mesh(
-    new THREE.SphereGeometry(0.18, 18, 18),
+    new THREE.SphereGeometry(0.07, 14, 14),
     new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false })
   );
   originMarker.name = "world-origin-marker";
@@ -2336,8 +3579,8 @@ const buildOriginAxes3d = () => {
   originAxesGroup.add(originMarker);
   const originLabel = makeTextSprite("Origin", "#ffffff");
   if (originLabel) {
-    originLabel.position.set(0.8, 0.55, 0.8);
-    originLabel.scale.set(3.0, 0.62, 1);
+    originLabel.position.set(0.32, 0.24, 0.32);
+    originLabel.scale.set(1.25, 0.28, 1);
     originLabel.renderOrder = 9000;
     originAxesGroup.add(originLabel);
   }
@@ -2567,8 +3810,14 @@ const vaultEvaluators = {
 const clearGroup = (group) => {
   while (group.children.length) {
     const child = group.children.pop();
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) child.material.dispose();
+    child.traverse?.((obj) => {
+      if (obj.geometry) {
+        obj.geometry.disposeBoundsTree?.();
+        obj.geometry.dispose();
+      }
+      if (Array.isArray(obj.material)) obj.material.forEach((mat) => mat.dispose?.());
+      else if (obj.material) obj.material.dispose();
+    });
     if (child.parent) child.parent.remove(child);
   }
 };
@@ -2791,64 +4040,1817 @@ const getVaultPoint = (u, v) => {
     state.vaultType === "Custom Imported Rhino Surface" &&
     state.importedSurface;
   if (useImportedSurface) {
+    const hit = getImportedSurfaceHit(u, v);
+    if (hit) return hit.point.clone();
     const bbox = state.importedSurfaceBbox;
     if (!bbox) return barrelVaultPoint(u, v);
     const x = THREE.MathUtils.lerp(bbox.min.x, bbox.max.x, u);
     const z = THREE.MathUtils.lerp(bbox.min.z, bbox.max.z, v);
-    const origin = new THREE.Vector3(x, bbox.max.y + 5, z);
-    const dir = new THREE.Vector3(0, -1, 0);
-    raycaster.set(origin, dir);
-    const hit = raycaster.intersectObject(state.importedSurface, true)[0];
-    if (hit) return hit.point.clone();
     return new THREE.Vector3(x, bbox.max.y, z);
   }
   return (vaultEvaluators[state.vaultType] || barrelVaultPoint)(u, v);
 };
 
-const generatePatternBlocks = () => {
-  const physicalJoint = state.jointMode === "Physical cut";
-  const conforming2D = true;
-  if (state.designMode === "Custom Import") {
-    if (state.customPatternSource === "Imported 2D Layout" && state.imported2DPolys?.length) {
-      return state.imported2DPolys.map((poly, i) => {
-        const transformed = poly.map(applyAlign);
-        const quad = transformed.length >= 4 ? [transformed[0], transformed[1], transformed[2], transformed[3]] : null;
-        if (!quad) return null;
-        return { id: `I-${i + 1}`, uv: quad };
-      }).filter(Boolean);
-    }
+const rhinoPointToVector3 = (point) => {
+  if (!point) return null;
+  if (Array.isArray(point)) return new THREE.Vector3(point[0] || 0, point[1] || 0, point[2] || 0);
+  return new THREE.Vector3(point.x || point[0] || 0, point.y || point[1] || 0, point.z || point[2] || 0);
+};
 
-    const rows = Math.max(2, Math.floor(state.params.courseCount * state.params.subdivisionDensity));
-    const cols = Math.max(2, Math.floor(state.params.blockCount * state.params.subdivisionDensity));
-    const out = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        let u0 = c / cols;
-        let u1 = (c + 1) / cols;
-        let v0 = r / rows;
-        let v1 = (r + 1) / rows;
-        if (state.customPatternSource === "NGon Adaptive") {
-          const cu = (u0 + u1) * 0.5;
-          const cv = (v0 + v1) * 0.5;
-          const warp = 0.05 * Math.sin(cu * Math.PI * 8) * Math.cos(cv * Math.PI * 8);
-          u0 += warp * 0.5;
-          u1 -= warp * 0.5;
-          v0 += warp * 0.3;
-          v1 -= warp * 0.3;
+const rhinoDomain = (surface, dir) => {
+  try {
+    const d = surface?.domain?.(dir);
+    if (Array.isArray(d)) return [Number(d[0]), Number(d[1])];
+    if (d && Number.isFinite(d.t0) && Number.isFinite(d.t1)) return [d.t0, d.t1];
+  } catch {}
+  return [0, 1];
+};
+
+const getImportedRhinoFaceAtUv = (u, v) => {
+  const faces = state.importedRhinoBrepFaces || [];
+  if (!faces.length) return null;
+  const cu = clamp(u, 0, 1);
+  const face = faces.find((item) => (
+    cu >= item.patch.domain.u0 - 1e-7 &&
+    cu <= item.patch.domain.u1 + 1e-7 &&
+    v >= item.patch.domain.v0 - 1e-7 &&
+    v <= item.patch.domain.v1 + 1e-7
+  )) || faces[Math.min(faces.length - 1, Math.floor(cu * faces.length))];
+  if (!face?.surface) return null;
+  const { domain, rhinoDomain: rd } = face.patch;
+  const localU = clamp((cu - domain.u0) / Math.max(1e-9, domain.u1 - domain.u0), 0, 1);
+  const localV = clamp((clamp(v, 0, 1) - domain.v0) / Math.max(1e-9, domain.v1 - domain.v0), 0, 1);
+  return {
+    face,
+    u: THREE.MathUtils.lerp(rd.u0, rd.u1, localU),
+    v: THREE.MathUtils.lerp(rd.v0, rd.v1, localV),
+  };
+};
+
+const getImportedRhinoSurfaceSample = (u, v) => {
+  const ref = getImportedRhinoFaceAtUv(u, v);
+  if (!ref) return null;
+  let point;
+  let normal;
+  try {
+    point = rhinoPointToVector3(ref.face.surface.pointAt(ref.u, ref.v));
+    normal = rhinoPointToVector3(ref.face.surface.normalAt(ref.u, ref.v));
+  } catch (err) {
+    console.warn("Rhino surface sample failed", err);
+    return null;
+  }
+  if (!point || !normal) return null;
+  state.importedSurface?.updateMatrixWorld(true);
+  point.applyMatrix4(state.importedSurface?.matrixWorld || new THREE.Matrix4());
+  normal.transformDirection(state.importedSurface?.matrixWorld || new THREE.Matrix4()).normalize();
+  if (ref.face.reversed) normal.multiplyScalar(-1);
+  if (normal.y < 0) normal.multiplyScalar(-1);
+  if (normal.lengthSq() < 1e-8) normal.set(0, 1, 0);
+  return { point, normal, source: "rhino-brep" };
+};
+
+const getImportedSurfaceHit = (u, v) => {
+  const bbox = state.importedSurfaceBbox;
+  if (!state.importedSurface || !bbox || bbox.isEmpty()) return null;
+  const size = bbox.getSize(new THREE.Vector3());
+  const x = THREE.MathUtils.lerp(bbox.min.x, bbox.max.x, clamp(u, 0, 1));
+  const z = THREE.MathUtils.lerp(bbox.min.z, bbox.max.z, clamp(v, 0, 1));
+  const origin = new THREE.Vector3(x, bbox.max.y + Math.max(5, size.y * 0.25), z);
+  raycaster.set(origin, new THREE.Vector3(0, -1, 0));
+  return raycaster.intersectObject(state.importedSurface, true)[0] || null;
+};
+
+const getImportedSurfaceSample = (u, v) => {
+  const rhinoSample = getImportedRhinoSurfaceSample(u, v);
+  if (rhinoSample) return rhinoSample;
+  const hit = getImportedSurfaceHit(u, v);
+  if (!hit) return null;
+  const normal = hit.face?.normal
+    ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize()
+    : new THREE.Vector3(0, 1, 0);
+  if (normal.y < 0) normal.multiplyScalar(-1);
+  if (normal.lengthSq() < 1e-8) normal.set(0, 1, 0);
+  return { point: hit.point.clone(), normal };
+};
+
+const getImportedSurfaceSampleNear = (u, v, centerU = 0.5, centerV = 0.5) => {
+  const direct = getImportedSurfaceSample(u, v);
+  if (direct) return direct;
+  if (!getImportedSurfaceSample(centerU, centerV)) return null;
+  let lo = 0;
+  let hi = 1;
+  let best = null;
+  for (let i = 0; i < 8; i++) {
+    const t = (lo + hi) * 0.5;
+    const sample = getImportedSurfaceSample(
+      THREE.MathUtils.lerp(centerU, u, t),
+      THREE.MathUtils.lerp(centerV, v, t)
+    );
+    if (sample) {
+      best = sample;
+      lo = t;
+    } else {
+      hi = t;
+    }
+  }
+  return best;
+};
+
+const estimateBarrelArchLength = (samples = 160) => {
+  let length = 0;
+  let prev = getVaultPoint(0, 0.5);
+  for (let i = 1; i <= samples; i++) {
+    const p = getVaultPoint(i / samples, 0.5);
+    length += p.distanceTo(prev);
+    prev = p;
+  }
+  return length;
+};
+
+const buildBarrelArchUBreaks = (courseCount) => {
+  const samples = 240;
+  const points = [];
+  const cumulative = [0];
+  let total = 0;
+  for (let i = 0; i <= samples; i++) {
+    const u = i / samples;
+    const p = getVaultPoint(u, 0.5);
+    points.push({ u, p });
+    if (i > 0) {
+      total += p.distanceTo(points[i - 1].p);
+      cumulative.push(total);
+    }
+  }
+  const breaks = [];
+  for (let c = 0; c <= courseCount; c++) {
+    const target = (total * c) / courseCount;
+    let i = 1;
+    while (i < cumulative.length && cumulative[i] < target) i += 1;
+    const prevLen = cumulative[i - 1] ?? 0;
+    const nextLen = cumulative[i] ?? total;
+    const t = clamp((target - prevLen) / Math.max(1e-9, nextLen - prevLen), 0, 1);
+    const u = THREE.MathUtils.lerp(points[Math.max(0, i - 1)].u, points[Math.min(points.length - 1, i)].u, t);
+    breaks.push(clamp(u, 0, 1));
+  }
+  return breaks;
+};
+
+const sampleBarrelArchLengthMap = (samples = 320) => {
+  const points = [];
+  const cumulative = [0];
+  let total = 0;
+  for (let i = 0; i <= samples; i++) {
+    const u = i / samples;
+    const p = getVaultPoint(u, 0.5);
+    points.push({ u, p });
+    if (i > 0) {
+      total += p.distanceTo(points[i - 1].p);
+      cumulative.push(total);
+    }
+  }
+  const uAtLength = (target) => {
+    let i = 1;
+    const bounded = clamp(target, 0, total);
+    while (i < cumulative.length && cumulative[i] < bounded) i += 1;
+    const prevLen = cumulative[i - 1] ?? 0;
+    const nextLen = cumulative[i] ?? total;
+    const t = clamp((bounded - prevLen) / Math.max(1e-9, nextLen - prevLen), 0, 1);
+    return clamp(THREE.MathUtils.lerp(points[Math.max(0, i - 1)].u, points[Math.min(points.length - 1, i)].u, t), 0, 1);
+  };
+  return { total, uAtLength };
+};
+
+const buildStoneKeystoneArchUBreaks = (courseCount) => {
+  const samples = 320;
+  const points = [];
+  const cumulative = [0];
+  let total = 0;
+  for (let i = 0; i <= samples; i++) {
+    const u = i / samples;
+    const p = getVaultPoint(u, 0.5);
+    points.push({ u, p });
+    if (i > 0) {
+      total += p.distanceTo(points[i - 1].p);
+      cumulative.push(total);
+    }
+  }
+  const uAtLength = (target) => {
+    let i = 1;
+    while (i < cumulative.length && cumulative[i] < target) i += 1;
+    const prevLen = cumulative[i - 1] ?? 0;
+    const nextLen = cumulative[i] ?? total;
+    const t = clamp((target - prevLen) / Math.max(1e-9, nextLen - prevLen), 0, 1);
+    return clamp(THREE.MathUtils.lerp(points[Math.max(0, i - 1)].u, points[Math.min(points.length - 1, i)].u, t), 0, 1);
+  };
+  const sideCourses = Math.max(1, Math.floor((courseCount - 1) / 2));
+  const baseCourseLen = total / courseCount;
+  const keyFactor = THREE.MathUtils.lerp(1.25, 2.35, clamp(state.params.keystoneSize || 0.45, 0, 1));
+  const keystoneLen = clamp(baseCourseLen * keyFactor, baseCourseLen * 1.05, total * 0.18);
+  const sideLen = Math.max(baseCourseLen, (total - keystoneLen) * 0.5);
+  const sideStep = sideLen / sideCourses;
+  const targets = [0];
+  for (let i = 1; i <= sideCourses; i++) targets.push(i * sideStep);
+  targets.push(total - sideLen);
+  for (let i = 1; i <= sideCourses; i++) targets.push(total - sideLen + i * sideStep);
+  targets[0] = 0;
+  targets[targets.length - 1] = total;
+  return targets.map(uAtLength);
+};
+
+const buildAppliedBarrelArchUBreaks = (courseHeight, stoneKeystoneMode) => {
+  const { total, uAtLength } = sampleBarrelArchLengthMap();
+  const step = clamp(courseHeight || 0.65, 0.1, Math.max(0.1, total));
+  const pushTarget = (targets, value) => {
+    const bounded = clamp(value, 0, total);
+    const last = targets[targets.length - 1];
+    if (last === undefined || Math.abs(bounded - last) > 1e-5) targets.push(bounded);
+  };
+  const targets = [0];
+  if (stoneKeystoneMode) {
+    const keyFactor = THREE.MathUtils.lerp(1.25, 2.35, clamp(state.params.keystoneSize || 0.45, 0, 1));
+    const keystoneLen = clamp(step * keyFactor, step * 1.05, total * 0.22);
+    const leftKey = Math.max(step, total * 0.5 - keystoneLen * 0.5);
+    const rightKey = Math.min(total - step, total * 0.5 + keystoneLen * 0.5);
+    for (let s = step; s < leftKey - step * 0.35; s += step) pushTarget(targets, s);
+    pushTarget(targets, leftKey);
+    pushTarget(targets, rightKey);
+    for (let s = rightKey + step; s < total - step * 0.35; s += step) pushTarget(targets, s);
+  } else {
+    for (let s = step; s < total - step * 0.35; s += step) pushTarget(targets, s);
+  }
+  pushTarget(targets, total);
+  if (targets.length < 5) return buildBarrelArchUBreaks(4);
+  return targets.map(uAtLength);
+};
+
+const getBarrelLengthCourseSpans = (courseIndex, lengthCount, courseCount = Math.max(1, state.params.courseCount || 1)) => {
+  const shifted = (state.pattern === "Running bond" || state.barrelBondMode === "2") && courseIndex % 2 === 1;
+  const bayStart = shifted ? -1 : 0;
+  const bayEnd = shifted ? lengthCount : lengthCount - 1;
+  const spans = [];
+  for (let bay = bayStart; bay <= bayEnd; bay++) {
+    let v0 = shifted ? (bay + 0.5) / lengthCount : bay / lengthCount;
+    let v1 = shifted ? (bay + 1.5) / lengthCount : (bay + 1) / lengthCount;
+    if (state.pattern === "Diagonal joints") {
+      const sk = (courseIndex / Math.max(1, courseCount - 1) - 0.5) * (0.55 / lengthCount);
+      v0 += sk;
+      v1 += sk;
+    }
+    if (v0 < 0) { v1 -= v0; v0 = 0; }
+    if (v1 > 1) { v0 -= (v1 - 1); v1 = 1; }
+    if (v1 - v0 < 1e-5) continue;
+    spans.push({ bay, v0, v1 });
+  }
+  return spans;
+};
+
+const getBarrelAppliedLengthSpans = (courseIndex, targetWidth, courseCount = Math.max(1, state.params.courseCount || 1)) => {
+  const length = Math.max(0.1, state.params.length || 1);
+  const width = clamp(targetWidth || 1.2, 0.1, length);
+  const count = Math.max(1, Math.min(240, Math.ceil(length / width)));
+  const shifted = (state.pattern === "Running bond" || state.barrelBondMode === "2") && courseIndex % 2 === 1;
+  const spans = [];
+  for (let i = 0; i < count; i++) {
+    let start = i * width;
+    let end = Math.min(length, start + width);
+    if (shifted) {
+      start -= width * 0.5;
+      end -= width * 0.5;
+    }
+    if (state.pattern === "Diagonal joints") {
+      const sk = (courseIndex / Math.max(1, courseCount - 1) - 0.5) * width * 0.55;
+      start += sk;
+      end += sk;
+    }
+    start = clamp(start, 0, length);
+    end = clamp(end, 0, length);
+    if (end - start < 1e-5) continue;
+    spans.push({ bay: i, v0: start / length, v1: end / length });
+  }
+  if (shifted) {
+    const tailStart = Math.max(0, length - width * 0.5);
+    if (length - tailStart > 1e-5) spans.push({ bay: count, v0: tailStart / length, v1: 1 });
+  }
+  return spans;
+};
+
+const generateBarrelLikeBlocksFromTrait = () => {
+  const density = Math.max(0.25, state.params.subdivisionDensity || 1);
+  const archLength = estimateBarrelArchLength();
+  const courseHeight = clamp(state.constraints.courseHeight || 0.65, 0.1, 5);
+  const targetWidth = clamp(state.targetBlockWidth || 1.2, 0.1, 5);
+  const stoneKeystoneMode = state.barrelBondMode === "5";
+  const appliedDimensions = state.blockDimensionMode !== "fit";
+  let courseCount = Math.max(4, Math.min(120, Math.round((archLength / courseHeight) * density * Math.max(1, state.arrayU))));
+  let uBreaks;
+  if (appliedDimensions) {
+    uBreaks = buildAppliedBarrelArchUBreaks(courseHeight, stoneKeystoneMode);
+    courseCount = uBreaks.length - 1;
+  } else {
+    if (stoneKeystoneMode && courseCount % 2 === 0) courseCount += courseCount < 120 ? 1 : -1;
+    uBreaks = stoneKeystoneMode ? buildStoneKeystoneArchUBreaks(courseCount) : buildBarrelArchUBreaks(courseCount);
+  }
+  const lengthCount = appliedDimensions
+    ? Math.max(1, Math.min(240, Math.ceil((state.params.length || 1) / targetWidth)))
+    : Math.max(2, Math.min(160, Math.round((state.params.length / targetWidth) * density * Math.max(1, state.arrayV))));
+  const keystoneCourse = stoneKeystoneMode ? Math.floor(courseCount / 2) : -1;
+  const blocks = [];
+  const physicalJoint = state.jointMode === "Physical cut";
+  const localGap = physicalJoint ? state.constraints.jointGap : 0;
+  for (let course = 0; course < courseCount; course++) {
+    let u0 = uBreaks[course];
+    let u1 = uBreaks[course + 1];
+    const isKeystoneCourse = course === keystoneCourse;
+    if (state.pattern === "Radial joints" && !stoneKeystoneMode && !isKeystoneCourse) {
+      const mid = (u0 + u1) * 0.5;
+      const crownBias = 1 - Math.abs(mid - 0.5) * 2;
+      const tighten = 1 - clamp(crownBias, 0, 1) * clamp(state.params.keystoneSize || 0.35, 0, 1) * 0.06;
+      const w = (u1 - u0) * tighten;
+      u0 = mid - w * 0.5;
+      u1 = mid + w * 0.5;
+    }
+    const lengthSpans = appliedDimensions
+      ? getBarrelAppliedLengthSpans(course, targetWidth, courseCount)
+      : getBarrelLengthCourseSpans(course, lengthCount, courseCount);
+    for (const { v0, v1 } of lengthSpans) {
+      let uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+      if (physicalJoint && localGap > 0) {
+        uv = insetQuadMiterUv(uv, localGap);
+        if (course === 0) {
+          uv[0][0] = u0;
+          uv[3][0] = u0;
         }
-        const localGap = physicalJoint ? clamp(state.constraints.jointGap, state.forceLmin * 0.03, state.forceLmax * 0.15) : 0;
-        let uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
-        if (physicalJoint && localGap > 0) uv = insetQuadMiterUv(uv, localGap);
-        out.push({
-          id: `C-${r + 1}-${c + 1}`,
-          uv: uv.map(applyAlign),
-        });
+        if (course === courseCount - 1) {
+          uv[1][0] = u1;
+          uv[2][0] = u1;
+        }
+      }
+      blocks.push({
+        id: `${isKeystoneCourse ? "K" : "B"}-${course + 1}-${blocks.length + 1}`,
+        uv: uv.map(applyAlign),
+        isKeystone: isKeystoneCourse,
+      });
+    }
+  }
+  state.params.courseCount = courseCount;
+  state.params.blockCount = lengthCount;
+  return blocks;
+};
+
+const clipUvCellToUnit = (uv) => {
+  const clipEdge = (points, inside, intersect) => {
+    const out = [];
+    points.forEach((current, i) => {
+      const prev = points[(i + points.length - 1) % points.length];
+      const currentInside = inside(current);
+      const prevInside = inside(prev);
+      if (currentInside) {
+        if (!prevInside) out.push(intersect(prev, current));
+        out.push(current);
+      } else if (prevInside) {
+        out.push(intersect(prev, current));
+      }
+    });
+    return out;
+  };
+  const ix = (x) => (a, b) => {
+    const t = clamp((x - a[0]) / Math.max(1e-9, b[0] - a[0]), 0, 1);
+    return [x, THREE.MathUtils.lerp(a[1], b[1], t)];
+  };
+  const iy = (y) => (a, b) => {
+    const t = clamp((y - a[1]) / Math.max(1e-9, b[1] - a[1]), 0, 1);
+    return [THREE.MathUtils.lerp(a[0], b[0], t), y];
+  };
+  let out = uv;
+  out = clipEdge(out, ([u]) => u >= 0, ix(0));
+  out = clipEdge(out, ([u]) => u <= 1, ix(1));
+  out = clipEdge(out, ([, v]) => v >= 0, iy(0));
+  out = clipEdge(out, ([, v]) => v <= 1, iy(1));
+  return out;
+};
+
+const buildTopologyGuidedBreaks = (count, hints, minGap = 0.012) => {
+  const base = Array.from({ length: count + 1 }, (_, i) => i / count);
+  const merged = mergeTopologyBreakHints(base, hints, minGap);
+  if (merged.length < 3) return base;
+  const limit = Math.max(count + 1, Math.min(count * 2 + 1, 180));
+  if (merged.length <= limit) return merged;
+  const stride = (merged.length - 1) / (limit - 1);
+  return Array.from({ length: limit }, (_, i) => merged[Math.round(i * stride)]);
+};
+
+const buildProjectedHexCellFactory = (rows, cols) => {
+  const slider = clamp(state.ngonShape ?? 0.25, 0, 1);
+  const t = clamp(slider <= 0.5 ? THREE.MathUtils.lerp(0.25, 0.5, slider / 0.5) : 0.5, 0.01, 0.5);
+  const rowCount = Math.max(1, rows);
+  const colCount = Math.max(1, cols);
+  const cellW = 1 / colCount;
+  const cellH = 1 / rowCount;
+  const pt = (i, j) => [i * cellW, j * cellH];
+  const collapseCoincident = (poly) => {
+    const out = [];
+    poly.forEach((p) => {
+      const last = out[out.length - 1];
+      if (!last || Math.hypot(last[0] - p[0], last[1] - p[1]) > 1e-8) out.push(p);
+    });
+    if (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= 1e-8) out.pop();
+    return out;
+  };
+  const meshCreateHexCell = (i, j) => {
+    const item = i > 0 ? pt(i - 1, j + t > rowCount ? j : j + t) : pt(i, j);
+    const item2 = i > 0 ? pt(i - 1, j - t < 0 ? j : j - t) : pt(i, j);
+    const item4 = j > 0 ? pt(i, j - (1 - t) < 0 ? j - 1 : j - (1 - t)) : pt(i, j);
+    const item5 = i < colCount ? pt(i + 1, j + t > rowCount ? j : j + t) : pt(i, j);
+    const item6 = i < colCount ? pt(i + 1, j - t < 0 ? j : j - t) : pt(i, j);
+    const item7 = j <= rowCount - 1 ? pt(i, j + (1 - t)) : pt(i, j);
+    if (i > 0 && j > 0 && i < colCount && j <= rowCount - 1) {
+      return collapseCoincident([item, item2, item4, item6, item5, item7]);
+    }
+    if (i === 0 && j === 0) return collapseCoincident([item7, item, item6, item5]);
+    if (i === 0 && j === rowCount && rowCount % 2 === 0) return collapseCoincident([item, item4, item6, item5]);
+    if (i === colCount && j === 0 && colCount % 2 === 0) return collapseCoincident([item, item2, item6, item7]);
+    if (i === colCount && j === rowCount) return collapseCoincident([item, item2, item4, item7]);
+    if (i === 0 && j > 0 && j < rowCount) return collapseCoincident([item7, item4, item6, item5]);
+    if (i === colCount && j > 0 && j < rowCount) return collapseCoincident([item, item2, item4, item7]);
+    if (j === 0 && i > 0 && i < colCount) return collapseCoincident([item5, item7, item, item2, item6]);
+    if (j === rowCount && i > 0 && i < colCount) return collapseCoincident([item2, item4, item6, item5, item]);
+    return [];
+  };
+  return (c, r) => {
+    const i = c + 1;
+    const j = r + 1;
+    if (i < 0 || j < 0 || i > colCount || j > rowCount || (i + j) % 2 !== 0) return [];
+    return clipUvCellToUnit(meshCreateHexCell(i, j));
+  };
+};
+
+const buildNgonGithubHexUvLoops = (rows, cols) => {
+  const rowCount = Math.max(2, rows + (rows % 2));
+  const colCount = Math.max(2, cols + (cols % 2));
+  const makeCell = buildProjectedHexCellFactory(rowCount, colCount);
+  const loops = [];
+  for (let i = 0; i <= colCount; i++) {
+    for (let j = 0; j <= rowCount; j++) {
+      if ((i + j) % 2 !== 0) continue;
+      const loop = cellHasUsableArea(makeCell(i - 1, j - 1), 0.000001);
+      if (!loop) continue;
+      loops.push(loop);
+    }
+  }
+  return loops;
+};
+
+const buildProjectedNgonCellFactory = (rows, cols, uLines = null, vLines = null) => {
+  const shape = clamp(state.ngonShape ?? 0.5, 0, 1);
+  const morph = shape - 0.5;
+  const isDiamond = state.ngonCellType === "Diamond";
+  const uBreaks = uLines?.length >= 2 ? uLines : Array.from({ length: cols + 1 }, (_, i) => i / cols);
+  const vBreaks = vLines?.length >= 2 ? vLines : Array.from({ length: rows + 1 }, (_, i) => i / rows);
+  const colCount = uBreaks.length - 1;
+  const rowCount = vBreaks.length - 1;
+  const colStep = 1 / Math.max(1, colCount);
+  const rowStep = 1 / Math.max(1, rowCount);
+  const rowSkewAmp = (isDiamond ? 0.42 : 0.28) * colStep * morph;
+  const longEdgeAmp = isDiamond ? 0 : 0.42 * rowStep * morph;
+  const rowPoint = (c, r) => {
+    const rowShift = (r % 2 ? 1 : -1) * rowSkewAmp;
+    return [uBreaks[clamp(c, 0, colCount)] + rowShift, vBreaks[clamp(r, 0, rowCount)]];
+  };
+  const longEdgeMid = (c, r) => {
+    const a = rowPoint(c, r);
+    const b = rowPoint(c + 1, r);
+    const sign = (c + r) % 2 ? -1 : 1;
+    return [
+      (a[0] + b[0]) * 0.5,
+      (a[1] + b[1]) * 0.5 + sign * longEdgeAmp,
+    ];
+  };
+  return (c, r) => {
+    if (isDiamond) {
+      const a = rowPoint(c, r);
+      const b = rowPoint(c + 1, r);
+      const d = rowPoint(c, r + 1);
+      const e = rowPoint(c + 1, r + 1);
+      return clipUvCellToUnit([
+        [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5],
+        [(b[0] + e[0]) * 0.5, (b[1] + e[1]) * 0.5],
+        [(d[0] + e[0]) * 0.5, (d[1] + e[1]) * 0.5],
+        [(a[0] + d[0]) * 0.5, (a[1] + d[1]) * 0.5],
+      ]);
+    }
+    const p00 = rowPoint(c, r);
+    const p10 = rowPoint(c + 1, r);
+    const p11 = rowPoint(c + 1, r + 1);
+    const p01 = rowPoint(c, r + 1);
+    if (Math.abs(morph) < 1e-6) return clipUvCellToUnit([p00, p10, p11, p01]);
+    return clipUvCellToUnit([
+      p00,
+      longEdgeMid(c, r),
+      p10,
+      p11,
+      longEdgeMid(c, r + 1),
+      p01,
+    ]);
+  };
+};
+
+const cellHasUsableArea = (uv, minArea = 0.00002) => {
+  const unique = [];
+  uv.forEach((p) => {
+    if (!unique.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-5)) unique.push(p);
+  });
+  return unique.length >= 3 && Math.abs(signedUvArea(unique)) >= minArea ? unique : null;
+};
+
+const cleanPairedUvPoints = (uv, points, minArea = 0.000001) => {
+  if (!uv?.length || !points?.length || uv.length !== points.length) return null;
+  const pairs = [];
+  uv.forEach((coord, index) => {
+    if (!pairs.some((pair) => Math.hypot(pair.uv[0] - coord[0], pair.uv[1] - coord[1]) < 1e-5)) {
+      pairs.push({ uv: [coord[0], coord[1]], point: points[index].clone() });
+    }
+  });
+  if (pairs.length < 3 || Math.abs(signedUvArea(pairs.map((pair) => pair.uv))) < minArea) return null;
+  if (pairs.length === 4) {
+    const ordered = [null, null, null, null];
+    pairs.forEach((pair) => {
+      const [u, v] = pair.uv;
+      const sum = u + v;
+      const diff = u - v;
+      if (!ordered[0] || sum < ordered[0].sum) ordered[0] = { ...pair, sum, diff };
+      if (!ordered[2] || sum > ordered[2].sum) ordered[2] = { ...pair, sum, diff };
+      if (!ordered[1] || diff > ordered[1].diff) ordered[1] = { ...pair, sum, diff };
+      if (!ordered[3] || diff < ordered[3].diff) ordered[3] = { ...pair, sum, diff };
+    });
+    const uniqueOrdered = new Set(ordered.map((pair) => `${pair.uv[0].toFixed(6)},${pair.uv[1].toFixed(6)}`));
+    if (uniqueOrdered.size === 4) {
+      return {
+        uv: ordered.map((pair) => pair.uv),
+        points: ordered.map((pair) => pair.point),
+      };
+    }
+  }
+  if (signedUvArea(pairs.map((pair) => pair.uv)) < 0) pairs.reverse();
+  return {
+    uv: pairs.map((pair) => pair.uv),
+    points: pairs.map((pair) => pair.point),
+  };
+};
+
+const polygonBoundsUv = (uv) => {
+  const us = uv.map(([u]) => u);
+  const vs = uv.map(([, v]) => v);
+  return {
+    minU: Math.min(...us),
+    maxU: Math.max(...us),
+    minV: Math.min(...vs),
+    maxV: Math.max(...vs),
+  };
+};
+
+const cleanUvPolygon = (uv, epsilon = 1e-6) => {
+  if (!uv?.length) return null;
+  const out = [];
+  uv.forEach((p) => {
+    if (!out.length || Math.hypot(out[out.length - 1][0] - p[0], out[out.length - 1][1] - p[1]) > epsilon) {
+      out.push([p[0], p[1]]);
+    }
+  });
+  if (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= epsilon) out.pop();
+  return cellHasUsableArea(out, 0.000001);
+};
+
+const trimUvPolygonToSurfaceFootprint = (uv, anchorUv, hasSurface) => {
+  if (!uv?.length || !anchorUv || !hasSurface?.(anchorUv[0], anchorUv[1])) return null;
+  const pullToSurface = ([u, v]) => {
+    const target = [clamp(u, 0, 1), clamp(v, 0, 1)];
+    if (hasSurface(target[0], target[1])) return target;
+    let lo = 0;
+    let hi = 1;
+    let best = null;
+    for (let i = 0; i < 14; i++) {
+      const t = (lo + hi) * 0.5;
+      const p = [
+        THREE.MathUtils.lerp(anchorUv[0], target[0], t),
+        THREE.MathUtils.lerp(anchorUv[1], target[1], t),
+      ];
+      if (hasSurface(p[0], p[1])) {
+        best = p;
+        lo = t;
+      } else {
+        hi = t;
       }
     }
-    return out;
-  }
+    if (!best) return null;
+    return [
+      THREE.MathUtils.lerp(anchorUv[0], best[0], 0.997),
+      THREE.MathUtils.lerp(anchorUv[1], best[1], 0.997),
+    ];
+  };
+  const trimmed = uv.map(pullToSurface);
+  if (trimmed.some((p) => !p)) return null;
+  const cleaned = cleanUvPolygon(trimmed, 0.00001);
+  if (!cleaned) return null;
+  const edgeMids = cleaned.map((p, i) => [
+    (p[0] + cleaned[(i + 1) % cleaned.length][0]) * 0.5,
+    (p[1] + cleaned[(i + 1) % cleaned.length][1]) * 0.5,
+  ]);
+  const radialMids = cleaned.map((p) => [
+    (p[0] + anchorUv[0]) * 0.5,
+    (p[1] + anchorUv[1]) * 0.5,
+  ]);
+  const checks = [anchorUv, ...cleaned, ...edgeMids, ...radialMids];
+  const hits = checks.filter(([u, v]) => hasSurface(u, v)).length;
+  return hits >= Math.ceil(checks.length * 0.86) ? cleaned : null;
+};
 
+const clipUvPolygonToConvexPolygon = (subject, clipper) => {
+  const cleanClipper = cleanUvPolygon(clipper);
+  if (!cleanClipper) return null;
+  const clipSign = Math.sign(signedUvArea(cleanClipper)) || 1;
+  let output = cleanUvPolygon(subject);
+  if (!output) return null;
+  const lineIntersection = (a, b, c, d) => {
+    const abx = b[0] - a[0];
+    const aby = b[1] - a[1];
+    const cdx = d[0] - c[0];
+    const cdy = d[1] - c[1];
+    const denom = abx * cdy - aby * cdx;
+    if (Math.abs(denom) < 1e-10) return b;
+    const t = ((c[0] - a[0]) * cdy - (c[1] - a[1]) * cdx) / denom;
+    return [a[0] + abx * t, a[1] + aby * t];
+  };
+  for (let i = 0; i < cleanClipper.length; i++) {
+    const cp1 = cleanClipper[i];
+    const cp2 = cleanClipper[(i + 1) % cleanClipper.length];
+    const input = output;
+    output = [];
+    const inside = (p) => {
+      const cross = (cp2[0] - cp1[0]) * (p[1] - cp1[1]) - (cp2[1] - cp1[1]) * (p[0] - cp1[0]);
+      return clipSign > 0 ? cross >= -1e-8 : cross <= 1e-8;
+    };
+    for (let j = 0; j < input.length; j++) {
+      const current = input[j];
+      const prev = input[(j - 1 + input.length) % input.length];
+      const currentInside = inside(current);
+      const prevInside = inside(prev);
+      if (currentInside) {
+        if (!prevInside) output.push(lineIntersection(prev, current, cp1, cp2));
+        output.push(current);
+      } else if (prevInside) {
+        output.push(lineIntersection(prev, current, cp1, cp2));
+      }
+    }
+    output = cleanUvPolygon(output);
+    if (!output) return null;
+  }
+  return cleanUvPolygon(output);
+};
+
+const buildImportedCourseIntervals = (u0, u1, sampleCount = 180) => {
+  const lanes = [0.2, 0.5, 0.8].map((t) => THREE.MathUtils.lerp(u0, u1, t));
+  const validAt = (v) => {
+    const hits = lanes.reduce((count, u) => count + (getImportedSurfaceHit(u, v) ? 1 : 0), 0);
+    return hits >= 2;
+  };
+  const refine = (a, b, wantValid) => {
+    let lo = a;
+    let hi = b;
+    for (let i = 0; i < 10; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (validAt(mid) === wantValid) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  };
+  const intervals = [];
+  let prevV = 0;
+  let prevValid = validAt(prevV);
+  let start = prevValid ? 0 : null;
+  for (let i = 1; i <= sampleCount; i++) {
+    const v = i / sampleCount;
+    const isValid = validAt(v);
+    if (isValid !== prevValid) {
+      const boundary = refine(prevV, v, isValid);
+      if (isValid) start = boundary;
+      else if (start !== null) {
+        intervals.push([start, boundary]);
+        start = null;
+      }
+    }
+    prevV = v;
+    prevValid = isValid;
+  }
+  if (start !== null) intervals.push([start, 1]);
+  return intervals
+    .map(([a, b]) => [clamp(a, 0, 1), clamp(b, 0, 1)])
+    .filter(([a, b]) => b - a > 0.004);
+};
+
+const getImportedUvPointNear = (u, v, centerU = u, centerV = v) => {
+  const sample = getImportedSurfaceSampleNear(clamp(u, 0, 1), clamp(v, 0, 1), clamp(centerU, 0, 1), clamp(centerV, 0, 1));
+  return sample?.point || null;
+};
+
+const averageImportedSegmentDistance = (a, b, lanes) => {
+  let total = 0;
+  let count = 0;
+  lanes.forEach(([au, av, bu, bv]) => {
+    const centerU = (au + bu) * 0.5;
+    const centerV = (av + bv) * 0.5;
+    const pa = getImportedUvPointNear(au, av, centerU, centerV);
+    const pb = getImportedUvPointNear(bu, bv, centerU, centerV);
+    if (!pa || !pb) return;
+    total += pa.distanceTo(pb);
+    count += 1;
+  });
+  if (count) return total / count;
+  const fallback = state.importedSurfaceBbox?.getSize(new THREE.Vector3()) || new THREE.Vector3(1, 1, 1);
+  return Math.hypot((b[0] - a[0]) * fallback.x, (b[1] - a[1]) * fallback.z);
+};
+
+const buildImportedAdaptiveCourseBreaks = (targetCourseHeight) => {
+  const sampleCount = 180;
+  const target = clamp(targetCourseHeight || state.constraints.courseHeight || 0.65, 0.08, 8);
+  const breaks = [0];
+  let accumulated = 0;
+  let lastU = 0;
+  for (let i = 1; i <= sampleCount; i++) {
+    const u = i / sampleCount;
+    const lanes = [0.18, 0.38, 0.62, 0.82].map((v) => [lastU, v, u, v]);
+    accumulated += averageImportedSegmentDistance([lastU, 0.5], [u, 0.5], lanes);
+    if (accumulated >= target && u - breaks[breaks.length - 1] > 0.01 && u < 0.985) {
+      breaks.push(u);
+      accumulated = 0;
+    }
+    lastU = u;
+  }
+  if (1 - breaks[breaks.length - 1] < 0.018 && breaks.length > 1) breaks.pop();
+  breaks.push(1);
+  return mergeTopologyBreakHints(breaks, state.importedTopology?.courseHints, 0.018);
+};
+
+const mergeTopologyBreakHints = (breaks, hints, minGap = 0.018) => {
+  if (!hints?.length) return breaks;
+  const merged = [...breaks, ...hints].sort((a, b) => a - b);
+  const out = [];
+  merged.forEach((value) => {
+    const v = clamp(value, 0, 1);
+    if (!out.length || v - out[out.length - 1] >= minGap) out.push(v);
+    else if (v === 0 || v === 1 || Math.abs(v - out[out.length - 1]) < minGap * 0.35) out[out.length - 1] = v;
+  });
+  if (out[0] !== 0) out.unshift(0);
+  if (out[out.length - 1] !== 1) out.push(1);
+  return out;
+};
+
+const insertTopologySpanHints = (breaks, span0, span1, minGap = 0.006) => {
+  const hints = state.importedTopology?.spanHints;
+  if (!hints?.length) return breaks;
+  const local = hints.filter((v) => v > span0 + minGap && v < span1 - minGap);
+  if (!local.length) return breaks;
+  return mergeTopologyBreakHints(breaks, local, minGap)
+    .filter((v) => v >= span0 - 1e-6 && v <= span1 + 1e-6);
+};
+
+const buildImportedAdaptiveSpanBreaks = (u0, u1, span0, span1, targetLength, stagger = 0) => {
+  const sampleCount = Math.max(40, Math.min(260, Math.ceil((span1 - span0) * 260)));
+  const target = clamp(targetLength || state.targetBlockWidth || 1.2, 0.08, 10);
+  const breaks = [span0];
+  let accumulated = stagger ? target * 0.45 : 0;
+  let lastV = span0;
+  for (let i = 1; i <= sampleCount; i++) {
+    const v = THREE.MathUtils.lerp(span0, span1, i / sampleCount);
+    const lanes = [0.2, 0.5, 0.8].map((t) => {
+      const u = THREE.MathUtils.lerp(u0, u1, t);
+      return [u, lastV, u, v];
+    });
+    accumulated += averageImportedSegmentDistance([(u0 + u1) * 0.5, lastV], [(u0 + u1) * 0.5, v], lanes);
+    if (accumulated >= target && v - breaks[breaks.length - 1] > 0.004 && v < span1 - 0.004) {
+      breaks.push(v);
+      accumulated = 0;
+    }
+    lastV = v;
+  }
+  if (span1 - breaks[breaks.length - 1] < 0.006 && breaks.length > 1) breaks.pop();
+  breaks.push(span1);
+  return insertTopologySpanHints(breaks, span0, span1);
+};
+
+const buildImportedAdaptiveCurvedSpanBreaks = (lowerCurve, upperCurve, span0, span1, targetLength, stagger = 0) => {
+  const sampleCount = Math.max(40, Math.min(260, Math.ceil((span1 - span0) * 260)));
+  const target = clamp(targetLength || state.targetBlockWidth || 1.2, 0.08, 10);
+  const breaks = [span0];
+  let accumulated = stagger ? target * 0.45 : 0;
+  let lastV = span0;
+  for (let i = 1; i <= sampleCount; i++) {
+    const v = THREE.MathUtils.lerp(span0, span1, i / sampleCount);
+    const lanes = [0.18, 0.5, 0.82].map((t) => {
+      const lastU = THREE.MathUtils.lerp(lowerCurve.at(lastV), upperCurve.at(lastV), t);
+      const nextU = THREE.MathUtils.lerp(lowerCurve.at(v), upperCurve.at(v), t);
+      return [lastU, lastV, nextU, v];
+    });
+    accumulated += averageImportedSegmentDistance([0, lastV], [0, v], lanes);
+    if (accumulated >= target && v - breaks[breaks.length - 1] > 0.004 && v < span1 - 0.004) {
+      breaks.push(v);
+      accumulated = 0;
+    }
+    lastV = v;
+  }
+  if (span1 - breaks[breaks.length - 1] < 0.006 && breaks.length > 1) breaks.pop();
+  breaks.push(span1);
+  return insertTopologySpanHints(breaks, span0, span1);
+};
+
+const makeCurveInterpolator = (points) => {
+  if (!points?.length) return () => 0;
+  const sorted = [...points].sort((a, b) => a.v - b.v);
+  return (v) => {
+    const vv = clamp(v, 0, 1);
+    if (vv <= sorted[0].v) return sorted[0].u;
+    if (vv >= sorted[sorted.length - 1].v) return sorted[sorted.length - 1].u;
+    let i = 1;
+    while (i < sorted.length && sorted[i].v < vv) i += 1;
+    const a = sorted[i - 1];
+    const b = sorted[i];
+    const t = clamp((vv - a.v) / Math.max(1e-9, b.v - a.v), 0, 1);
+    return THREE.MathUtils.lerp(a.u, b.u, t);
+  };
+};
+
+const smoothCourseCurvePoints = (points, iterations = 2) => {
+  let out = points.map((p) => ({ ...p }));
+  for (let k = 0; k < iterations; k++) {
+    out = out.map((p, i) => {
+      if (i === 0 || i === out.length - 1) return p;
+      return {
+        v: p.v,
+        u: p.pinned ? p.u : (out[i - 1].u * 0.25 + p.u * 0.5 + out[i + 1].u * 0.25),
+        pinned: p.pinned,
+      };
+    });
+  }
+  return out;
+};
+
+const buildImportedDirectionalCourseField = (baseBreaks) => {
+  const sampleCount = 72;
+  const radiusU = 0.055;
+  const radiusV = 0.07;
+  const strength = 0.036 * clamp(state.params.subdivisionDensity || 1, 0.5, 2.4);
+  const curves = baseBreaks.map((baseU, breakIndex) => {
+    const pinned = breakIndex === 0 || breakIndex === baseBreaks.length - 1;
+    const points = [];
+    for (let i = 0; i <= sampleCount; i++) {
+      const v = i / sampleCount;
+      let offset = 0;
+      if (!pinned) {
+        for (let du = -2; du <= 2; du++) {
+          for (let dv = -2; dv <= 2; dv++) {
+            if (!du && !dv) continue;
+            const pu = clamp(baseU + du * radiusU * 0.5, 0, 1);
+            const pv = clamp(v + dv * radiusV * 0.5, 0, 1);
+            if (getImportedSurfaceHit(pu, pv)) continue;
+            const dist = Math.hypot((pu - baseU) / radiusU, (pv - v) / radiusV);
+            if (dist > 1.5) continue;
+            const side = baseU >= pu ? 1 : -1;
+            offset += side * (1.5 - dist) * strength;
+          }
+        }
+        if (!getImportedSurfaceHit(baseU + offset, v)) {
+          const upValid = getImportedSurfaceHit(clamp(baseU + radiusU, 0, 1), v);
+          const downValid = getImportedSurfaceHit(clamp(baseU - radiusU, 0, 1), v);
+          if (upValid && !downValid) offset += radiusU * 0.5;
+          else if (downValid && !upValid) offset -= radiusU * 0.5;
+        }
+      }
+      const prev = baseBreaks[Math.max(0, breakIndex - 1)];
+      const next = baseBreaks[Math.min(baseBreaks.length - 1, breakIndex + 1)];
+      const minU = pinned ? baseU : prev + Math.max(0.006, (baseU - prev) * 0.32);
+      const maxU = pinned ? baseU : next - Math.max(0.006, (next - baseU) * 0.32);
+      points.push({ v, u: clamp(baseU + offset, minU, maxU), pinned });
+    }
+    return smoothCourseCurvePoints(points, pinned ? 0 : 3);
+  });
+  return curves.map((points) => ({ points, at: makeCurveInterpolator(points) }));
+};
+
+const buildTopologyWarp = (baseBreaks, courseField) => {
+  if (!baseBreaks?.length || !courseField?.length || courseField.length !== baseBreaks.length) return null;
+  return ([u, v]) => {
+    const uu = clamp(u, 0, 1);
+    const vv = clamp(v, 0, 1);
+    let index = 0;
+    while (index < baseBreaks.length - 2 && uu > baseBreaks[index + 1]) index += 1;
+    const a = baseBreaks[index];
+    const b = baseBreaks[index + 1];
+    const t = clamp((uu - a) / Math.max(1e-9, b - a), 0, 1);
+    return [
+      clamp(THREE.MathUtils.lerp(courseField[index].at(vv), courseField[index + 1].at(vv), t), 0, 1),
+      vv,
+    ];
+  };
+};
+
+const buildImportedCurvedCourseIntervals = (lowerCurve, upperCurve, sampleCount = 180) => {
+  const validAt = (v) => {
+    const u0 = lowerCurve.at(v);
+    const u1 = upperCurve.at(v);
+    const hits = [0.18, 0.42, 0.68, 0.88].reduce((count, t) => {
+      const u = THREE.MathUtils.lerp(u0, u1, t);
+      return count + (getImportedSurfaceHit(u, v) ? 1 : 0);
+    }, 0);
+    return hits >= 3;
+  };
+  const intervals = [];
+  let prevV = 0;
+  let prevValid = validAt(prevV);
+  let start = prevValid ? 0 : null;
+  for (let i = 1; i <= sampleCount; i++) {
+    const v = i / sampleCount;
+    const isValid = validAt(v);
+    if (isValid !== prevValid) {
+      const boundary = v;
+      if (isValid) start = boundary;
+      else if (start !== null) {
+        intervals.push([start, boundary]);
+        start = null;
+      }
+    }
+    prevV = v;
+    prevValid = isValid;
+  }
+  if (start !== null) intervals.push([start, 1]);
+  return intervals.filter(([a, b]) => b - a > 0.004);
+};
+
+const generateNgonCellBlocks = () => {
+  const bbox = state.importedSurfaceBbox;
+  if (!state.importedSurface || !bbox || bbox.isEmpty()) return [];
+  const density = Math.max(0.25, state.params.subdivisionDensity || 1);
+  const rows = Math.max(3, Math.min(96, Math.round((state.params.courseCount || 12) * density)));
+  const cols = Math.max(3, Math.min(180, Math.round((state.params.blockCount || 12) * density)));
+  const blocks = [];
+  const isHex = state.ngonCellType !== "Diamond";
+  const topologyAware = false;
+  const rectAspect = clamp((state.targetBlockWidth || 1.2) / Math.max(0.1, state.constraints.courseHeight || 0.65), 1.15, 2.4);
+  const hexCols = Math.max(3, Math.round(cols * rectAspect));
+  const targetCourseHeight = clamp((state.constraints.courseHeight || 0.65) / density, 0.08, 8);
+  const topologyBreaks = topologyAware ? buildImportedAdaptiveCourseBreaks(targetCourseHeight) : null;
+  const topologyField = topologyAware ? buildImportedDirectionalCourseField(topologyBreaks) : null;
+  const warpUvPoint = buildTopologyWarp(topologyBreaks, topologyField);
+  const uLines = isHex || topologyAware ? null : buildTopologyGuidedBreaks(cols, state.importedTopology?.courseHints, 0.012);
+  const vLines = isHex || topologyAware ? null : buildTopologyGuidedBreaks(rows, state.importedTopology?.spanHints, 0.012);
+  const rowLimit = isHex ? rows : vLines.length - 1;
+  const colLimit = isHex ? hexCols + 1 : uLines.length - 1;
+  const buildCell = isHex
+    ? buildProjectedHexCellFactory(rowLimit, hexCols)
+    : buildProjectedNgonCellFactory(rowLimit, colLimit, uLines, vLines);
+  const hitCache = new Map();
+  const hasSurface = (u, v) => {
+    const key = `${u.toFixed(4)},${v.toFixed(4)}`;
+    if (!hitCache.has(key)) hitCache.set(key, !!getImportedSurfaceHit(u, v));
+    return hitCache.get(key);
+  };
+  const cellSurfaceSamples = (uv) => {
+    const centerU = uv.reduce((sum, p) => sum + p[0], 0) / uv.length;
+    const centerV = uv.reduce((sum, p) => sum + p[1], 0) / uv.length;
+    const edgeSamples = uv.map((p, i) => [
+      (p[0] + uv[(i + 1) % uv.length][0]) * 0.5,
+      (p[1] + uv[(i + 1) % uv.length][1]) * 0.5,
+    ]);
+    const radialSamples = uv.map((p) => [
+      (p[0] + centerU) * 0.5,
+      (p[1] + centerV) * 0.5,
+    ]);
+    const samples = [[centerU, centerV], ...uv, ...edgeSamples, ...radialSamples];
+    const hits = samples.filter(([su, sv]) => hasSurface(su, sv));
+    const boundary = uv.some(([su, sv]) => su <= 1e-5 || su >= 1 - 1e-5 || sv <= 1e-5 || sv >= 1 - 1e-5);
+    return { samples, hits, center: [centerU, centerV], boundary };
+  };
+  const rawLoops = isHex
+    ? buildNgonGithubHexUvLoops(rowLimit, hexCols)
+    : null;
+  const addLoop = (rawUv, r, c) => {
+      const warpedUv = warpUvPoint ? rawUv.map(warpUvPoint) : rawUv;
+      const uv = cellHasUsableArea(warpedUv);
+      if (!uv) return;
+      const expectedMin = isHex ? 4 : 3;
+      const expectedMax = isHex ? 6 : 4;
+      if (uv.length < expectedMin || uv.length > expectedMax) return;
+      const { samples, hits, center, boundary } = cellSurfaceSamples(uv);
+      if (hits.length !== samples.length) return;
+      const anchorUv = center;
+      blocks.push({
+        id: `N-${r + 1}-${blocks.length + 1}`,
+        uv: uv.map(applyAlign),
+        anchorUv: applyAlign(anchorUv),
+        courseIndex: r,
+        requireDirectSurfaceSamples: true,
+        tessellationStrategy: `github-ngon ${state.ngonCellType.toLowerCase()} mesh field`,
+      });
+  };
+  if (rawLoops) {
+    rawLoops.forEach((loop, i) => addLoop(loop, Math.floor(i / Math.max(1, hexCols)), i % Math.max(1, hexCols)));
+  } else {
+    const rStart = 0;
+    const rEnd = rowLimit;
+    const cStart = 0;
+    const cEnd = colLimit;
+    for (let r = rStart; r < rEnd; r++) {
+      for (let c = cStart; c < cEnd; c++) {
+        addLoop(buildCell(c, r), r, c);
+      }
+    }
+  }
+  if (topologyBreaks?.length > 1) {
+    state.params.courseCount = Math.max(1, topologyBreaks.length - 1);
+    state.params.blockCount = Math.max(1, Math.round(blocks.length / Math.max(1, state.params.courseCount)));
+  }
+  return blocks;
+};
+
+const generateFreeformCourseBlocks = () => {
+  const bbox = state.importedSurfaceBbox;
+  if (!state.importedSurface || !bbox || bbox.isEmpty()) return [];
+  const density = Math.max(0.25, state.params.subdivisionDensity || 1);
+  const targetCourseHeight = clamp((state.constraints.courseHeight || 0.65) / density, 0.08, 8);
+  const targetBlockLength = clamp((state.targetBlockWidth || 1.2) / density, 0.08, 10);
+  const uBreaks = buildImportedAdaptiveCourseBreaks(targetCourseHeight);
+  const courseField = buildImportedDirectionalCourseField(uBreaks);
+  const blocks = [];
+  const physicalJoint = state.jointMode === "Physical cut";
+  const minUvSpan = 1e-4;
+  const hasSurface = (u, v) => !!getImportedSurfaceHit(u, v);
+  const findCellAnchor = (uv) => {
+    const centerU = (uv[0][0] + uv[2][0]) * 0.5;
+    const centerV = (uv[0][1] + uv[2][1]) * 0.5;
+    const samples = [
+      [centerU, centerV],
+      ...uv,
+      [(uv[0][0] + uv[1][0]) * 0.5, (uv[0][1] + uv[1][1]) * 0.5],
+      [(uv[1][0] + uv[2][0]) * 0.5, (uv[1][1] + uv[2][1]) * 0.5],
+      [(uv[2][0] + uv[3][0]) * 0.5, (uv[2][1] + uv[3][1]) * 0.5],
+      [(uv[3][0] + uv[0][0]) * 0.5, (uv[3][1] + uv[0][1]) * 0.5],
+    ];
+    const center = hasSurface(centerU, centerV) ? [centerU, centerV] : null;
+    const hits = samples.filter(([u, v]) => hasSurface(u, v));
+    if (hits.length < Math.max(3, Math.ceil(samples.length * 0.34))) return null;
+    return center || hits[0];
+  };
+
+  for (let r = 0; r < uBreaks.length - 1; r++) {
+    const lowerCurve = courseField[r];
+    const upperCurve = courseField[r + 1];
+    const stagger = r % 2 ? 0.5 : 0;
+    const intervals = buildImportedCurvedCourseIntervals(lowerCurve, upperCurve, 220);
+    intervals.forEach(([span0, span1], intervalIndex) => {
+      const midU = (lowerCurve.at((span0 + span1) * 0.5) + upperCurve.at((span0 + span1) * 0.5)) * 0.5;
+      const localTarget = targetBlockLength * THREE.MathUtils.lerp(0.82, 1.12, Math.sin(midU * Math.PI));
+      const breaks = buildImportedAdaptiveCurvedSpanBreaks(lowerCurve, upperCurve, span0, span1, localTarget, stagger);
+      for (let c = 0; c < breaks.length - 1; c++) {
+        const edgeOvercut = 0.01;
+        const v0 = c === 0 ? clamp(breaks[c] - edgeOvercut, 0, 1) : breaks[c];
+        const v1 = c === breaks.length - 2 ? clamp(breaks[c + 1] + edgeOvercut, 0, 1) : breaks[c + 1];
+        if (v1 - v0 < minUvSpan) continue;
+        let uv = [
+          [lowerCurve.at(v0), v0],
+          [upperCurve.at(v0), v0],
+          [upperCurve.at(v1), v1],
+          [lowerCurve.at(v1), v1],
+        ];
+        let anchorUv = findCellAnchor(uv);
+        if (!anchorUv) continue;
+      if (physicalJoint && state.constraints.jointGap > 0) {
+        uv = insetQuadMiterUv(uv, state.constraints.jointGap);
+          anchorUv = findCellAnchor(uv);
+          if (!anchorUv) continue;
+      }
+      blocks.push({
+          id: `F-${r + 1}-${intervalIndex + 1}-${blocks.length + 1}`,
+        uv: uv.map(applyAlign),
+          anchorUv: applyAlign(anchorUv),
+        courseIndex: r,
+          tessellationStrategy: "directional freeform transverse courses",
+      });
+    }
+    });
+  }
+  state.params.courseCount = Math.max(1, uBreaks.length - 1);
+  state.params.blockCount = Math.max(1, Math.round(blocks.length / Math.max(1, state.params.courseCount)));
+  return blocks;
+};
+
+const topologyUvKey = ([u, v], precision = 5) => `${u.toFixed(precision)},${v.toFixed(precision)}`;
+
+const topologyEdgeKey = (a, b) => {
+  const ka = topologyUvKey(a);
+  const kb = topologyUvKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+};
+
+const polygonCentroidUv = (uv) => [
+  uv.reduce((sum, p) => sum + p[0], 0) / uv.length,
+  uv.reduce((sum, p) => sum + p[1], 0) / uv.length,
+];
+
+const orientUvLike = (uv, referenceUv) => {
+  const clean = cleanUvPolygon(uv, 0.000001);
+  if (!clean) return null;
+  const refSign = Math.sign(signedUvArea(referenceUv)) || 1;
+  return Math.sign(signedUvArea(clean)) === refSign ? clean : clean.slice().reverse();
+};
+
+const triangleIncenterUv = (uv) => {
+  const [a, b, c] = uv;
+  const la = Math.hypot(b[0] - c[0], b[1] - c[1]);
+  const lb = Math.hypot(a[0] - c[0], a[1] - c[1]);
+  const lc = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const total = la + lb + lc;
+  if (total <= 1e-9) return polygonCentroidUv(uv);
+  return [
+    (la * a[0] + lb * b[0] + lc * c[0]) / total,
+    (la * a[1] + lb * b[1] + lc * c[1]) / total,
+  ];
+};
+
+const topologyFaceCenterUv = (uv) => {
+  const centroid = polygonCentroidUv(uv);
+  if (uv.length !== 3) return centroid;
+  const shaped = triangleIncenterUv(uv);
+  const t = clamp(state.ngonShape ?? 0.5, 0, 1);
+  return [
+    THREE.MathUtils.lerp(centroid[0], shaped[0], t),
+    THREE.MathUtils.lerp(centroid[1], shaped[1], t),
+  ];
+};
+
+const getTopologySubdivisionPlan = (polys) => {
+  const bboxSize = state.importedSurfaceBbox?.getSize(new THREE.Vector3()) || new THREE.Vector3(1, 1, 1);
+  const scaleArea = Math.max(1e-9, bboxSize.x) * Math.max(1e-9, bboxSize.z);
+  const areas = polys.map((uv) => Math.max(1e-9, Math.abs(signedUvArea(uv)) * scaleArea));
+  const totalArea = areas.reduce((sum, area) => sum + area, 0) || 1;
+  const density = clamp(state.params.subdivisionDensity || 1, 0.25, 8);
+  const fieldTarget = Math.max(1, (state.params.courseCount || 16) * (state.params.blockCount || 18) * density);
+  const targetLength = clamp(state.targetBlockWidth || 1.2, 0.08, 10);
+  const targetWidth = clamp(state.constraints.courseHeight || 0.65, 0.08, 8);
+  const targetArea = Math.max(0.005, (targetLength * targetWidth) / Math.max(0.1, density));
+  const physicalTarget = totalArea / targetArea;
+  const targetCells = state.blockDimensionMode === "fit"
+    ? fieldTarget
+    : Math.max(fieldTarget, physicalTarget);
+  return { areas, totalArea, targetCells };
+};
+
+const getTopologySubdivisionFrequency = (faceArea, plan) => {
+  const targetForFace = Math.max(1, plan.targetCells * (faceArea / Math.max(1e-9, plan.totalArea)));
+  return Math.max(1, Math.min(24, Math.ceil(Math.sqrt(targetForFace))));
+};
+
+const subdivideTriangleUv = (tri, frequency) => {
+  const n = Math.max(1, Math.floor(frequency));
+  const [a, b, c] = tri;
+  const point = (i, j) => {
+    const u = i / n;
+    const v = j / n;
+    const w = 1 - u - v;
+    return [
+      a[0] * w + b[0] * u + c[0] * v,
+      a[1] * w + b[1] * u + c[1] * v,
+    ];
+  };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n - i; j++) {
+      const t0 = orientUvLike([point(i, j), point(i + 1, j), point(i, j + 1)], tri);
+      if (t0) out.push(t0);
+      if (j < n - i - 1) {
+        const t1 = orientUvLike([point(i + 1, j), point(i + 1, j + 1), point(i, j + 1)], tri);
+        if (t1) out.push(t1);
+      }
+    }
+  }
+  return out;
+};
+
+const subdividePolygonToTrianglesUv = (uv, frequency) => {
+  if (uv.length === 3) return subdivideTriangleUv(uv, frequency);
+  const center = polygonCentroidUv(uv);
+  const out = [];
+  for (let i = 0; i < uv.length; i++) {
+    const tri = orientUvLike([center, uv[i], uv[(i + 1) % uv.length]], uv);
+    if (tri) out.push(...subdivideTriangleUv(tri, frequency));
+  }
+  return out;
+};
+
+const subdividePolygonToRadialQuadsUv = (uv, frequency) => {
+  const n = Math.max(1, Math.floor(frequency));
+  const rings = Math.max(1, Math.ceil(n * 0.7));
+  const center = polygonCentroidUv(uv);
+  const out = [];
+  const lerpPoint = (a, b, t) => [
+    THREE.MathUtils.lerp(a[0], b[0], t),
+    THREE.MathUtils.lerp(a[1], b[1], t),
+  ];
+  for (let e = 0; e < uv.length; e++) {
+    const a = uv[e];
+    const b = uv[(e + 1) % uv.length];
+    for (let s = 0; s < n; s++) {
+      const edge0 = lerpPoint(a, b, s / n);
+      const edge1 = lerpPoint(a, b, (s + 1) / n);
+      for (let r = 0; r < rings; r++) {
+        const inner = r / rings;
+        const outer = (r + 1) / rings;
+        if (r === 0) {
+          const tri = orientUvLike([center, lerpPoint(center, edge1, outer), lerpPoint(center, edge0, outer)], uv);
+          if (tri) out.push(tri);
+        } else {
+          const quad = orientUvLike([
+            lerpPoint(center, edge0, inner),
+            lerpPoint(center, edge1, inner),
+            lerpPoint(center, edge1, outer),
+            lerpPoint(center, edge0, outer),
+          ], uv);
+          if (quad) out.push(quad);
+        }
+      }
+    }
+  }
+  return out;
+};
+
+const subdividePolygonToUvGridQuads = (uv, frequency) => {
+  const n = Math.max(1, Math.floor(frequency));
+  const center = polygonCentroidUv(uv);
+  let longest = { len: 0, axis: [1, 0] };
+  for (let i = 0; i < uv.length; i++) {
+    const a = uv[i];
+    const b = uv[(i + 1) % uv.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len > longest.len) longest = { len, axis: [dx / Math.max(1e-9, len), dy / Math.max(1e-9, len)] };
+  }
+  const cross = [-longest.axis[1], longest.axis[0]];
+  const local = uv.map((p) => {
+    const dx = p[0] - center[0];
+    const dy = p[1] - center[1];
+    return [dx * longest.axis[0] + dy * longest.axis[1], dx * cross[0] + dy * cross[1]];
+  });
+  const minS = Math.min(...local.map(([s]) => s));
+  const maxS = Math.max(...local.map(([s]) => s));
+  const minT = Math.min(...local.map(([, t]) => t));
+  const maxT = Math.max(...local.map(([, t]) => t));
+  const cols = Math.max(1, Math.ceil(n * Math.max(1, (maxS - minS) / Math.max(1e-6, maxT - minT))));
+  const rows = Math.max(1, n);
+  const fromLocal = (s, t) => [
+    center[0] + longest.axis[0] * s + cross[0] * t,
+    center[1] + longest.axis[1] * s + cross[1] * t,
+  ];
+  const out = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const s0 = THREE.MathUtils.lerp(minS, maxS, c / cols);
+      const s1 = THREE.MathUtils.lerp(minS, maxS, (c + 1) / cols);
+      const t0 = THREE.MathUtils.lerp(minT, maxT, r / rows);
+      const t1 = THREE.MathUtils.lerp(minT, maxT, (r + 1) / rows);
+      const chebySkew = state.ngonCellType === "Chebychev"
+        ? (state.ngonShape - 0.5) * (maxS - minS) / Math.max(1, cols) * 0.9
+        : 0;
+      const rowSkew0 = chebySkew * ((r / rows) - 0.5);
+      const rowSkew1 = chebySkew * (((r + 1) / rows) - 0.5);
+      const clipped = clipUvPolygonToConvexPolygon([
+        fromLocal(s0 + rowSkew0, t0),
+        fromLocal(s1 + rowSkew0, t0),
+        fromLocal(s1 + rowSkew1, t1),
+        fromLocal(s0 + rowSkew1, t1),
+      ], uv);
+      if (clipped) out.push(clipped);
+    }
+  }
+  return out;
+};
+
+const refineTopologyPolysForNgon = (polys) => {
+  const cleaned = polys.map((rawUv) => cleanUvPolygon(rawUv)).filter(Boolean);
+  const plan = getTopologySubdivisionPlan(cleaned);
+  const refined = [];
+  cleaned.forEach((uv, index) => {
+    const frequency = getTopologySubdivisionFrequency(plan.areas[index], plan);
+    const type = state.ngonCellType || "Hex";
+    const pieces = type === "Diamond"
+      ? subdividePolygonToRadialQuadsUv(uv, frequency)
+      : type === "Quad" || type === "Chebychev"
+        ? subdividePolygonToUvGridQuads(uv, frequency)
+        : subdividePolygonToTrianglesUv(uv, frequency);
+    refined.push(...pieces);
+  });
+  return {
+    source: cleaned,
+    refined: refined.length ? refined : cleaned,
+    plan,
+  };
+};
+
+const importedSurfaceSupportsUvCell = (uv) => {
+  if (!state.importedSurface) return true;
+  const anchor = polygonCentroidUv(uv);
+  const edgeMids = uv.map((p, i) => [
+    (p[0] + uv[(i + 1) % uv.length][0]) * 0.5,
+    (p[1] + uv[(i + 1) % uv.length][1]) * 0.5,
+  ]);
+  const samples = [anchor, ...uv, ...edgeMids];
+  const hits = samples.reduce((count, [u, v]) => count + (getImportedSurfaceSample(u, v) ? 1 : 0), 0);
+  return !!getImportedSurfaceSample(anchor[0], anchor[1]) && hits >= Math.ceil(samples.length * 0.45);
+};
+
+const pushClippedUvLoop = (loops, loop, patchUv, minArea = 0.000001) => {
+  const clipped = clipUvPolygonToConvexPolygon(loop, patchUv);
+  const clean = clipped && cellHasUsableArea(clipped, minArea);
+  if (clean) loops.push(clean);
+};
+
+const makeHexMeshCellLoops = (patchUv, uDiv, vDiv, parameter, quadrangulate = true) => {
+  const loops = [];
+  const t = clamp(parameter, 0, 1);
+  const pointAt = (u, v) => bilerpUv(patchUv, u, v);
+  const invU = 1 / Math.max(1, uDiv);
+  const invV = 1 / Math.max(1, vDiv);
+  for (let i = -1; i <= uDiv + 1; i++) {
+    for (let j = 0; j <= vDiv; j++) {
+      if ((i + j) % 2 !== 0) continue;
+      if (i < 0 || i > uDiv) continue;
+      const rowShift = quadrangulate && j % 2 ? invU * 0.5 : 0;
+      const p0 = pointAt((i - 1) * invU + rowShift, (j + t) * invV);
+      const p1 = pointAt((i - 1) * invU + rowShift, (j - t) * invV);
+      const p2 = pointAt(i * invU + rowShift, (j - (1 - t)) * invV);
+      const p3 = pointAt((i + 1) * invU + rowShift, (j - t) * invV);
+      const p4 = pointAt((i + 1) * invU + rowShift, (j + t) * invV);
+      const p5 = pointAt(i * invU + rowShift, (j + (1 - t)) * invV);
+      if (quadrangulate) {
+        pushClippedUvLoop(loops, [p0, p1, p2, p5], patchUv);
+        pushClippedUvLoop(loops, [p2, p3, p4, p5], patchUv);
+      } else {
+        pushClippedUvLoop(loops, [p0, p1, p2, p3, p4, p5], patchUv);
+      }
+    }
+  }
+  return loops;
+};
+
+const makeStaggeredQuadCellLoops = (patchUv, uDiv, vDiv) => {
+  const loops = [];
+  const pointAt = (u, v) => bilerpUv(patchUv, u, v);
+  const invU = 1 / Math.max(1, uDiv);
+  const invV = 1 / Math.max(1, vDiv);
+  for (let r = 0; r < vDiv; r++) {
+    const rowShift = r % 2 ? invU * 0.5 : 0;
+    for (let c = -1; c <= uDiv; c++) {
+      const u0 = c * invU + rowShift;
+      const u1 = (c + 1) * invU + rowShift;
+      const v0 = r * invV;
+      const v1 = (r + 1) * invV;
+      pushClippedUvLoop(loops, [
+        pointAt(u0, v0),
+        pointAt(u1, v0),
+        pointAt(u1, v1),
+        pointAt(u0, v1),
+      ], patchUv);
+    }
+  }
+  return loops;
+};
+
+const makeDiamondMeshCellLoops = (patchUv, uDiv, vDiv) => {
+  const loops = [];
+  const pointAt = (u, v) => bilerpUv(patchUv, u, v);
+  for (let r = 0; r < vDiv; r++) {
+    for (let c = 0; c < uDiv; c++) {
+      const u0 = c / uDiv;
+      const u1 = (c + 1) / uDiv;
+      const v0 = r / vDiv;
+      const v1 = (r + 1) / vDiv;
+      const um = (u0 + u1) * 0.5;
+      const vm = (v0 + v1) * 0.5;
+      pushClippedUvLoop(loops, [
+        pointAt(um, v0),
+        pointAt(u1, vm),
+        pointAt(um, v1),
+        pointAt(u0, vm),
+      ], patchUv);
+    }
+  }
+  return loops;
+};
+
+const bilerpUv = (quad, u, v) => {
+  const bottom = [
+    THREE.MathUtils.lerp(quad[0][0], quad[1][0], u),
+    THREE.MathUtils.lerp(quad[0][1], quad[1][1], u),
+  ];
+  const top = [
+    THREE.MathUtils.lerp(quad[3][0], quad[2][0], u),
+    THREE.MathUtils.lerp(quad[3][1], quad[2][1], u),
+  ];
+  return [
+    THREE.MathUtils.lerp(bottom[0], top[0], v),
+    THREE.MathUtils.lerp(bottom[1], top[1], v),
+  ];
+};
+
+const getImportedBrepPatches = () => state.importedBrepPatches || [];
+
+const getImportedBrepDivisionCounts = () => {
+  const density = clamp(state.params.subdivisionDensity || 1, 0.25, 8);
+  const uControl = clamp(Math.round(state.params.courseCount || 16), 2, 240);
+  const vControl = clamp(Math.round(state.params.blockCount || 18), 2, 240);
+  return {
+    uDiv: Math.max(2, Math.min(240, Math.round(uControl * density))),
+    vDiv: Math.max(2, Math.min(240, Math.round(vControl * density))),
+  };
+};
+
+const generateHexDivideBrepFieldBlocks = () => {
+  if (!state.importedBrepPatches?.length) return [];
+  const { uDiv, vDiv } = getImportedBrepDivisionCounts();
+  const parameter = clamp(state.ngonShape ?? 0.5, 0, 1);
+  const blocks = [];
+  const physicalJoint = state.jointMode === "Physical cut";
+  getImportedBrepPatches().forEach((patch, patchIndex) => {
+    const patchUv = cleanUvPolygon(patch.uv);
+    if (!patchUv || patchUv.length !== 4) return;
+    const cellLoops = parameter <= 0.0001
+      ? makeDiamondMeshCellLoops(patchUv, uDiv, vDiv)
+      : Math.abs(parameter - 0.5) <= 0.015
+        ? makeStaggeredQuadCellLoops(patchUv, uDiv, vDiv)
+        : makeHexMeshCellLoops(patchUv, uDiv, vDiv, parameter, true);
+    cellLoops.forEach((cellUv) => {
+      let uv = cellUv;
+      if (!importedSurfaceSupportsUvCell(uv)) return;
+      if (physicalJoint && state.constraints.jointGap > 0 && uv.length === 4) {
+        uv = cellHasUsableArea(insetQuadMiterUv(uv, state.constraints.jointGap), 0.000001);
+        if (!uv) return;
+      }
+      const alignedUv = uv.map(applyAlign);
+      blocks.push({
+        id: `H-${patchIndex + 1}-${blocks.length + 1}`,
+        uv: alignedUv,
+        anchorUv: applyAlign(polygonCentroidUv(uv)),
+        topologyVertexKey: `hexdivide-${patchIndex}-${blocks.length}`,
+        topologyValence: uv.length,
+        topologyBoundary: false,
+        requireDirectSurfaceSamples: false,
+        tessellationStrategy: "ngon hexdivide brep-uv quadrangulated",
+      });
+    });
+  });
+  return blocks;
+};
+
+const pushUniqueTopologyPoint = (items, point, type, id) => {
+  const key = `${type}:${id ?? topologyUvKey(point, 7)}`;
+  if (items.some((item) => item.key === key)) return;
+  items.push({ key, point, type });
+};
+
+const buildNgonDualTopologyUvLoops = (polys) => {
+  const faces = polys
+    .map((rawUv, faceIndex) => {
+      const uv = cleanUvPolygon(rawUv);
+      if (!uv) return null;
+      return {
+        faceIndex,
+        uv,
+        center: topologyFaceCenterUv(uv),
+      };
+    })
+    .filter(Boolean);
+  const vertices = new Map();
+  const edges = new Map();
+  const ensureVertex = (uv) => {
+    const key = topologyUvKey(uv);
+    if (!vertices.has(key)) vertices.set(key, { key, uv, faces: new Set(), boundaryMids: [] });
+    return vertices.get(key);
+  };
+  faces.forEach((face, localFaceIndex) => {
+    face.uv.forEach((point, i) => {
+      const next = face.uv[(i + 1) % face.uv.length];
+      ensureVertex(point).faces.add(localFaceIndex);
+      const edgeKey = topologyEdgeKey(point, next);
+      if (!edges.has(edgeKey)) {
+        edges.set(edgeKey, {
+          key: edgeKey,
+          a: point,
+          b: next,
+          midpoint: [(point[0] + next[0]) * 0.5, (point[1] + next[1]) * 0.5],
+          faces: [],
+        });
+      }
+      edges.get(edgeKey).faces.push(localFaceIndex);
+    });
+  });
+  edges.forEach((edge) => {
+    if (edge.faces.length !== 1) return;
+    const a = vertices.get(topologyUvKey(edge.a));
+    const b = vertices.get(topologyUvKey(edge.b));
+    a?.boundaryMids.push({ key: edge.key, point: edge.midpoint });
+    b?.boundaryMids.push({ key: edge.key, point: edge.midpoint });
+  });
+  const loops = [];
+  vertices.forEach((vertex) => {
+    const items = [];
+    vertex.faces.forEach((faceIndex) => {
+      const face = faces[faceIndex];
+      if (face) pushUniqueTopologyPoint(items, face.center, "face", face.faceIndex);
+    });
+    vertex.boundaryMids.forEach((mid) => pushUniqueTopologyPoint(items, mid.point, "edge", mid.key));
+    if (vertex.boundaryMids.length && vertex.faces.size <= 10) {
+      pushUniqueTopologyPoint(items, vertex.uv, "vertex", vertex.key);
+    }
+    if (items.length < 3) return;
+    items.sort((a, b) => {
+      const aa = Math.atan2(a.point[1] - vertex.uv[1], a.point[0] - vertex.uv[0]);
+      const bb = Math.atan2(b.point[1] - vertex.uv[1], b.point[0] - vertex.uv[0]);
+      return aa - bb;
+    });
+    let uv = cleanUvPolygon(items.map((item) => item.point), 0.000001);
+    if (!uv) return;
+    if (signedUvArea(uv) < 0) uv = uv.slice().reverse();
+    loops.push({
+      uv,
+      anchorUv: polygonCentroidUv(uv),
+      topologyVertexKey: vertex.key,
+      valence: vertex.faces.size,
+      isBoundary: vertex.boundaryMids.length > 0,
+    });
+  });
+  return loops;
+};
+
+const bilerpArray2 = (quad, u, v) => [
+  THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(quad[0][0], quad[1][0], u),
+    THREE.MathUtils.lerp(quad[3][0], quad[2][0], u),
+    v
+  ),
+  THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(quad[0][1], quad[1][1], u),
+    THREE.MathUtils.lerp(quad[3][1], quad[2][1], u),
+    v
+  ),
+];
+
+const bilerpVector3 = (quad, u, v) => {
+  const bottom = quad[0].clone().lerp(quad[1], u);
+  const top = quad[3].clone().lerp(quad[2], u);
+  return bottom.lerp(top, v);
+};
+
+const bilerpNormal3 = (quad, u, v, fallback = new THREE.Vector3(0, 1, 0)) => {
+  if (!quad?.length || quad.length !== 4) return fallback.clone();
+  const n = bilerpVector3(quad, u, v);
+  return n.lengthSq() > 1e-10 ? n.normalize() : fallback.clone();
+};
+
+const getPanelMorphWeight = (uv, id = "panel-morph") => {
+  const block = { id, uv };
+  const { basis, sourceWeight } = computeRawSourceWeight(block);
+  const curvatureWeight = clamp((basis.curvature || 0) * 1.8, 0, 1);
+  const compressionWeight = clamp(((basis.compression || 0) - 0.18) / 0.72, 0, 1);
+  // In explicit field mode, honor the selected source exactly. This lets an
+  // attractor be the sole driver of a matched panel morph rather than letting
+  // curvature or compression bleed into the response.
+  if (state.panelWeightSubdivision) return clamp(sourceWeight, 0, 1);
+  return clamp(Math.max(curvatureWeight, compressionWeight), 0, 1);
+};
+
+const smoothDomainCoordinate = (value) => {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+const topologyMorphCoordinate = (value, axisWeight = 1) => {
+  const t = clamp(value, 0, 1);
+  const edgeDense = THREE.MathUtils.lerp(t, smoothDomainCoordinate(t), 0.72 * axisWeight);
+  return THREE.MathUtils.lerp(t, edgeDense, clamp(state.panelMorphStrength || 0, 0, 1) * 0.9);
+};
+
+const getPanelDomainMorphUv = (uv, id = "panel-domain-morph") => {
+  return uv ? [clamp(uv[0], 0, 1), clamp(uv[1], 0, 1)] : [0.5, 0.5];
+};
+
+const getPanelDomainMorphSample = (uv, fallbackPoint, fallbackNormal, id = "panel-domain-morph") => {
+  const morphedUv = getPanelDomainMorphUv(uv, id);
+  return {
+    uv: morphedUv,
+    point: fallbackPoint?.clone?.() || new THREE.Vector3(),
+    normal: fallbackNormal?.clone?.() || new THREE.Vector3(0, 1, 0),
+  };
+};
+
+const getPanelSubdivisionCounts = (cell) => {
+  const uCount = clamp(Math.round(state.panelSubdivisionU || 1), 1, 8);
+  const vCount = clamp(Math.round(state.panelSubdivisionV || 1), 1, 8);
+  const sourceWeight = getPanelMorphWeight(cell.uv, `panel-morph-${cell.faceIndex ?? 0}`);
+  return {
+    uCount,
+    vCount,
+    sourceWeight,
+  };
+};
+
+const subdivideTissueQuadCell = (cell, cellIndex) => {
+  if (cell.points?.length !== 4 || cell.uv?.length !== 4) return [cell];
+  const { uCount, vCount, sourceWeight } = getPanelSubdivisionCounts(cell);
+  const morphStrength = clamp(state.panelMorphStrength || 0, 0, 1);
+  if (uCount === 1 && vCount === 1 && morphStrength <= 1e-6) return [cell];
+  const sourceCarrierUv = cell.sourceCarrierUv?.length === 4 ? cell.sourceCarrierUv : cell.uv;
+  const fallbackNormal = getFaceNormalFromPoints(cell.points) || new THREE.Vector3(0, 1, 0);
+  const normalQuad = cell.targetNormals?.length === 4 ? cell.targetNormals : [fallbackNormal, fallbackNormal, fallbackNormal, fallbackNormal];
+  const out = [];
+  for (let y = 0; y < vCount; y++) {
+    const v0 = y / vCount;
+    const v1 = (y + 1) / vCount;
+    for (let x = 0; x < uCount; x++) {
+      const u0 = x / uCount;
+      const u1 = (x + 1) / uCount;
+      const rawUv = [
+        bilerpArray2(cell.uv, u0, v0),
+        bilerpArray2(cell.uv, u1, v0),
+        bilerpArray2(cell.uv, u1, v1),
+        bilerpArray2(cell.uv, u0, v1),
+      ];
+      const rawCarrierUv = [
+        bilerpArray2(sourceCarrierUv, u0, v0),
+        bilerpArray2(sourceCarrierUv, u1, v0),
+        bilerpArray2(sourceCarrierUv, u1, v1),
+        bilerpArray2(sourceCarrierUv, u0, v1),
+      ];
+      const rawPoints = [
+        bilerpVector3(cell.points, u0, v0),
+        bilerpVector3(cell.points, u1, v0),
+        bilerpVector3(cell.points, u1, v1),
+        bilerpVector3(cell.points, u0, v1),
+      ];
+      const rawNormals = [
+        bilerpNormal3(normalQuad, u0, v0, fallbackNormal),
+        bilerpNormal3(normalQuad, u1, v0, fallbackNormal),
+        bilerpNormal3(normalQuad, u1, v1, fallbackNormal),
+        bilerpNormal3(normalQuad, u0, v1, fallbackNormal),
+      ];
+      const samples = rawCarrierUv.map((coord, cornerIndex) => getPanelDomainMorphSample(
+        coord,
+        rawPoints[cornerIndex],
+        rawNormals[cornerIndex],
+        `panel-domain-${cell.faceIndex ?? cellIndex}-${cornerIndex}`
+      ));
+      out.push({
+        ...cell,
+        subdivisionIndex: out.length,
+        subdivisionU: x,
+        subdivisionV: y,
+        subdivisionParentIndex: cellIndex,
+        subdivisionCounts: { u: uCount, v: vCount },
+        morphWeight: Number(sourceWeight.toFixed(4)),
+        uv: rawUv.map((coord, cornerIndex) => samples[cornerIndex]?.uv || getPanelDomainMorphUv(coord)),
+        sourceCarrierUv: samples.map((sample) => sample.uv),
+        points: samples.map((sample) => sample.point),
+        targetNormals: samples.map((sample) => sample.normal),
+      });
+    }
+  }
+  return out;
+};
+
+const generateImportedTopologyMeshBlocks = () => {
+  if (isPanelQuadSource(state.customPatternSource) && state.importedTissueCells?.length) {
+    const orientedTissueCells = orientTissueCellsByStrips(
+      state.importedTissueCells.map((cell) => ({
+        ...cell,
+        points: cell.points?.map((p) => p.clone()) || [],
+        targetNormals: cell.targetNormals?.map((n) => n.clone()),
+        uv: cell.uv?.map((coord) => [...coord]) || [],
+        sourceCarrierUv: cell.sourceCarrierUv?.map((coord) => [...coord]) || [],
+      })),
+      state.strategy
+    ).flatMap((cell, index) => subdivideTissueQuadCell(cell, index));
+    return orientedTissueCells
+      .map((cell, index) => {
+        const uv = cell.uv?.map(applyAlign) || null;
+        if (!uv || !cellHasUsableArea(uv, 0.000001)) return null;
+        const parentIndex = cell.subdivisionParentIndex;
+        const id = parentIndex !== undefined
+          ? `T-${parentIndex + 1}-${cell.subdivisionU + 1}-${cell.subdivisionV + 1}`
+          : `T-${index + 1}`;
+        return {
+          id,
+          uv,
+          anchorUv: polygonCentroidUv(uv),
+          targetPoints: cell.points.map((p) => p.clone()),
+          targetNormals: cell.targetNormals?.map((n) => n.clone()),
+          sourceCarrierUv: cell.sourceCarrierUv?.map((coord) => [...coord]) || uv.map((coord) => [...coord]),
+          orientationShift: cell.orientationShift || 0,
+          orientationReversed: !!cell.orientationReversed,
+          carrierFaceIndex: cell.faceIndex,
+          topologyVertexKey: `tissue-${index}`,
+          topologyValence: cell.points.length,
+          subdivisionCounts: cell.subdivisionCounts,
+          subdivisionParentIndex: cell.subdivisionParentIndex,
+          morphWeight: cell.morphWeight,
+          topologyBoundary: false,
+          requireDirectSurfaceSamples: false,
+          tessellationStrategy: cell.points.length === 4 ? "panel quad mesh carrier" : "panel polygon mesh carrier",
+        };
+      })
+      .filter(Boolean);
+  }
+  if (!state.importedTopologyPolys?.length && !state.importedBrepPatches?.length) return [];
+  if (state.importedBrepPatches?.length && state.ngonCellType === "Hex") return generateHexDivideBrepFieldBlocks();
+  const physicalJoint = state.jointMode === "Physical cut";
+  const topologySource = state.importedTopologyPolys || state.importedBrepPatches.map((patch) => patch.uv);
+  const topology = refineTopologyPolysForNgon(topologySource);
+  const type = state.ngonCellType || "Hex";
+  const loops = type === "Hex"
+    ? buildNgonDualTopologyUvLoops(topology.refined)
+    : topology.refined.map((uv, index) => ({
+      uv,
+      anchorUv: polygonCentroidUv(uv),
+      topologyVertexKey: `direct-${index}`,
+      valence: uv.length,
+      isBoundary: false,
+    }));
+  return loops
+    .map((loop, index) => {
+      let uv = loop.uv;
+      if (physicalJoint && state.constraints.jointGap > 0 && uv.length === 4) {
+        uv = cellHasUsableArea(insetQuadMiterUv(uv, state.constraints.jointGap), 0.000001);
+        if (!uv) return null;
+      }
+      const anchorUv = polygonCentroidUv(uv);
+      const alignedUv = uv.map(applyAlign);
+      const alignedAnchor = applyAlign(anchorUv);
+      return {
+        id: `D-${index + 1}`,
+        uv: alignedUv,
+        anchorUv: alignedAnchor,
+        topologyVertexKey: loop.topologyVertexKey,
+        topologyValence: loop.valence,
+        topologyBoundary: loop.isBoundary,
+        requireDirectSurfaceSamples: false,
+        tessellationStrategy: type === "Hex" ? "ngon mesh-dual topology" : `ngon ${type.toLowerCase()} topology`,
+      };
+    })
+    .filter(Boolean);
+};
+
+const generateImported2DLayoutBlocks = () => {
+  if (!state.imported2DPolys?.length) return [];
+  return state.imported2DPolys.map((poly, i) => {
+    const transformed = poly.map(applyAlign);
+    const quad = transformed.length >= 4 ? [transformed[0], transformed[1], transformed[2], transformed[3]] : null;
+    if (!quad) return null;
+    return { id: `I-${i + 1}`, uv: quad };
+  }).filter(Boolean);
+};
+
+const generateCustomSurfaceGridBlocks = ({ adaptive = false } = {}) => {
+  const physicalJoint = state.jointMode === "Physical cut";
+  const rows = Math.max(2, Math.floor(state.params.courseCount * state.params.subdivisionDensity));
+  const cols = Math.max(2, Math.floor(state.params.blockCount * state.params.subdivisionDensity));
+  const out = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let u0 = c / cols;
+      let u1 = (c + 1) / cols;
+      let v0 = r / rows;
+      let v1 = (r + 1) / rows;
+      if (adaptive) {
+        const cu = (u0 + u1) * 0.5;
+        const cv = (v0 + v1) * 0.5;
+        const warp = 0.05 * Math.sin(cu * Math.PI * 8) * Math.cos(cv * Math.PI * 8);
+        u0 += warp * 0.5;
+        u1 -= warp * 0.5;
+        v0 += warp * 0.3;
+        v1 -= warp * 0.3;
+      }
+      const localGap = physicalJoint ? clamp(state.constraints.jointGap, state.forceLmin * 0.03, state.forceLmax * 0.15) : 0;
+      let uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+      if (physicalJoint && localGap > 0) uv = insetQuadMiterUv(uv, localGap);
+      out.push({
+        id: `C-${r + 1}-${c + 1}`,
+        uv: uv.map(applyAlign),
+      });
+    }
+  }
+  return out;
+};
+
+const generateProceduralVaultFieldBlocks = () => {
+  const physicalJoint = state.jointMode === "Physical cut";
+  const conforming2D = true;
   const density = state.params.subdivisionDensity;
+  if (isBarrelLikeVault()) return generateBarrelLikeBlocksFromTrait();
   const rows = Math.max(2, Math.floor(state.params.courseCount * density * Math.max(1, state.arrayV)));
   const cols = Math.max(2, Math.floor(state.params.blockCount * density * Math.max(1, state.arrayU)));
   const blocks = [];
@@ -2974,6 +5976,496 @@ const generatePatternBlocks = () => {
   return blocks;
 };
 
+const blockStrategyDefinitions = {
+  tissueQuadMesh: {
+    id: "tissueQuadMesh",
+    label: "Panel quad mesh",
+    generate: () => generateImportedTopologyMeshBlocks(),
+  },
+  importedTopology: {
+    id: "importedTopology",
+    label: "Imported topology field",
+    generate: () => generateImportedTopologyMeshBlocks(),
+  },
+  importedLayout: {
+    id: "importedLayout",
+    label: "Imported 2D layout",
+    generate: () => generateImported2DLayoutBlocks(),
+  },
+  freeformCourses: {
+    id: "freeformCourses",
+    label: "Freeform courses",
+    generate: () => generateFreeformCourseBlocks(),
+  },
+  ngonCells: {
+    id: "ngonCells",
+    label: "NGon cells",
+    generate: () => generateNgonCellBlocks(),
+  },
+  surfaceGrid: {
+    id: "surfaceGrid",
+    label: "Surface UV grid",
+    generate: () => generateCustomSurfaceGridBlocks({ adaptive: state.customPatternSource === "NGon Adaptive" }),
+  },
+  proceduralVault: {
+    id: "proceduralVault",
+    label: "Procedural vault field",
+    generate: () => generateProceduralVaultFieldBlocks(),
+  },
+};
+
+const getBlockStrategyDefinition = () => {
+  if (isPanelQuadSource(state.customPatternSource) && state.importedTissueCells?.length) {
+    return blockStrategyDefinitions.tissueQuadMesh;
+  }
+  if (
+    (state.importedTopologyPolys?.length || state.importedBrepPatches?.length) &&
+    (state.customPatternSource === "Imported Topology Mesh" || state.pattern === "Hex / NGon")
+  ) return blockStrategyDefinitions.importedTopology;
+  if (state.designMode === "Custom Import" && state.customPatternSource === "Imported 2D Layout" && state.imported2DPolys?.length) {
+    return blockStrategyDefinitions.importedLayout;
+  }
+  if (state.designMode === "Custom Import" && state.customPatternSource === "Freeform Courses" && state.importedSurface) {
+    return blockStrategyDefinitions.freeformCourses;
+  }
+  if (
+    state.designMode === "Custom Import" &&
+    (state.customPatternSource === "NGon Cells" || state.customPatternSource === "NGon Adaptive") &&
+    state.importedSurface
+  ) return blockStrategyDefinitions.ngonCells;
+  if (state.designMode === "Custom Import") return blockStrategyDefinitions.surfaceGrid;
+  return blockStrategyDefinitions.proceduralVault;
+};
+
+const deterministicHash = (value) => {
+  let hash = 2166136261;
+  const text = String(value);
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+};
+
+const rotateUvLoop = (uv, steps = 0) => {
+  if (!uv?.length) return uv;
+  const shift = ((Math.round(steps) % uv.length) + uv.length) % uv.length;
+  return uv.slice(shift).concat(uv.slice(0, shift));
+};
+
+const getOrientationGuideUv = (anchorUv = [0.5, 0.5], strategy = getActiveStrategy()) => {
+  const mode = strategy.rotation || "course-tangent";
+  if (mode === "surface-uv") return [0, 1];
+  if (mode === "principal-curvature") {
+    const curve = getHostField().curvatureAt(anchorUv[0], anchorUv[1]);
+    const sign = (curve?.ku || 0) >= (curve?.kv || 0) ? 1 : -1;
+    return sign > 0 ? [1, 0] : [0, 1];
+  }
+  if (mode === "compression-flow") {
+    const angle = THREE.MathUtils.degToRad(state.contourField?.guideDirectionDeg ?? 35);
+    return [Math.cos(angle), Math.sin(angle)];
+  }
+  if (mode === "cell-normal") return [0, 1];
+  return [1, 0];
+};
+
+const orientQuadLoopToGuide = (uv, targetPoints, sourceCarrierUv, targetNormals = null, guide = [1, 0]) => {
+  if (!uv?.length || uv.length !== 4) {
+    return { uv, targetPoints, sourceCarrierUv, targetNormals, shift: 0 };
+  }
+  const guideLen = Math.hypot(guide[0], guide[1]) || 1;
+  const g = [guide[0] / guideLen, guide[1] / guideLen];
+  let bestShift = 0;
+  let bestScore = -Infinity;
+  for (let shift = 0; shift < 4; shift++) {
+    const loop = rotateUvLoop(uv, shift);
+    const edge = [loop[1][0] - loop[0][0], loop[1][1] - loop[0][1]];
+    const edgeLen = Math.hypot(edge[0], edge[1]) || 1;
+    const score = Math.abs((edge[0] / edgeLen) * g[0] + (edge[1] / edgeLen) * g[1]);
+    if (score > bestScore) {
+      bestScore = score;
+      bestShift = shift;
+    }
+  }
+  return {
+    uv: rotateUvLoop(uv, bestShift),
+    targetPoints: targetPoints?.length === 4 ? rotateUvLoop(targetPoints, bestShift) : targetPoints,
+    sourceCarrierUv: sourceCarrierUv?.length === 4 ? rotateUvLoop(sourceCarrierUv, bestShift) : sourceCarrierUv,
+    targetNormals: targetNormals?.length === 4 ? rotateUvLoop(targetNormals, bestShift) : targetNormals,
+    shift: bestShift,
+  };
+};
+
+const tissuePointKey = (point, precision = 5) => `${point.x.toFixed(precision)},${point.y.toFixed(precision)},${point.z.toFixed(precision)}`;
+
+const tissueEdgeKey = (a, b) => {
+  const ak = tissuePointKey(a);
+  const bk = tissuePointKey(b);
+  return ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+};
+
+const rotateLoopValues = (values, steps = 0) => {
+  if (!values?.length) return values;
+  const shift = ((Math.round(steps) % values.length) + values.length) % values.length;
+  return values.slice(shift).concat(values.slice(0, shift));
+};
+
+const reverseLoopValues = (values) => values?.length ? values.slice().reverse() : values;
+
+const getLoopEdgeKeys = (points) => (points || []).map((point, index) => ({
+  key: tissueEdgeKey(point, points[(index + 1) % points.length]),
+  a: tissuePointKey(point),
+  b: tissuePointKey(points[(index + 1) % points.length]),
+  index,
+}));
+
+const applyTissueCellLoop = (cell, points, uv, sourceCarrierUv, targetNormals = null, shift = 0, reversed = false) => ({
+  ...cell,
+  points,
+  uv,
+  sourceCarrierUv,
+  targetNormals,
+  orientationShift: shift,
+  orientationReversed: reversed,
+});
+
+const makeTissueCellCandidates = (cell) => {
+  const bases = [
+    {
+      points: cell.points,
+      uv: cell.uv,
+      sourceCarrierUv: cell.sourceCarrierUv,
+      targetNormals: cell.targetNormals,
+      reversed: false,
+    },
+  ];
+  if (cell.points?.length === 4) {
+    bases.push({
+      points: reverseLoopValues(cell.points),
+      uv: reverseLoopValues(cell.uv),
+      sourceCarrierUv: reverseLoopValues(cell.sourceCarrierUv),
+      targetNormals: reverseLoopValues(cell.targetNormals),
+      reversed: true,
+    });
+  }
+  const candidates = [];
+  bases.forEach((base) => {
+    for (let shift = 0; shift < Math.max(1, base.points?.length || 0); shift++) {
+      candidates.push({
+        points: rotateLoopValues(base.points, shift),
+        uv: rotateLoopValues(base.uv, shift),
+        sourceCarrierUv: rotateLoopValues(base.sourceCarrierUv, shift),
+        targetNormals: rotateLoopValues(base.targetNormals, shift),
+        shift,
+        reversed: base.reversed,
+      });
+    }
+  });
+  return candidates;
+};
+
+const pickNeighborTissueOrientation = (cell, sharedEdge, guide = [1, 0]) => {
+  const candidates = makeTissueCellCandidates(cell);
+  const scoreCandidate = (candidate) => {
+    const edge = [candidate.uv[1][0] - candidate.uv[0][0], candidate.uv[1][1] - candidate.uv[0][1]];
+    const edgeLen = Math.hypot(edge[0], edge[1]) || 1;
+    const guideLen = Math.hypot(guide[0], guide[1]) || 1;
+    const guideScore = Math.abs((edge[0] / edgeLen) * (guide[0] / guideLen) + (edge[1] / edgeLen) * (guide[1] / guideLen));
+    return guideScore + (candidate.reversed ? -0.08 : 0);
+  };
+  const scoreSharedEdgeCandidate = (candidate, edge) => {
+    const expectedIndex = (sharedEdge.index + 2) % 4;
+    const indexScore = edge.index === expectedIndex ? 10 : edge.index % 2 === expectedIndex % 2 ? 3 : -5;
+    return indexScore + scoreCandidate(candidate);
+  };
+  const oppositeCandidates = candidates.filter((candidate) => {
+    const edge = getLoopEdgeKeys(candidate.points).find((item) => item.key === sharedEdge.key);
+    return edge && edge.a === sharedEdge.b && edge.b === sharedEdge.a;
+  }).map((candidate) => ({
+    candidate,
+    edge: getLoopEdgeKeys(candidate.points).find((item) => item.key === sharedEdge.key),
+  }));
+  const opposite = oppositeCandidates.sort((a, b) => scoreSharedEdgeCandidate(b.candidate, b.edge) - scoreSharedEdgeCandidate(a.candidate, a.edge))[0]?.candidate;
+  if (opposite) return applyTissueCellLoop(cell, opposite.points, opposite.uv, opposite.sourceCarrierUv, opposite.targetNormals, opposite.shift, opposite.reversed);
+  const matched = candidates
+    .map((candidate) => ({
+      candidate,
+      edge: getLoopEdgeKeys(candidate.points).find((item) => item.key === sharedEdge.key),
+    }))
+    .filter((item) => item.edge)
+    .sort((a, b) => scoreSharedEdgeCandidate(b.candidate, b.edge) - scoreSharedEdgeCandidate(a.candidate, a.edge))[0]?.candidate;
+  if (matched) return applyTissueCellLoop(cell, matched.points, matched.uv, matched.sourceCarrierUv, matched.targetNormals, matched.shift, matched.reversed);
+  const oriented = orientQuadLoopToGuide(cell.uv, cell.points, cell.sourceCarrierUv, cell.targetNormals, guide);
+  return applyTissueCellLoop(cell, oriented.targetPoints, oriented.uv, oriented.sourceCarrierUv, oriented.targetNormals, oriented.shift, false);
+};
+
+const orientTissueCellsByStrips = (cells, strategy = getActiveStrategy()) => {
+  const quadCells = cells?.filter((cell) => cell.points?.length === 4 && cell.uv?.length === 4) || [];
+  if (quadCells.length < 2) return cells;
+  const edgeOwners = new Map();
+  cells.forEach((cell, index) => {
+    getLoopEdgeKeys(cell.points).forEach((edge) => {
+      if (!edgeOwners.has(edge.key)) edgeOwners.set(edge.key, []);
+      edgeOwners.get(edge.key).push({ index, edge });
+    });
+  });
+  const oriented = cells.map((cell) => ({ ...cell }));
+  const visited = new Set();
+  const seedOrder = cells
+    .map((cell, index) => {
+      const anchor = polygonCentroidUv(cell.uv || [[0, 0]]);
+      const guide = getOrientationGuideUv(anchor, strategy);
+      const oriented = orientQuadLoopToGuide(cell.uv, cell.points, cell.sourceCarrierUv, cell.targetNormals, guide);
+      const edge = oriented.uv?.length >= 2 ? [oriented.uv[1][0] - oriented.uv[0][0], oriented.uv[1][1] - oriented.uv[0][1]] : [0, 0];
+      const edgeLen = Math.hypot(edge[0], edge[1]) || 1;
+      const guideLen = Math.hypot(guide[0], guide[1]) || 1;
+      const score = Math.abs((edge[0] / edgeLen) * (guide[0] / guideLen) + (edge[1] / edgeLen) * (guide[1] / guideLen));
+      return { index, anchor, score };
+    })
+    .sort((a, b) => b.score - a.score || a.anchor[1] - b.anchor[1] || a.anchor[0] - b.anchor[0]);
+  seedOrder.forEach(({ index: seedIndex }) => {
+    if (visited.has(seedIndex)) return;
+    const seed = oriented[seedIndex];
+    const seedGuide = getOrientationGuideUv(polygonCentroidUv(seed.uv), strategy);
+    const seedOriented = orientQuadLoopToGuide(seed.uv, seed.points, seed.sourceCarrierUv, seed.targetNormals, seedGuide);
+    oriented[seedIndex] = applyTissueCellLoop(seed, seedOriented.targetPoints, seedOriented.uv, seedOriented.sourceCarrierUv, seedOriented.targetNormals, seedOriented.shift, false);
+    visited.add(seedIndex);
+    const queue = [seedIndex];
+    while (queue.length) {
+      const currentIndex = queue.shift();
+      const current = oriented[currentIndex];
+      getLoopEdgeKeys(current.points).forEach((edge) => {
+        const owners = edgeOwners.get(edge.key) || [];
+        owners.forEach(({ index: neighborIndex }) => {
+          if (neighborIndex === currentIndex || visited.has(neighborIndex)) return;
+          const neighborGuide = getOrientationGuideUv(polygonCentroidUv(oriented[neighborIndex].uv), strategy);
+          oriented[neighborIndex] = pickNeighborTissueOrientation(oriented[neighborIndex], edge, neighborGuide);
+          visited.add(neighborIndex);
+          queue.push(neighborIndex);
+        });
+      });
+    }
+  });
+  return oriented;
+};
+
+const splitBlockToFanCells = (block) => {
+  if (!block.uv || block.uv.length < 4) return [block];
+  const center = polygonCentroidUv(block.uv);
+  return block.uv.map((point, i) => {
+    const next = block.uv[(i + 1) % block.uv.length];
+    return {
+      ...block,
+      id: `${block.id}-F${i + 1}`,
+      uv: [center, point, next],
+      parentCellId: block.id,
+      fillCellType: "fan",
+    };
+  });
+};
+
+const splitBlockToFrameCells = (block) => {
+  if (!block.uv || block.uv.length !== 4) return [block];
+  const center = polygonCentroidUv(block.uv);
+  const inner = block.uv.map((point) => [
+    THREE.MathUtils.lerp(point[0], center[0], 0.32),
+    THREE.MathUtils.lerp(point[1], center[1], 0.32),
+  ]);
+  return block.uv.map((point, i) => {
+    const nextIndex = (i + 1) % block.uv.length;
+    return {
+      ...block,
+      id: `${block.id}-R${i + 1}`,
+      uv: [point, block.uv[nextIndex], inner[nextIndex], inner[i]],
+      parentCellId: block.id,
+      fillCellType: "frame",
+    };
+  });
+};
+
+const applyStrategyFillMode = (blocks, strategy) => {
+  if (strategy.fill === "fan") return blocks.flatMap(splitBlockToFanCells);
+  if (strategy.fill === "frame") return blocks.flatMap(splitBlockToFrameCells);
+  return blocks.map((block) => ({
+    ...block,
+    fillCellType: strategy.fill === "patch" ? "patch" : "quad",
+  }));
+};
+
+const applyPrimalDualTopologyMode = (blocks, strategy) => {
+  const cleanBlocks = blocks.filter((block) => block.uv?.length >= 3 && cellHasUsableArea(block.uv, 0.000001));
+  const dualLoops = buildNgonDualTopologyUvLoops(cleanBlocks.map((block) => block.uv));
+  state.dualPreviewLoops = dualLoops.map((loop) => ({
+    uv: loop.uv,
+    anchorUv: loop.anchorUv,
+    isBoundary: loop.isBoundary,
+    valence: loop.valence,
+  }));
+  if (strategy.topology !== "dual") return blocks;
+  const areas = dualLoops.map((loop) => Math.abs(signedUvArea(loop.uv))).filter((area) => area > 0);
+  const avgArea = areas.reduce((sum, area) => sum + area, 0) / Math.max(1, areas.length);
+  return dualLoops
+    .filter((loop) => {
+      if (!cellHasUsableArea(loop.uv, 0.000001)) return false;
+      if (!strategy.dualBoundaryCleanup) return true;
+      if (!loop.isBoundary) return true;
+      return Math.abs(signedUvArea(loop.uv)) >= avgArea * 0.12 && loop.uv.length >= 3;
+    })
+    .map((loop, index) => ({
+      id: `DU-${index + 1}`,
+      uv: loop.uv,
+      anchorUv: loop.anchorUv,
+      topologyVertexKey: loop.topologyVertexKey,
+      topologyValence: loop.valence,
+      topologyBoundary: loop.isBoundary,
+      sourceTopologyMode: "dual",
+      tessellationStrategy: "strategy dual topology",
+  }));
+};
+
+const splitBlockForWeightDensity = (block) => {
+  const uv = block.uv;
+  if (!uv || uv.length !== 4) return [block];
+  const midpoint = (a, b, normal = false) => {
+    if (a?.clone && b?.clone) {
+      const value = a.clone().lerp(b, 0.5);
+      return normal && value.lengthSq?.() > 1e-10 ? value.normalize() : value;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) return a.map((value, index) => (value + b[index]) * 0.5);
+    return null;
+  };
+  const splitLoop = (loop, splitU, normal = false) => {
+    if (!loop || loop.length !== 4) return null;
+    const m01 = midpoint(loop[0], loop[1], normal);
+    const m32 = midpoint(loop[3], loop[2], normal);
+    const m12 = midpoint(loop[1], loop[2], normal);
+    const m03 = midpoint(loop[0], loop[3], normal);
+    return splitU
+      ? [[loop[0], m01, m32, loop[3]], [m01, loop[1], loop[2], m32]]
+      : [[loop[0], loop[1], m12, m03], [m03, m12, loop[2], loop[3]]];
+  };
+  const makePieces = (uvPieces, splitU) => {
+    const targetPieces = splitLoop(block.targetPoints, splitU);
+    const normalPieces = splitLoop(block.targetNormals, splitU, true);
+    const carrierPieces = splitLoop(block.sourceCarrierUv, splitU);
+    return uvPieces.map((piece, index) => ({
+      ...block,
+      id: `${block.id}-W${index + 1}`,
+      uv: piece,
+      anchorUv: polygonCentroidUv(piece),
+      targetPoints: targetPieces?.[index] || null,
+      targetNormals: normalPieces?.[index] || null,
+      sourceCarrierUv: carrierPieces?.[index] || piece.map((point) => [...point]),
+      parentCellId: block.parentCellId || block.id,
+    }));
+  };
+  const a = uv[0];
+  const b = uv[1];
+  const c = uv[2];
+  const d = uv[3];
+  const uSpan = Math.hypot(b[0] - a[0], b[1] - a[1]) + Math.hypot(c[0] - d[0], c[1] - d[1]);
+  const vSpan = Math.hypot(d[0] - a[0], d[1] - a[1]) + Math.hypot(c[0] - b[0], c[1] - b[1]);
+  if (uSpan >= vSpan) {
+    const ab = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+    const dc = [(d[0] + c[0]) * 0.5, (d[1] + c[1]) * 0.5];
+    return makePieces([[a, ab, dc, d], [ab, b, c, dc]], true);
+  }
+  const bc = [(b[0] + c[0]) * 0.5, (b[1] + c[1]) * 0.5];
+  const ad = [(a[0] + d[0]) * 0.5, (a[1] + d[1]) * 0.5];
+  return makePieces([[a, b, bc, ad], [ad, bc, c, d]], false);
+};
+
+const applyFieldDensityToBlocks = (blocks) => {
+  if (!state.fieldWeights.driveDensity) return blocks;
+  // A mapped custom component owns a 3D carrier cell. Splitting that cell after
+  // mapping produces non-conforming component boundaries. Its field response is
+  // therefore handled as a continuous component scale in buildCustomPanelMappedGeometry.
+  if (state.customPanel?.geometryData) return blocks;
+  const maxBlocks = 2600;
+  const out = [];
+  blocks.forEach((block) => {
+    const raw = computeRawSourceWeight(block).sourceWeight;
+    const canSplit = block.uv?.length === 4 && Math.abs(signedUvArea(block.uv)) > 0.00006 && out.length + 2 <= maxBlocks;
+    if (raw > 0.68 && canSplit) {
+      out.push(...splitBlockForWeightDensity(block).map((piece) => ({
+        ...piece,
+        densityDriven: true,
+      })));
+    } else if (raw < 0.12 && blocks.length > 48 && deterministicHash(block.id) % 3 === 0) {
+      // Lightly thin very low-weight regions so dense strategies read as intentionally graded.
+    } else {
+      out.push(block);
+    }
+  });
+  return out.length ? out : blocks;
+};
+
+const applyStrategyRotationVariation = (blocks, strategy) => blocks.map((block, index) => {
+  let shift = 0;
+  if (
+    strategy.component === "custom" &&
+    state.customPanel &&
+    block.targetPoints?.length &&
+    strategy.rotationVariation === "none"
+  ) {
+    return {
+      ...block,
+      rotationShift: block.orientationShift || 0,
+    };
+  }
+  if (strategy.rotationVariation === "alternating") shift = index % Math.max(1, block.uv?.length || 1);
+  if (strategy.rotationVariation === "random") shift = deterministicHash(block.id) % Math.max(1, block.uv?.length || 1);
+  if (strategy.rotationVariation === "field") {
+    const anchor = block.anchorUv || polygonCentroidUv(block.uv || [[0, 0]]);
+    shift = Math.round((anchor[0] + anchor[1]) * 3) % Math.max(1, block.uv?.length || 1);
+  }
+  return {
+    ...block,
+    uv: shift ? rotateUvLoop(block.uv, shift) : block.uv,
+    targetPoints: shift && block.targetPoints ? rotateUvLoop(block.targetPoints, shift) : block.targetPoints,
+    rotationShift: shift,
+  };
+});
+
+const assignStrategyComponentVariants = (blocks, strategy) => blocks.map((block, index) => {
+  let variant = strategy.component;
+  if (strategy.component === "custom" && state.customPanel) {
+    variant = "custom";
+  } else if (strategy.componentMode === "family") {
+    const family = strategy.component === "keyedVoussoir"
+      ? ["keyedVoussoir", "voussoir", "ashlar"]
+      : [strategy.component, "ashlar", "keyedVoussoir"];
+    variant = family[index % family.length];
+  } else if (strategy.componentMode === "zone") {
+    const anchor = block.anchorUv || polygonCentroidUv(block.uv || [[0, 0]]);
+    const edgeDistance = Math.min(anchor[0], 1 - anchor[0], anchor[1], 1 - anchor[1]);
+    variant = edgeDistance < 0.08 ? "keyedVoussoir" : strategy.component;
+  }
+  return {
+    ...block,
+    componentVariant: variant,
+  };
+});
+
+const applyStrategyModesToBlocks = (blocks, strategy) => {
+  const densityAdjusted = applyFieldDensityToBlocks(blocks);
+  const filled = applyStrategyFillMode(densityAdjusted, strategy);
+  const topologized = applyPrimalDualTopologyMode(filled, strategy);
+  const rotated = applyStrategyRotationVariation(topologized, strategy);
+  return assignStrategyComponentVariants(rotated, strategy);
+};
+
+const generatePatternBlocks = () => {
+  const definition = getBlockStrategyDefinition();
+  const strategy = getActiveStrategy();
+  const blocks = applyStrategyModesToBlocks(definition.generate() || [], strategy);
+  return blocks.map((block) => ({
+    ...block,
+    generatorStrategy: definition.id,
+    generatorStrategyLabel: definition.label,
+  }));
+};
+
 const signedUvArea = (uv) => {
   let area = 0;
   for (let i = 0; i < uv.length; i++) {
@@ -3000,65 +6492,799 @@ const isConvexUv = (uv) => {
   return true;
 };
 
-const buildBlockMesh = (block) => {
-  const t = state.params.thickness;
-  const cyclicU = state.vaultType === "Dome";
-  const q = block.uv.map(([u, v]) => getVaultPoint(cyclicU ? wrap01(u) : clamp(u, 0, 1), clamp(v, 0, 1)));
-  let top;
-  let bot;
-  let jointFaceType = "ruled";
-  if (state.vaultType === "Groin Vault") {
-    top = block.uv.map(([u, v]) => {
-      return getGroinSupportAdjustedPoint(clamp(u, 0, 1), clamp(v, 0, 1), { surface: "extrados" });
-    });
-    bot = block.uv.map(([u, v]) => {
-      return getGroinSupportAdjustedPoint(clamp(u, 0, 1), clamp(v, 0, 1), { surface: "intrados" });
-    });
-    jointFaceType = "custom intrados/extrados";
-  } else {
-    const normal = q[1].clone().sub(q[0]).cross(q[3].clone().sub(q[0])).normalize();
-    // Keep plan edges aligned between neighboring blocks; only offset along local normal.
-    top = q.map((p) => p.clone().addScaledVector(normal, t * 0.5));
-    bot = q.map((p) => p.clone().addScaledVector(normal, -(t * 0.5 + state.extradosOffset)));
+const getMasonryThickness = (scale = state.cubeScale) => {
+  return Math.max(0.02, state.params.thickness * scale);
+};
+
+const buildPrismGeometryFromLoops = (top, bot) => {
+  const n = Math.min(top.length, bot.length);
+  if (n < 3) throw new Error("not enough vertices for prism");
+  const vertices = [...top.slice(0, n), ...bot.slice(0, n)];
+  const index = [];
+  for (let i = 1; i < n - 1; i++) index.push(0, i, i + 1);
+  for (let i = 1; i < n - 1; i++) index.push(n, n + i + 1, n + i);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    index.push(i, n + i, n + j, i, n + j, j);
   }
-  const vertices = [...top, ...bot];
-  const index = [0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0];
   const pos = new Float32Array(vertices.length * 3);
   vertices.forEach((v, i) => { pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z; });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geometry.setIndex(index);
   geometry.computeVertexNormals();
-  const edges = [q[0].distanceTo(q[1]), q[1].distanceTo(q[2]), q[2].distanceTo(q[3]), q[3].distanceTo(q[0])];
-  const avgLength = (edges[0] + edges[2]) / 2;
-  const avgWidth = (edges[1] + edges[3]) / 2;
-  const volume = avgLength * avgWidth * state.params.thickness;
+  geometry.computeBoundingBox();
+  return geometry;
+};
+
+const getLoopEdgeMetrics = (points) => {
+  const edges = points.map((p, i) => p.distanceTo(points[(i + 1) % points.length]));
+  const minEdge = Math.min(...edges);
+  const avgEdge = edges.reduce((sum, edge) => sum + edge, 0) / Math.max(1, edges.length);
+  return { edges, minEdge, avgEdge };
+};
+
+const offsetUvTowardCenter = (point, center, amount) => [
+  THREE.MathUtils.lerp(point[0], center[0], amount),
+  THREE.MathUtils.lerp(point[1], center[1], amount),
+];
+
+const edgeOutwardUv = (a, b, center, amount) => {
+  const mx = (a[0] + b[0]) * 0.5;
+  const my = (a[1] + b[1]) * 0.5;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  let nx = dy / len;
+  let ny = -dx / len;
+  if ((mx + nx * 0.01 - center[0]) ** 2 + (my + ny * 0.01 - center[1]) ** 2 < (mx - center[0]) ** 2 + (my - center[1]) ** 2) {
+    nx *= -1;
+    ny *= -1;
+  }
+  return [nx * amount, ny * amount];
+};
+
+const buildKeyedUvLoop = (uv) => {
+  if (uv.length !== 4) return uv;
+  const center = polygonCentroidUv(uv);
+  const a = uv[0];
+  const b = uv[1];
+  const width = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const depth = clamp(width * 0.12, 0.005, 0.035);
+  const out = edgeOutwardUv(a, b, center, depth);
+  const pA = [
+    THREE.MathUtils.lerp(a[0], b[0], 0.38),
+    THREE.MathUtils.lerp(a[1], b[1], 0.38),
+  ];
+  const pB = [
+    THREE.MathUtils.lerp(a[0], b[0], 0.62),
+    THREE.MathUtils.lerp(a[1], b[1], 0.62),
+  ];
+  return [
+    a,
+    pA,
+    [pA[0] + out[0], pA[1] + out[1]],
+    [pB[0] + out[0], pB[1] + out[1]],
+    pB,
+    b,
+    uv[2],
+    uv[3],
+  ];
+};
+
+const buildInterlockUvLoop = (uv, blockId = "") => {
+  if (uv.length < 3) return uv;
+  const center = polygonCentroidUv(uv);
+  const parity = deterministicHash(blockId) % 2 ? 1 : -1;
+  const loop = [];
+  uv.forEach((a, i) => {
+    const b = uv[(i + 1) % uv.length];
+    const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const depth = clamp(edgeLen * 0.08, 0.004, 0.025) * (i % 2 ? -parity : parity);
+    const out = edgeOutwardUv(a, b, center, depth);
+    const mid = [
+      (a[0] + b[0]) * 0.5 + out[0],
+      (a[1] + b[1]) * 0.5 + out[1],
+    ];
+    loop.push(a, mid);
+  });
+  return cleanUvPolygon(loop, 0.000001) || uv;
+};
+
+const buildUvBoundingRect = (uv) => {
+  const minU = Math.min(...uv.map((p) => p[0]));
+  const maxU = Math.max(...uv.map((p) => p[0]));
+  const minV = Math.min(...uv.map((p) => p[1]));
+  const maxV = Math.max(...uv.map((p) => p[1]));
+  return [[minU, minV], [maxU, minV], [maxU, maxV], [minU, maxV]];
+};
+
+const buildLocalFrameUvRect = (uv) => {
+  const center = polygonCentroidUv(uv);
+  let axis = [1, 0];
+  let longest = 0;
+  for (let i = 0; i < uv.length; i++) {
+    const a = uv[i];
+    const b = uv[(i + 1) % uv.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len > longest) {
+      longest = len;
+      axis = [dx / Math.max(1e-9, len), dy / Math.max(1e-9, len)];
+    }
+  }
+  const cross = [-axis[1], axis[0]];
+  const local = uv.map((p) => {
+    const dx = p[0] - center[0];
+    const dy = p[1] - center[1];
+    return [dx * axis[0] + dy * axis[1], dx * cross[0] + dy * cross[1]];
+  });
+  const minS = Math.min(...local.map(([s]) => s));
+  const maxS = Math.max(...local.map(([s]) => s));
+  const minT = Math.min(...local.map(([, t]) => t));
+  const maxT = Math.max(...local.map(([, t]) => t));
+  const fromLocal = (s, t) => [
+    center[0] + axis[0] * s + cross[0] * t,
+    center[1] + axis[1] * s + cross[1] * t,
+  ];
+  return [
+    fromLocal(minS, minT),
+    fromLocal(maxS, minT),
+    fromLocal(maxS, maxT),
+    fromLocal(minS, maxT),
+  ];
+};
+
+const buildPreservedScaleUvRect = (uv) => {
+  const center = polygonCentroidUv(uv);
+  const rect = buildUvBoundingRect(uv);
+  const cellW = Math.max(0.002, rect[1][0] - rect[0][0]);
+  const cellH = Math.max(0.002, rect[2][1] - rect[1][1]);
+  const span = Math.max(0.001, state.params.span || 1);
+  const length = Math.max(0.001, state.params.length || 1);
+  const targetU = clamp((state.targetBlockWidth || state.params.targetBlockWidth || 1.2) / span, 0.004, cellW * 0.92);
+  const targetV = clamp((state.params.courseHeight || 0.65) / length, 0.004, cellH * 0.92);
+  return [
+    [center[0] - targetU * 0.5, center[1] - targetV * 0.5],
+    [center[0] + targetU * 0.5, center[1] - targetV * 0.5],
+    [center[0] + targetU * 0.5, center[1] + targetV * 0.5],
+    [center[0] - targetU * 0.5, center[1] + targetV * 0.5],
+  ].map(([u, v]) => [clamp(u, 0, 1), clamp(v, 0, 1)]);
+};
+
+const getMappedComponentBaseUv = (block) => {
+  const uv = cleanUvPolygon(block.uv, 0.000001) || block.uv;
+  const mapping = block.mapping?.scale || state.strategy.scale || "cell-bounds";
+  if (!uv?.length) return uv;
+  if (mapping === "local-frame") return buildLocalFrameUvRect(uv);
+  if (mapping === "global-orientation") return buildUvBoundingRect(uv);
+  if (mapping === "preserve-component-scale") return buildPreservedScaleUvRect(uv);
+  return uv;
+};
+
+const getComponentUvLoop = (block) => {
+  if (
+    block.targetPoints?.length >= 3 &&
+    (block.componentVariant || block.componentType || state.strategy.component) === "custom"
+  ) {
+    return block.sourceCarrierUv || block.uv;
+  }
+  const uv = getMappedComponentBaseUv(block);
+  const component = block.componentVariant || block.componentType || state.strategy.component;
+  if (component === "keyedVoussoir") return buildKeyedUvLoop(uv);
+  if (component === "interlock") return buildInterlockUvLoop(uv, block.id);
+  if (component === "ashlar") {
+    const center = polygonCentroidUv(uv);
+    return uv.map((point) => offsetUvTowardCenter(point, center, 0.03));
+  }
+  return uv;
+};
+
+const getBlockThicknessForComponent = (block, baseThickness = getMasonryThickness()) => {
+  const component = block.componentVariant || block.componentType || state.strategy.component;
+  let factor = 1;
+  if (component === "ashlar") factor *= 0.82;
+  if (component === "keyedVoussoir") factor *= 1.08;
+  if (component === "interlock") factor *= 1.02;
+  if (state.fieldWeights.driveThickness) {
+    const w = block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? 0.5;
+    factor *= THREE.MathUtils.lerp(0.78, 1.28, clamp(w, 0, 1));
+  }
+  return baseThickness * factor;
+};
+
+const getVaultSample = (u, v, cyclicU = state.vaultType === "Dome") => {
+  const uu = cyclicU ? wrap01(u) : clamp(u, 0, 1);
+  const vv = clamp(v, 0, 1);
+  const point = getVaultPoint(uu, vv);
+  let normal = getVaultSurfaceNormal(uu, vv, cyclicU);
+  if (normal.y < 0) normal = normal.multiplyScalar(-1);
+  return { point, normal };
+};
+
+const createHostField = () => {
+  const isUploaded = state.designMode === "Custom Import" && state.vaultType === "Custom Imported Rhino Surface" && state.importedSurface;
+  const cyclicU = state.vaultType === "Dome";
+  const sampleAt = (u, v) => {
+    const uu = cyclicU ? wrap01(u) : clamp(u, 0, 1);
+    const vv = clamp(v, 0, 1);
+    if (isUploaded) {
+      const sample = getImportedSurfaceSample(uu, vv) || getImportedSurfaceSampleNear(uu, vv, 0.5, 0.5);
+      if (sample) return sample;
+    }
+    return getVaultSample(uu, vv, cyclicU);
+  };
+  return {
+    type: isUploaded ? "uploaded-surface" : state.vaultType,
+    pointAt: (u, v) => sampleAt(u, v)?.point || new THREE.Vector3(),
+    normalAt: (u, v) => sampleAt(u, v)?.normal || new THREE.Vector3(0, 1, 0),
+    frameAt: (u, v) => {
+      const sample = sampleAt(u, v);
+      const normal = sample?.normal?.clone()?.normalize() || new THREE.Vector3(0, 1, 0);
+      const eps = 0.002;
+      const pU0 = sampleAt(u - eps, v)?.point || sample?.point || new THREE.Vector3();
+      const pU1 = sampleAt(u + eps, v)?.point || sample?.point || new THREE.Vector3();
+      const pV0 = sampleAt(u, v - eps)?.point || sample?.point || new THREE.Vector3();
+      const pV1 = sampleAt(u, v + eps)?.point || sample?.point || new THREE.Vector3();
+      const tangentU = pU1.clone().sub(pU0);
+      if (tangentU.lengthSq() < 1e-10) tangentU.set(1, 0, 0);
+      tangentU.normalize();
+      const tangentV = pV1.clone().sub(pV0);
+      if (tangentV.lengthSq() < 1e-10) tangentV.crossVectors(normal, tangentU);
+      tangentV.normalize();
+      return { point: sample?.point || new THREE.Vector3(), normal, tangentU, tangentV };
+    },
+    curvatureAt: (u, v) => {
+      if (isUploaded) {
+        const intensity = getImportedMeshCurvatureIntensity(clamp(u, 0, 1), clamp(v, 0, 1));
+        if (intensity != null) return { ku: intensity * 4.2, kv: intensity * 4.2, intensity };
+      }
+      const eps = 0.01;
+      const n = sampleAt(u, v)?.normal || new THREE.Vector3(0, 1, 0);
+      const nU = sampleAt(u + eps, v)?.normal || n;
+      const nV = sampleAt(u, v + eps)?.normal || n;
+      return {
+        ku: n.angleTo(nU) / eps,
+        kv: n.angleTo(nV) / eps,
+      };
+    },
+    boundaryAt: (u, v, tolerance = 1e-4) => ({
+      uMin: u <= tolerance,
+      uMax: u >= 1 - tolerance,
+      vMin: v <= tolerance,
+      vMax: v >= 1 - tolerance,
+      onBoundary: u <= tolerance || u >= 1 - tolerance || v <= tolerance || v >= 1 - tolerance,
+    }),
+  };
+};
+
+const getHostField = () => createHostField();
+
+const bilerpUvInQuad = (uv, su, sv) => {
+  const bottom = [
+    THREE.MathUtils.lerp(uv[0][0], uv[1][0], su),
+    THREE.MathUtils.lerp(uv[0][1], uv[1][1], su),
+  ];
+  const top = [
+    THREE.MathUtils.lerp(uv[3][0], uv[2][0], su),
+    THREE.MathUtils.lerp(uv[3][1], uv[2][1], su),
+  ];
+  return [
+    THREE.MathUtils.lerp(bottom[0], top[0], sv),
+    THREE.MathUtils.lerp(bottom[1], top[1], sv),
+  ];
+};
+
+const smoothPatchSamples = (samples, gridU, gridV, iterations) => {
+  let current = samples.map((sample) => ({
+    point: sample.point.clone(),
+    normal: sample.normal.clone().normalize(),
+  }));
+  const rowSize = gridU + 1;
+  const idx = (x, y) => y * rowSize + x;
+  for (let iter = 0; iter < iterations; iter++) {
+    const next = current.map((sample) => ({
+      point: sample.point.clone(),
+      normal: sample.normal.clone(),
+    }));
+    for (let y = 1; y < gridV; y++) {
+      for (let x = 1; x < gridU; x++) {
+        const neighbors = [
+          current[idx(x, y)],
+          current[idx(x - 1, y)],
+          current[idx(x + 1, y)],
+          current[idx(x, y - 1)],
+          current[idx(x, y + 1)],
+        ];
+        const point = neighbors.reduce((sum, sample) => sum.add(sample.point), new THREE.Vector3()).multiplyScalar(1 / neighbors.length);
+        const normal = neighbors.reduce((sum, sample) => sum.add(sample.normal), new THREE.Vector3()).normalize();
+        next[idx(x, y)].point.lerp(point, 0.35);
+        next[idx(x, y)].normal.copy(normal);
+      }
+    }
+    current = next;
+  }
+  return current;
+};
+
+const buildSampledVaultPatchGeometry = (uv, thickness, options = {}) => {
+  const host = getHostField();
+  const gridU = clamp(Math.round(options.subdivision ?? state.strategy.patchSubdivision ?? 4), 2, 12);
+  const gridV = gridU;
+  const smoothing = clamp(Math.round(options.smoothing ?? state.strategy.patchSmoothing ?? 0), 0, 4);
+  if (uv.length !== 4) {
+    if (uv.length < 3) return null;
+    const centerUv = polygonCentroidUv(uv);
+    const boundaryUv = [];
+    for (let i = 0; i < uv.length; i++) {
+      const a = uv[i];
+      const b = uv[(i + 1) % uv.length];
+      for (let s = 0; s < gridU; s++) {
+        const t = s / gridU;
+        boundaryUv.push([
+          THREE.MathUtils.lerp(a[0], b[0], t),
+          THREE.MathUtils.lerp(a[1], b[1], t),
+        ]);
+      }
+    }
+    const center = { point: host.pointAt(centerUv[0], centerUv[1]), normal: host.normalAt(centerUv[0], centerUv[1]) };
+    const boundary = boundaryUv.map(([u, v]) => ({ point: host.pointAt(u, v), normal: host.normalAt(u, v) }));
+    const top = [
+      center.point.clone().addScaledVector(center.normal, thickness),
+      ...boundary.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness)),
+    ];
+    const bot = [
+      center.point.clone(),
+      ...boundary.map((sample) => sample.point.clone()),
+    ];
+    const vertices = [...top, ...bot];
+    const n = boundary.length;
+    const botOffset = top.length;
+    const index = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      index.push(0, i + 1, j + 1);
+      index.push(botOffset, botOffset + j + 1, botOffset + i + 1);
+      index.push(i + 1, botOffset + i + 1, botOffset + j + 1, i + 1, botOffset + j + 1, j + 1);
+    }
+    const pos = new Float32Array(vertices.length * 3);
+    vertices.forEach((point, i) => { pos[i * 3] = point.x; pos[i * 3 + 1] = point.y; pos[i * 3 + 2] = point.z; });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geometry.setIndex(index);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    return {
+      geometry,
+      bot,
+      cornerBot: boundary.map((sample) => sample.point.clone()),
+      smooth: true,
+    };
+  }
+  const samples = [];
+  for (let y = 0; y <= gridV; y++) {
+    for (let x = 0; x <= gridU; x++) {
+      const [u, v] = bilerpUvInQuad(uv, x / gridU, y / gridV);
+      samples.push({
+        point: host.pointAt(u, v),
+        normal: host.normalAt(u, v),
+      });
+    }
+  }
+  const shapedSamples = smoothing ? smoothPatchSamples(samples, gridU, gridV, smoothing) : samples;
+  const top = shapedSamples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));
+  const bot = shapedSamples.map((sample) => sample.point.clone());
+  const vertices = [...top, ...bot];
+  const topOffset = 0;
+  const botOffset = top.length;
+  const rowSize = gridU + 1;
+  const idx = (x, y, offset = topOffset) => offset + y * rowSize + x;
+  const index = [];
+  const addQuad = (a, b, c, d, flip = false) => {
+    if (flip) index.push(a, c, b, a, d, c);
+    else index.push(a, b, c, a, c, d);
+  };
+  for (let y = 0; y < gridV; y++) {
+    for (let x = 0; x < gridU; x++) {
+      addQuad(idx(x, y), idx(x + 1, y), idx(x + 1, y + 1), idx(x, y + 1));
+      addQuad(idx(x, y, botOffset), idx(x + 1, y, botOffset), idx(x + 1, y + 1, botOffset), idx(x, y + 1, botOffset), true);
+    }
+  }
+  for (let x = 0; x < gridU; x++) {
+    addQuad(idx(x, 0), idx(x, 0, botOffset), idx(x + 1, 0, botOffset), idx(x + 1, 0));
+    addQuad(idx(x + 1, gridV), idx(x + 1, gridV, botOffset), idx(x, gridV, botOffset), idx(x, gridV));
+  }
+  for (let y = 0; y < gridV; y++) {
+    addQuad(idx(0, y + 1), idx(0, y + 1, botOffset), idx(0, y, botOffset), idx(0, y));
+    addQuad(idx(gridU, y), idx(gridU, y, botOffset), idx(gridU, y + 1, botOffset), idx(gridU, y + 1));
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((point, i) => { pos[i * 3] = point.x; pos[i * 3 + 1] = point.y; pos[i * 3 + 2] = point.z; });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  return {
+    geometry,
+    bot,
+    cornerBot: [bot[idx(0, 0)], bot[idx(gridU, 0)], bot[idx(gridU, gridV)], bot[idx(0, gridV)]],
+  };
+};
+
+const buildImportedSampledBlockGeometry = (block, thickness, anchorU, anchorV, requireDirectSamples = false) => {
+  const uv = block.uv;
+  const readSample = (u, v) => {
+    const cu = clamp(u, 0, 1);
+    const cv = clamp(v, 0, 1);
+    return requireDirectSamples
+      ? getImportedSurfaceSample(cu, cv)
+      : getImportedSurfaceSampleNear(cu, cv, anchorU, anchorV);
+  };
+  if (uv.length !== 4) {
+    const edgeSubdiv = 3;
+    const boundaryUv = [];
+    for (let i = 0; i < uv.length; i++) {
+      const a = uv[i];
+      const b = uv[(i + 1) % uv.length];
+      for (let s = 0; s < edgeSubdiv; s++) {
+        const t = s / edgeSubdiv;
+        boundaryUv.push([
+          THREE.MathUtils.lerp(a[0], b[0], t),
+          THREE.MathUtils.lerp(a[1], b[1], t),
+        ]);
+      }
+    }
+    const centerUv = block.anchorUv || polygonCentroidUv(uv);
+    const centerSample = readSample(centerUv[0], centerUv[1]);
+    if (!centerSample) return null;
+    const boundarySamples = boundaryUv.map(([u, v]) => readSample(u, v));
+    if (boundarySamples.some((sample) => !sample)) return null;
+    const top = [
+      centerSample.point.clone().addScaledVector(centerSample.normal, thickness),
+      ...boundarySamples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness)),
+    ];
+    const bot = [
+      centerSample.point.clone(),
+      ...boundarySamples.map((sample) => sample.point.clone()),
+    ];
+    const vertices = [...top, ...bot];
+    const n = boundarySamples.length;
+    const botOffset = top.length;
+    const index = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      index.push(0, i + 1, j + 1);
+      index.push(botOffset, botOffset + j + 1, botOffset + i + 1);
+      index.push(i + 1, botOffset + i + 1, botOffset + j + 1, i + 1, botOffset + j + 1, j + 1);
+    }
+    const pos = new Float32Array(vertices.length * 3);
+    vertices.forEach((v, i) => { pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z; });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geometry.setIndex(index);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    return {
+      geometry,
+      bot,
+      cornerBot: boundarySamples.map((sample) => sample.point.clone()),
+      smooth: true,
+    };
+  }
+  const gridU = clamp(Math.round(state.strategy.patchSubdivision || 4), 2, 12);
+  const gridV = gridU;
+  const sampleAt = (su, sv) => {
+    const bottom = [
+      THREE.MathUtils.lerp(uv[0][0], uv[1][0], su),
+      THREE.MathUtils.lerp(uv[0][1], uv[1][1], su),
+    ];
+    const top = [
+      THREE.MathUtils.lerp(uv[3][0], uv[2][0], su),
+      THREE.MathUtils.lerp(uv[3][1], uv[2][1], su),
+    ];
+    return [
+      THREE.MathUtils.lerp(bottom[0], top[0], sv),
+      THREE.MathUtils.lerp(bottom[1], top[1], sv),
+    ];
+  };
+  const samples = [];
+  for (let y = 0; y <= gridV; y++) {
+    for (let x = 0; x <= gridU; x++) {
+      const [u, v] = sampleAt(x / gridU, y / gridV);
+      const sample = readSample(u, v);
+      if (!sample) return null;
+      samples.push(sample);
+    }
+  }
+  const top = samples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));
+  const bot = samples.map((sample) => sample.point.clone());
+  const vertices = [...top, ...bot];
+  const topOffset = 0;
+  const botOffset = top.length;
+  const rowSize = gridU + 1;
+  const idx = (x, y, offset = topOffset) => offset + y * rowSize + x;
+  const index = [];
+  const addQuad = (a, b, c, d, flip = false) => {
+    if (flip) index.push(a, c, b, a, d, c);
+    else index.push(a, b, c, a, c, d);
+  };
+  for (let y = 0; y < gridV; y++) {
+    for (let x = 0; x < gridU; x++) {
+      addQuad(idx(x, y), idx(x + 1, y), idx(x + 1, y + 1), idx(x, y + 1));
+      addQuad(idx(x, y, botOffset), idx(x + 1, y, botOffset), idx(x + 1, y + 1, botOffset), idx(x, y + 1, botOffset), true);
+    }
+  }
+  for (let x = 0; x < gridU; x++) {
+    addQuad(idx(x, 0), idx(x, 0, botOffset), idx(x + 1, 0, botOffset), idx(x + 1, 0));
+    addQuad(idx(x + 1, gridV), idx(x + 1, gridV, botOffset), idx(x, gridV, botOffset), idx(x, gridV));
+  }
+  for (let y = 0; y < gridV; y++) {
+    addQuad(idx(0, y + 1), idx(0, y + 1, botOffset), idx(0, y, botOffset), idx(0, y));
+    addQuad(idx(gridU, y), idx(gridU, y, botOffset), idx(gridU, y + 1, botOffset), idx(gridU, y + 1));
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((v, i) => { pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z; });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  return {
+    geometry,
+    bot,
+    cornerBot: [bot[idx(0, 0)], bot[idx(gridU, 0)], bot[idx(gridU, gridV)], bot[idx(0, gridV)]],
+    smooth: true,
+  };
+};
+
+const buildBlockMesh = (block) => {
+  const sourceUv = getComponentUvLoop(block);
+  const t = getBlockThicknessForComponent(block);
+  const cyclicU = state.vaultType === "Dome";
+  const host = getHostField();
+  const useImportedSurface =
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    state.importedSurface;
+  const useCustomPanel =
+    (block.componentVariant || block.componentType || state.strategy.component) === "custom" &&
+    state.customPanel?.geometryData;
+  if (useCustomPanel) {
+    const mappedPanel = buildCustomPanelMappedGeometry(block, sourceUv, t, !!useImportedSurface);
+    if (mappedPanel) {
+      const { minEdge, avgEdge } = getLoopEdgeMetrics(mappedPanel.q);
+      const box = mappedPanel.geometry.boundingBox || new THREE.Box3().setFromBufferAttribute(mappedPanel.geometry.getAttribute("position"));
+      const size = box.getSize(new THREE.Vector3());
+      const avgLength = Math.max(size.x, size.z, avgEdge);
+      const avgWidth = Math.max(Math.min(size.x || avgEdge, size.z || avgEdge), minEdge);
+      const volume = Math.max(0.0001, avgLength * avgWidth * t);
+      return {
+        geometry: mappedPanel.geometry,
+        q: mappedPanel.q,
+        avgLength,
+        avgWidth,
+        volume,
+        weight: volume * densityKgPerM3,
+        minEdge,
+        uvArea: Math.abs(signedUvArea(sourceUv)),
+        isConvex: isConvexUv(sourceUv),
+        jointFaceType: `custom uploaded panel ${state.customPanel.name}`,
+        customPanelSource: state.customPanel.name,
+      };
+    }
+  }
+  if (useImportedSurface) {
+    const importBlock = { ...block, uv: sourceUv };
+    const centerU = sourceUv.reduce((sum, [u]) => sum + u, 0) / sourceUv.length;
+    const centerV = sourceUv.reduce((sum, [, v]) => sum + v, 0) / sourceUv.length;
+    let anchorU = clamp(block.anchorUv?.[0] ?? centerU, 0, 1);
+    let anchorV = clamp(block.anchorUv?.[1] ?? centerV, 0, 1);
+    if (!getImportedSurfaceSample(anchorU, anchorV)) {
+      const edgeSamples = sourceUv.map((p, i) => [
+        (p[0] + sourceUv[(i + 1) % sourceUv.length][0]) * 0.5,
+        (p[1] + sourceUv[(i + 1) % sourceUv.length][1]) * 0.5,
+      ]);
+      const fallback = [[centerU, centerV], ...sourceUv, ...edgeSamples]
+        .map(([u, v]) => [clamp(u, 0, 1), clamp(v, 0, 1)])
+        .find(([u, v]) => getImportedSurfaceSample(u, v));
+      if (fallback) [anchorU, anchorV] = fallback;
+    }
+    const sampledPatch = buildImportedSampledBlockGeometry(importBlock, t, anchorU, anchorV, !!block.requireDirectSurfaceSamples);
+    let geometry;
+    let bot;
+    if (sampledPatch) {
+      geometry = sampledPatch.geometry;
+      bot = sampledPatch.cornerBot;
+    } else {
+      const samples = sourceUv.map(([u, v]) => (
+        block.requireDirectSurfaceSamples
+          ? getImportedSurfaceSample(clamp(u, 0, 1), clamp(v, 0, 1))
+          : getImportedSurfaceSampleNear(clamp(u, 0, 1), clamp(v, 0, 1), anchorU, anchorV)
+      ));
+      if (samples.some((sample) => !sample)) throw new Error("block does not fully land on imported surface");
+      bot = samples.map((sample) => sample.point);
+      const top = samples.map((sample) => sample.point.clone().addScaledVector(sample.normal, t));
+      geometry = buildPrismGeometryFromLoops(top, bot);
+    }
+    const { minEdge, avgEdge } = getLoopEdgeMetrics(bot);
+    const box = new THREE.Box3().setFromPoints(bot);
+    const size = box.getSize(new THREE.Vector3());
+    const avgLength = Math.max(size.x, size.z, avgEdge);
+    const avgWidth = Math.max(Math.min(size.x || avgEdge, size.z || avgEdge), minEdge);
+    const volume = Math.max(0.0001, Math.abs(signedUvArea(sourceUv)) * (state.importedSurfaceBbox?.getSize(new THREE.Vector3()).x || 1) * (state.importedSurfaceBbox?.getSize(new THREE.Vector3()).z || 1) * t);
+    return {
+      geometry,
+      q: bot,
+      avgLength,
+      avgWidth,
+      volume,
+      weight: volume * densityKgPerM3,
+      minEdge,
+      uvArea: Math.abs(signedUvArea(sourceUv)),
+      isConvex: isConvexUv(sourceUv),
+      jointFaceType: sampledPatch ? `trimmed sampled imported-surface ${block.componentVariant || "voussoir"}` : `imported surface normal-offset ${block.componentVariant || "voussoir"}`,
+    };
+  }
+  const q = sourceUv.map(([u, v]) => host.pointAt(cyclicU ? wrap01(u) : clamp(u, 0, 1), clamp(v, 0, 1)));
+  let top;
+  let bot;
+  let jointFaceType = "ruled";
+  let geometry = null;
+  if (block.fillCellType === "patch" && sourceUv.length >= 3 && state.vaultType !== "Groin Vault") {
+    const sampled = buildSampledVaultPatchGeometry(sourceUv, t);
+    if (sampled) {
+      geometry = sampled.geometry;
+      bot = sampled.cornerBot;
+      jointFaceType = `curved patch ${block.componentVariant || "voussoir"}`;
+    }
+  }
+  if (!geometry && state.vaultType === "Groin Vault") {
+    top = sourceUv.map(([u, v]) => {
+      return getGroinSupportAdjustedPoint(clamp(u, 0, 1), clamp(v, 0, 1), { surface: "extrados" });
+    });
+    bot = sourceUv.map(([u, v]) => {
+      return getGroinSupportAdjustedPoint(clamp(u, 0, 1), clamp(v, 0, 1), { surface: "intrados" });
+    });
+    geometry = buildPrismGeometryFromLoops(top, bot);
+    jointFaceType = `custom intrados/extrados ${block.componentVariant || "voussoir"}`;
+  } else if (!geometry) {
+    const normals = sourceUv.map(([u, v]) => {
+      if (isBarrelLikeVault() && !cyclicU && u <= 1e-5) return new THREE.Vector3(-1, 0, 0);
+      if (isBarrelLikeVault() && !cyclicU && u >= 1 - 1e-5) return new THREE.Vector3(1, 0, 0);
+      const n = host.normalAt(cyclicU ? wrap01(u) : clamp(u, 0, 1), clamp(v, 0, 1)).clone();
+      if (n.y < 0) n.multiplyScalar(-1);
+      return n;
+    });
+    top = q.map((p, i) => p.clone().addScaledVector(normals[i], t));
+    bot = q.map((p) => p.clone());
+    geometry = buildPrismGeometryFromLoops(top, bot);
+    jointFaceType = state.jointPrinciple === "radial joints" ? `radial normal-cut ${block.componentVariant || "voussoir"}` : `normal-offset ${block.componentVariant || "voussoir"}`;
+  }
+  const { edges, minEdge, avgEdge } = getLoopEdgeMetrics(bot || q);
+  const box = new THREE.Box3().setFromPoints(bot || q);
+  const size = box.getSize(new THREE.Vector3());
+  const avgLength = Math.max(size.x, size.z, avgEdge);
+  const avgWidth = Math.max(Math.min(size.x || avgEdge, size.z || avgEdge), minEdge);
+  const volume = Math.max(0.0001, avgLength * avgWidth * t * (sourceUv.length === 3 ? 0.5 : 1));
   const weight = volume * densityKgPerM3;
   return {
     geometry,
-    q,
+    q: bot || q,
     avgLength,
     avgWidth,
     volume,
     weight,
     minEdge: Math.min(...edges),
-    uvArea: Math.abs(signedUvArea(block.uv)),
-    isConvex: isConvexUv(block.uv),
+    uvArea: Math.abs(signedUvArea(sourceUv)),
+    isConvex: isConvexUv(sourceUv),
     jointFaceType,
   };
 };
 
-const validate = (m) => {
+const buildProxyBlockVisual = (block) => {
+  const cyclicU = state.vaultType === "Dome";
+  const q = block.uv.map(([u, v]) => getVaultPoint(cyclicU ? wrap01(u) : clamp(u, 0, 1), clamp(v, 0, 1)));
+  const center = q.reduce((sum, p) => sum.add(p), new THREE.Vector3()).multiplyScalar(1 / q.length);
+  const courseSpan = (q[0].distanceTo(q[1]) + q[2].distanceTo(q[3])) * 0.5;
+  const lengthSpan = (q[1].distanceTo(q[2]) + q[3].distanceTo(q[0])) * 0.5;
+  const xSize = Math.max(0.08, Math.min(Math.max(courseSpan, state.params.thickness), state.params.span * state.cubeScale * 0.18));
+  const ySize = Math.max(0.08, getMasonryThickness());
+  const zSize = Math.max(0.08, lengthSpan);
+  const geometry = new THREE.BoxGeometry(xSize, ySize, zSize);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xb8b2a7,
+    roughness: 0.56,
+    metalness: 0.04,
+    transparent: true,
+    opacity: 0.92,
+    side: THREE.DoubleSide,
+    flatShading: true,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.copy(center).add(new THREE.Vector3(0, ySize * 0.5, 0));
+  mesh.name = `proxy-${block.id}`;
+  mesh.userData.blockId = block.id;
+  const seam = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 18),
+    new THREE.LineBasicMaterial({ color: 0xf1eadc, transparent: true, opacity: 0.26 })
+  );
+  seam.name = "seam";
+  mesh.add(seam);
+  const volume = courseSpan * lengthSpan * state.params.thickness;
+  block.metrics = {
+    geometry,
+    q,
+    avgLength: courseSpan,
+    avgWidth: lengthSpan,
+    volume,
+    weight: volume * densityKgPerM3,
+    minEdge: Math.min(courseSpan, lengthSpan),
+    uvArea: Math.abs(signedUvArea(block.uv)),
+    isConvex: isConvexUv(block.uv),
+    jointFaceType: "proxy block",
+  };
+  block.failed = validate(block.metrics, block);
+  block.mesh = mesh;
+  return mesh;
+};
+
+const analyzeBlockDeformation = (block, metrics) => {
+  const q = metrics?.q || [];
+  const uv = block?.uv || [];
+  const edgeMetrics = q.length >= 3 ? getLoopEdgeMetrics(q) : { edges: [], minEdge: 0, avgEdge: 0 };
+  const maxEdge = edgeMetrics.edges.length ? Math.max(...edgeMetrics.edges) : 0;
+  const stretchRatio = edgeMetrics.minEdge > 1e-6 ? maxEdge / edgeMetrics.minEdge : 1;
+  let twistAngle = 0;
+  if (q.length >= 4) {
+    const nA = new THREE.Vector3().crossVectors(q[1].clone().sub(q[0]), q[2].clone().sub(q[0])).normalize();
+    const nB = new THREE.Vector3().crossVectors(q[2].clone().sub(q[0]), q[3].clone().sub(q[0])).normalize();
+    if (nA.lengthSq() > 0 && nB.lengthSq() > 0) twistAngle = nA.angleTo(nB) * 180 / Math.PI;
+  }
+  const uvBox = uv.length ? {
+    w: Math.max(...uv.map((p) => p[0])) - Math.min(...uv.map((p) => p[0])),
+    h: Math.max(...uv.map((p) => p[1])) - Math.min(...uv.map((p) => p[1])),
+  } : { w: 1, h: 1 };
+  const uvRatio = Math.max(uvBox.w, uvBox.h) / Math.max(1e-6, Math.min(uvBox.w, uvBox.h));
+  const box = q.length ? new THREE.Box3().setFromPoints(q) : new THREE.Box3();
+  const size = box.getSize(new THREE.Vector3());
+  const spatialRatio = Math.max(size.x, size.z, edgeMetrics.avgEdge || 1) / Math.max(1e-6, Math.min(size.x || edgeMetrics.avgEdge || 1, size.z || edgeMetrics.avgEdge || 1));
+  const mappingDistortion = Math.abs(spatialRatio - uvRatio);
+  const taperDistortion = (state.constraints.taperAngle + (block?.taperBias || 0)) / Math.max(0.001, state.constraints.maxTaper);
+  return {
+    stretchRatio: Number(stretchRatio.toFixed(3)),
+    twistAngle: Number(twistAngle.toFixed(3)),
+    mappingDistortion: Number(mappingDistortion.toFixed(3)),
+    taperDistortion: Number(taperDistortion.toFixed(3)),
+  };
+};
+
+const validate = (m, block = null) => {
   const c = state.constraints;
   const failed = [];
-  if (m.avgLength > c.maxLength + c.fabTolerance) failed.push("length");
-  if (m.avgWidth > c.maxWidth + c.fabTolerance) failed.push("width");
+  const fillType = block?.fillCellType || "quad";
+  const component = block?.componentVariant || block?.componentType || state.strategy.component;
+  const lengthLimit = fillType === "fan" ? c.maxLength * 1.15 : c.maxLength;
+  const widthLimit = fillType === "frame" ? c.maxWidth * 0.75 : c.maxWidth;
+  const minEdgeLimit = fillType === "fan" ? c.minEdgeLength * 0.45 : fillType === "frame" ? c.minEdgeLength * 0.55 : c.minEdgeLength;
+  if (m.avgLength > lengthLimit + c.fabTolerance) failed.push("length");
+  if (m.avgWidth > widthLimit + c.fabTolerance) failed.push("width");
   if (state.params.thickness < c.minThickness) failed.push("thickness");
   if (m.weight > c.maxWeight) failed.push("weight");
-  if (c.taperAngle > c.maxTaper) failed.push("taper");
-  if (m.minEdge < c.minEdgeLength) failed.push("min-edge");
+  const drivenTaper = c.taperAngle + (block?.taperBias || 0);
+  if (drivenTaper > c.maxTaper) failed.push("taper");
+  if (m.minEdge < minEdgeLimit) failed.push("min-edge");
   if (c.bedDepth < c.jointGap * 4) failed.push("bed-depth");
-  if (!m.isConvex) failed.push("convexity");
+  if (!m.isConvex && !["keyedVoussoir", "interlock"].includes(component)) failed.push("convexity");
+  if (fillType === "fan" && m.uvArea < 0.00001) failed.push("fan-area");
+  if (fillType === "frame" && m.avgWidth < c.jointGap * 3) failed.push("frame-web");
+  const deformation = analyzeBlockDeformation(block, m);
+  m.deformation = deformation;
+  if (deformation.stretchRatio > 4.5) failed.push("stretched-cell");
+  if (fillType === "patch" && deformation.twistAngle > 14) failed.push("twisted-patch");
+  if (deformation.mappingDistortion > 3.5) failed.push("mapping-distortion");
+  if (deformation.taperDistortion > 1) failed.push("taper-distortion");
   return failed;
 };
 
@@ -3155,6 +7381,7 @@ const buildBarrelSectionGizmo3d = () => {
 
 const buildBarrelArchOverlay2d = () => {
   if (!state.view2dOptions.showGuides) return [];
+  if (isCustomHostWorkflow()) return [];
   if (!isBarrelLikeVault()) return [];
   const { cx, baseY, spanScalePxPerM, riseScalePxPerM, minHalfW, maxHalfW, minRisePx, maxRisePx } = archOverlayConfig;
   const halfW = clamp(state.params.span * spanScalePxPerM * 0.5, minHalfW, maxHalfW);
@@ -3205,6 +7432,7 @@ const buildBarrelArchOverlay2d = () => {
 };
 
 const buildGroinPlanOverlay2d = (margin, iw, ih, originY = margin) => {
+  if (isCustomHostWorkflow()) return [];
   if (state.vaultType !== "Groin Vault") return [];
   const x0 = margin;
   const y0 = originY;
@@ -3239,6 +7467,40 @@ const buildGroinPlanOverlay2d = (margin, iw, ih, originY = margin) => {
     `<text x="${(cx + barrelBand * 0.58).toFixed(2)}" y="${(y0 + 20).toFixed(2)}" fill="rgba(255,205,122,0.95)" font-size="12">Barrel B</text>`,
     `<text x="${cx.toFixed(2)}" y="${(y0 + 22).toFixed(2)}" fill="rgba(214,255,238,0.95)" font-size="13" text-anchor="middle">Barrel A + Barrel B = Groin Vault</text>`,
     `<text x="${cx.toFixed(2)}" y="${(y1 - 16).toFixed(2)}" fill="rgba(214,255,238,0.78)" font-size="12" text-anchor="middle">Courses follow groin lines, not simple barrel rings</text>`,
+    `</g>`,
+  ];
+};
+
+const buildBarrelPlanReferenceOverlay2d = (x0, y0, w, h) => {
+  if (!state.view2dOptions.showReferenceGeometry || !state.view2dOptions.showGuides) return [];
+  if (isCustomHostWorkflow() || !isBarrelLikeVault()) return [];
+  const labelOn = state.view2dOptions.showLabels;
+  const footprintMarginX = w * 0.08;
+  const footprintMarginY = h * 0.18;
+  const fx = x0 + footprintMarginX;
+  const fy = y0 + footprintMarginY;
+  const fw = w - footprintMarginX * 2;
+  const fh = h - footprintMarginY * 2;
+  const axisX = fx + fw * 0.5;
+  const ringCount = Math.max(4, Math.min(14, Math.round(state.params.courseCount * state.params.subdivisionDensity * 0.5)));
+  const rings = Array.from({ length: ringCount + 1 }, (_, i) => {
+    const x = fx + (i / ringCount) * fw;
+    const cls = i === 0 || i === ringCount ? "boundary" : "course";
+    return `<line class="trait-line ${cls}" x1="${x.toFixed(2)}" y1="${fy.toFixed(2)}" x2="${x.toFixed(2)}" y2="${(fy + fh).toFixed(2)}"/>`;
+  });
+  const labels = labelOn ? [
+    `<text class="reference-label" x="${axisX.toFixed(2)}" y="${(fy - 12).toFixed(2)}" text-anchor="middle">barrel vault plan footprint</text>`,
+    `<text class="dimension-label" x="${axisX.toFixed(2)}" y="${(fy + fh + 18).toFixed(2)}" text-anchor="middle">length ${state.params.length.toFixed(2)} m</text>`,
+    `<text class="dimension-label" x="${(fx - 10).toFixed(2)}" y="${(fy + fh * 0.5).toFixed(2)}" text-anchor="end">span ${state.params.span.toFixed(2)} m</text>`,
+  ] : [];
+  return [
+    `<g class="reference-geometry barrel-plan-reference">`,
+    `<rect class="reference-frame" x="${x0}" y="${y0}" width="${w}" height="${h}"/>`,
+    `<rect class="reference-plan-fill" x="${fx.toFixed(2)}" y="${fy.toFixed(2)}" width="${fw.toFixed(2)}" height="${fh.toFixed(2)}"/>`,
+    `<line class="reference-line center" x1="${axisX.toFixed(2)}" y1="${fy.toFixed(2)}" x2="${axisX.toFixed(2)}" y2="${(fy + fh).toFixed(2)}"/>`,
+    `<line class="reference-line datum" x1="${fx.toFixed(2)}" y1="${(fy + fh * 0.5).toFixed(2)}" x2="${(fx + fw).toFixed(2)}" y2="${(fy + fh * 0.5).toFixed(2)}"/>`,
+    ...rings,
+    ...labels,
     `</g>`,
   ];
 };
@@ -3278,6 +7540,7 @@ const buildOriginAxes2d = () => {
 };
 
 const buildStereotomicGuideOverlay2d = (margin, iw, ih, originY = margin) => {
+  if (isCustomHostWorkflow()) return [];
   if (!state.view2dOptions.showGuides) return [];
   const mode = state.view2dOptions.mode;
   const density = clamp(Math.round(state.view2dOptions.guideDensity || 8), 3, 18);
@@ -3388,6 +7651,10 @@ const buildStereotomicGuideOverlay2d = (margin, iw, ih, originY = margin) => {
 
 const buildReferenceGeometryOverlay2d = (x0, y0, w, h) => {
   if (!state.view2dOptions.showReferenceGeometry || !state.view2dOptions.showGuides) return [];
+  if (isCustomHostWorkflow()) return [];
+  if (isBarrelLikeVault() && state.view2dOptions.mode === "Plan") {
+    return buildBarrelPlanReferenceOverlay2d(x0, y0, w, h);
+  }
   const entity = state.constructionEntities;
   const entityColor = (key, alpha = 1) => hexToRgba(entity[key]?.color || "#ffffff", alpha);
   const entityShown = (key) => entity[key]?.show !== false;
@@ -3418,8 +7685,10 @@ const buildReferenceGeometryOverlay2d = (x0, y0, w, h) => {
       `<line class="surface-icon-line" x1="${principleX + 28}" y1="${principleY + 50}" x2="${principleX + 128}" y2="${principleY + 35}"/>`,
     ],
     Cylinder: [
-      `<path class="surface-icon-fill" d="M ${principleX} ${principleY + 60} C ${principleX + 28} ${principleY + 30}, ${principleX + 78} ${principleY + 30}, ${principleX + 106} ${principleY + 60} L ${principleX + 144} ${principleY + 60} C ${principleX + 116} ${principleY + 30}, ${principleX + 66} ${principleY + 30}, ${principleX + 38} ${principleY + 60} Z"/>`,
-      `<path class="surface-icon-line" d="M ${principleX} ${principleY + 60} C ${principleX + 28} ${principleY + 30}, ${principleX + 78} ${principleY + 30}, ${principleX + 106} ${principleY + 60}"/>`,
+      `<path class="surface-icon-fill" d="M ${principleX + 30} ${principleY + 18} C ${principleX + 58} ${principleY + 4}, ${principleX + 96} ${principleY + 4}, ${principleX + 124} ${principleY + 18} L ${principleX + 124} ${principleY + 76} C ${principleX + 96} ${principleY + 62}, ${principleX + 58} ${principleY + 62}, ${principleX + 30} ${principleY + 76} Z"/>`,
+      `<path class="surface-icon-line" d="M ${principleX + 30} ${principleY + 18} C ${principleX + 58} ${principleY + 4}, ${principleX + 96} ${principleY + 4}, ${principleX + 124} ${principleY + 18}"/>`,
+      `<path class="surface-icon-line" d="M ${principleX + 30} ${principleY + 76} C ${principleX + 58} ${principleY + 62}, ${principleX + 96} ${principleY + 62}, ${principleX + 124} ${principleY + 76}"/>`,
+      `<line class="surface-icon-line accent" x1="${principleX + 77}" y1="${principleY + 8}" x2="${principleX + 77}" y2="${principleY + 82}"/>`,
     ],
     Cone: [
       `<path class="surface-icon-fill" d="M ${principleX + 8} ${principleY + 66} L ${principleX + 78} ${principleY + 24} L ${principleX + 144} ${principleY + 66} Z"/>`,
@@ -3448,7 +7717,8 @@ const buildReferenceGeometryOverlay2d = (x0, y0, w, h) => {
     ],
   }[state.surfacePrinciple] || [];
   const labelOn = state.view2dOptions.showLabels;
-  const teachingLabels = state.drawingPreset === "Teaching View" || ["springing", "intrados", "extrados"].includes(state.activeTraitFocus);
+  const teachingLabels = isTeachingDrawingPreset() || ["springing", "intrados", "extrados"].includes(state.activeTraitFocus);
+  const showRadialCenter = state.jointPrinciple === "radial joints" && entityShown("axis");
   const labels = [];
   const labelLeaders = [];
   const callout = (text, lx, ly, tx, ty, anchor = "middle") => {
@@ -3460,7 +7730,8 @@ const buildReferenceGeometryOverlay2d = (x0, y0, w, h) => {
     if (entityShown("apex")) callout("apex / crown", cx, y0 - 10, cx, apexY);
     if (entityShown("intrados")) callout("intrados", cx - halfW * 0.72, y0 + h + 18, cx - halfW * 0.36, springY - risePx * 0.64);
     if (entityShown("extrados")) callout("extrados", cx + halfW * 0.72, y0 - 10, cx + halfW * 0.36, apexY - tPx * 0.72);
-    if (entityShown("neutral") && state.drawingPreset === "Teaching View") callout("neutral", cx - halfW * 0.1, y0 + h + 18, cx - halfW * 0.1, apexY - tPx * 0.5, "end");
+    if (entityShown("neutral") && isTeachingDrawingPreset()) callout("neutral", cx - halfW * 0.1, y0 + h + 18, cx - halfW * 0.1, apexY - tPx * 0.5, "end");
+    if (showRadialCenter) callout("radial center", cx + halfW * 0.22, springY + 18, cx, springY);
   }
   return [
     `<g class="reference-geometry">`,
@@ -3472,6 +7743,12 @@ const buildReferenceGeometryOverlay2d = (x0, y0, w, h) => {
     entityShown("extrados") ? `<polyline class="reference-curve extrados" points="${extradosPts.join(" ")}" style="stroke:${entityColor("extrados", 0.78)}"/>` : "",
     entityShown("neutral") ? `<polyline class="reference-curve neutral" points="${neutralPts.join(" ")}" style="stroke:${entityColor("neutral", 0.64)}"/>` : "",
     entityShown("intrados") ? `<polyline class="reference-curve intrados" points="${intradosPts.join(" ")}" style="stroke:${entityColor("intrados", 0.94)}"/>` : "",
+    showRadialCenter ? `<g class="radial-center-construction">
+      <line class="radial-cut-ray" x1="${cx.toFixed(2)}" y1="${springY.toFixed(2)}" x2="${left.toFixed(2)}" y2="${springY.toFixed(2)}"/>
+      <line class="radial-cut-ray" x1="${cx.toFixed(2)}" y1="${springY.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${apexY.toFixed(2)}"/>
+      <line class="radial-cut-ray" x1="${cx.toFixed(2)}" y1="${springY.toFixed(2)}" x2="${right.toFixed(2)}" y2="${springY.toFixed(2)}"/>
+      <circle class="radial-center-point" cx="${cx.toFixed(2)}" cy="${springY.toFixed(2)}" r="5"/>
+    </g>` : "",
     `<g class="surface-principle-icon">${principleIcon.join("")}</g>`,
     entityShown("extrados") && entityShown("intrados") ? `<line class="reference-line thickness" x1="${(cx + halfW * 0.2).toFixed(2)}" y1="${apexY.toFixed(2)}" x2="${(cx + halfW * 0.2).toFixed(2)}" y2="${(apexY - tPx).toFixed(2)}" style="stroke:${entityColor("extrados", 0.9)}"/>` : "",
     entityShown("imposts") ? `<circle class="reference-point" cx="${left.toFixed(2)}" cy="${springY.toFixed(2)}" r="4" style="fill:${entityColor("imposts", 0.92)}"/>` : "",
@@ -3523,7 +7800,7 @@ const buildSurfaceUnrollOverlay2d = (layout, density) => {
       const ty = y + (h * i) / courseCount;
       lines.push(`<line class="surface-unroll-line course" x1="${x.toFixed(2)}" y1="${ty.toFixed(2)}" x2="${(x + w).toFixed(2)}" y2="${ty.toFixed(2)}"/>`);
     }
-    if (state.drawingPreset === "Teaching View") labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">cylindrical unroll: rectangle</text>`);
+    if (isTeachingDrawingPreset()) labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">cylindrical unroll: rectangle</text>`);
     labels.push(`<text class="surface-unroll-label" x="${(x + w * 0.5).toFixed(2)}" y="${(y + h + 18).toFixed(2)}" text-anchor="middle">vault length ${formatM(developedLength)}</text>`);
     labels.push(`<text class="surface-unroll-label" x="${(x - 10).toFixed(2)}" y="${(y + h * 0.5).toFixed(2)}" text-anchor="end">arch length ${formatM(archLength)}</text>`);
   } else if (state.surfacePrinciple === "Cone") {
@@ -3551,7 +7828,7 @@ const buildSurfaceUnrollOverlay2d = (layout, density) => {
       const [a1x, a1y] = pt(r, end);
       lines.push(`<path class="surface-unroll-line course" d="M ${a0x.toFixed(2)} ${a0y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${a1x.toFixed(2)} ${a1y.toFixed(2)}"/>`);
     }
-    if (state.drawingPreset === "Teaching View") labels.push(`<text class="surface-unroll-title" x="${(layout.x + 20).toFixed(2)}" y="${(layout.y - 14).toFixed(2)}">conical unroll: annular sector</text>`);
+    if (isTeachingDrawingPreset()) labels.push(`<text class="surface-unroll-title" x="${(layout.x + 20).toFixed(2)}" y="${(layout.y - 14).toFixed(2)}">conical unroll: annular sector</text>`);
     labels.push(`<text class="surface-unroll-label" x="${cx.toFixed(2)}" y="${(cy - outerR - 12).toFixed(2)}" text-anchor="middle">generators locate true panels</text>`);
   } else if (state.surfacePrinciple === "Sphere") {
     const goreCount = Math.max(6, Math.min(16, Math.round(blockCount / 2)));
@@ -3569,7 +7846,7 @@ const buildSurfaceUnrollOverlay2d = (layout, density) => {
         lines.push(`<line class="surface-unroll-line course" x1="${(mid - half).toFixed(2)}" y1="${ty.toFixed(2)}" x2="${(mid + half).toFixed(2)}" y2="${ty.toFixed(2)}"/>`);
       }
     }
-    if (state.drawingPreset === "Teaching View") labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">spherical map: meridian gores</text>`);
+    if (isTeachingDrawingPreset()) labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">spherical map: meridian gores</text>`);
     labels.push(`<text class="surface-unroll-label" x="${(x + w * 0.5).toFixed(2)}" y="${(y + h + 18).toFixed(2)}" text-anchor="middle">approximate true shape by gores, not a single flat rectangle</text>`);
   } else {
     fills.push(`<rect class="surface-unroll-fill" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}"/>`);
@@ -3581,13 +7858,14 @@ const buildSurfaceUnrollOverlay2d = (layout, density) => {
       const y1 = y + h;
       lines.push(`<line class="surface-unroll-line generator" x1="${x0.toFixed(2)}" y1="${y0.toFixed(2)}" x2="${x1.toFixed(2)}" y2="${y1.toFixed(2)}"/>`);
     }
-    if (state.drawingPreset === "Teaching View") labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">ruled / compound development: generator net</text>`);
+    if (isTeachingDrawingPreset()) labels.push(`<text class="surface-unroll-title" x="${x.toFixed(2)}" y="${(y - 14).toFixed(2)}">ruled / compound development: generator net</text>`);
   }
 
   return [`<g class="surface-unroll-overlay">`, ...fills, ...lines, ...labels, `</g>`];
 };
 
 const buildTraitOverlay2d = (frames) => {
+  if (isCustomHostWorkflow()) return [];
   if (!state.view2dOptions.showTraitLines || !state.view2dOptions.showGuides) return [];
   const ref = frames.reference;
   const layout = frames.layout;
@@ -3627,7 +7905,7 @@ const buildTraitOverlay2d = (frames) => {
       const lx = layout.x + t * layout.w;
       lines.push(`<line class="trait-line projection" x1="${x.toFixed(2)}" y1="${y.toFixed(2)}" x2="${lx.toFixed(2)}" y2="${layout.y.toFixed(2)}"/>`);
     }
-    if (labelOn && state.drawingPreset === "Teaching View") labels.push(`<text class="trait-label" x="${(layout.x + 10).toFixed(2)}" y="${(layout.y - 22).toFixed(2)}">projection rays</text>`);
+    if (labelOn && isTeachingDrawingPreset()) labels.push(`<text class="trait-label" x="${(layout.x + 10).toFixed(2)}" y="${(layout.y - 22).toFixed(2)}">projection rays</text>`);
   }
 
   if (allowCourses) {
@@ -3672,7 +7950,7 @@ const buildTraitOverlay2d = (frames) => {
     lines.push(...buildSurfaceUnrollOverlay2d(layout, density));
   }
 
-  if (labelOn && state.drawingPreset === "Teaching View") {
+  if (labelOn && isTeachingDrawingPreset()) {
     labels.push(`<text class="trait-label title" x="${(layout.x + layout.w).toFixed(2)}" y="${(layout.y - 8).toFixed(2)}" text-anchor="end">Trait: ${step}</text>`);
   }
   return [`<g class="trait-overlay" data-trait-step="${step}">`, ...lines, ...labels, `</g>`];
@@ -3681,6 +7959,7 @@ const buildTraitOverlay2d = (frames) => {
 const stereotomyStepActive = (name) => state.stereotomyStep === "All Stereotomy" || state.stereotomyStep === name;
 
 const buildDerivedStereotomyOverlay2d = (frames) => {
+  if (isCustomHostWorkflow()) return [];
   if (!state.view2dOptions.showDerivedStereotomy || !state.view2dOptions.showGuides) return [];
   const layout = frames.layout;
   const lines = [];
@@ -3750,6 +8029,22 @@ const buildDerivedStereotomyOverlay2d = (frames) => {
     }
   }
 
+  if (showHead && jointPrinciple === "radial joints") {
+    const detailX = layout.x + layout.w * 0.06;
+    const detailY = layout.y + layout.h * 0.08;
+    const faceW = Math.min(92, layout.w * 0.12);
+    const faceH = Math.min(54, layout.h * 0.12);
+    const taper = clamp(state.params.thickness * 12, 8, 20);
+    const p1 = `${detailX.toFixed(2)},${(detailY + faceH).toFixed(2)} ${(detailX + faceW).toFixed(2)},${(detailY + faceH - 5).toFixed(2)} ${(detailX + faceW - taper).toFixed(2)},${detailY.toFixed(2)} ${(detailX + taper).toFixed(2)},${(detailY + 5).toFixed(2)}`;
+    const p2x = detailX + faceW + 22;
+    const p2 = `${p2x.toFixed(2)},${(detailY + faceH).toFixed(2)} ${(p2x + faceW).toFixed(2)},${(detailY + faceH - 2).toFixed(2)} ${(p2x + faceW - taper * 0.55).toFixed(2)},${(detailY + 6).toFixed(2)} ${(p2x + taper * 0.55).toFixed(2)},${detailY.toFixed(2)}`;
+    fills.push(`<polygon class="radial-cut-face primary" points="${p1}"/>`);
+    fills.push(`<polygon class="radial-cut-face secondary" points="${p2}"/>`);
+    lines.push(`<line class="radial-cut-ray detail" x1="${(detailX + faceW * 0.5).toFixed(2)}" y1="${(detailY + faceH + 26).toFixed(2)}" x2="${(detailX + faceW * 0.5).toFixed(2)}" y2="${(detailY + faceH - 2).toFixed(2)}"/>`);
+    lines.push(`<line class="radial-cut-ray detail" x1="${(p2x + faceW * 0.5).toFixed(2)}" y1="${(detailY + faceH + 26).toFixed(2)}" x2="${(p2x + faceW * 0.5).toFixed(2)}" y2="${(detailY + faceH - 2).toFixed(2)}"/>`);
+    if (labelOn) labels.push(`<text class="stereotomy-label small" x="${detailX.toFixed(2)}" y="${(detailY - 8).toFixed(2)}">radial head-cut faces</text>`);
+  }
+
   if (showKey) {
     const keyW = layout.w * clamp(state.params.keystoneSize || 0.35, 0.12, 0.9) * 0.16;
     const keyH = layout.h * 0.12;
@@ -3762,7 +8057,7 @@ const buildDerivedStereotomyOverlay2d = (frames) => {
     } else {
       fills.push(`<rect class="stereotomy-zone keystone" x="${(cx - keyW).toFixed(2)}" y="${keyY.toFixed(2)}" width="${(keyW * 2).toFixed(2)}" height="${keyH.toFixed(2)}"/>`);
     }
-    if (labelOn && state.drawingPreset === "Teaching View") labels.push(`<text class="stereotomy-label" x="${(cx + keyW + 10).toFixed(2)}" y="${(layout.y - 8).toFixed(2)}">keystone zone</text>`);
+    if (labelOn && isTeachingDrawingPreset()) labels.push(`<text class="stereotomy-label" x="${(cx + keyW + 10).toFixed(2)}" y="${(layout.y - 8).toFixed(2)}">keystone zone</text>`);
   }
 
   if (showPanels) {
@@ -3776,10 +8071,10 @@ const buildDerivedStereotomyOverlay2d = (frames) => {
     fills.push(`<polygon class="true-shape-panel" points="${panelA}"/>`);
     fills.push(`<polygon class="true-shape-panel secondary" points="${panelB}"/>`);
     lines.push(`<line class="stereotomy-line panel-fold" x1="${(panelX + 55).toFixed(2)}" y1="${(panelY + 10).toFixed(2)}" x2="${(panelX + 55).toFixed(2)}" y2="${(panelY + panelH).toFixed(2)}"/>`);
-    if (labelOn && state.drawingPreset === "Teaching View") labels.push(`<text class="stereotomy-label" x="${panelX.toFixed(2)}" y="${(layout.y + layout.h + 18).toFixed(2)}">true-shape panels / panneaux</text>`);
+    if (labelOn && isTeachingDrawingPreset()) labels.push(`<text class="stereotomy-label" x="${panelX.toFixed(2)}" y="${(layout.y + layout.h + 18).toFixed(2)}">true-shape panels / panneaux</text>`);
   }
 
-  if (labelOn && state.drawingPreset === "Teaching View") {
+  if (labelOn && isTeachingDrawingPreset()) {
     labels.push(`<text class="stereotomy-label title" x="${layout.x.toFixed(2)}" y="${(layout.y + layout.h + 18).toFixed(2)}">Derived stereotomy: ${state.stereotomyStep}</text>`);
   }
   return [`<g class="derived-stereotomy" data-stereotomy-step="${state.stereotomyStep}">`, ...fills, ...lines, ...labels, `</g>`];
@@ -3826,6 +8121,66 @@ const summarizeFabricationFailures = () => {
     });
   });
   return { failedBlocks, summary };
+};
+
+const diagnosticLabel = (key) => ({
+  "length": "block length",
+  "width": "block width",
+  "thickness": "minimum thickness",
+  "weight": "block weight",
+  "taper": "joint taper",
+  "min-edge": "minimum edge",
+  "bed-depth": "bed depth",
+  "convexity": "cell convexity",
+  "non-manifold": "manifold topology",
+  "stretched-cell": "stretched cells",
+  "twisted-patch": "twisted patches",
+  "mapping-distortion": "component mapping distortion",
+  "taper-distortion": "taper distortion",
+})[key] || String(key || "review item").replace(/-/g, " ");
+
+const diagnosticSuggestion = (key) => ({
+  "length": "Reduce block length or increase field divisions.",
+  "width": "Reduce block width or change the cell fill mode.",
+  "thickness": "Increase block thickness or switch thickness mapping.",
+  "weight": "Lower block size, reduce thickness, or split dense zones.",
+  "taper": "Reduce taper angle or choose a more local component frame.",
+  "min-edge": "Increase minimum bed depth or clean dual boundary cells.",
+  "bed-depth": "Increase bed depth or reduce patch subdivision.",
+  "convexity": "Switch to primal cells or clean fan/frame boundary cells.",
+  "non-manifold": "Use separate blocks or inspect merged fabrication seams.",
+  "stretched-cell": "Increase local field divisions or use patch/fan fill only in smaller zones.",
+  "twisted-patch": "Lower patch smoothing or split cells across high curvature.",
+  "mapping-distortion": "Try local-frame mapping or preserve component scale.",
+  "taper-distortion": "Reduce field-driven taper or relax the taper limit.",
+})[key] || "Review the highlighted blocks and adjust the active strategy or fabrication limits.";
+
+const renderDiagnosticSummary = ({ invalid, summary, processWarnings, historicalIssues }) => {
+  if (!nodes.diagnosticSummary) return;
+  const sortedIssues = Object.entries(summary || {}).sort((a, b) => b[1] - a[1]);
+  const primary = sortedIssues[0];
+  const historicalFails = historicalIssues.filter((item) => item.status === "fail").length;
+  const status = invalid.length
+    ? "failed"
+    : (processWarnings.length || historicalIssues.length ? "warning" : "clean");
+  const statusLabel = status === "failed" ? "Failed" : status === "warning" ? "Warning" : "Clean";
+  const primaryLabel = primary
+    ? `${diagnosticLabel(primary[0])}: ${primary[1]} block${primary[1] === 1 ? "" : "s"}`
+    : historicalIssues.length
+      ? `historical validation: ${historicalFails} fail, ${historicalIssues.length - historicalFails} warning(s)`
+      : processWarnings[0] || "no active issues";
+  const suggestion = primary
+    ? diagnosticSuggestion(primary[0])
+    : historicalIssues.length
+      ? historicalIssues[0].detail
+      : processWarnings[0]
+        ? "Advance the workflow stage or review the relevant operation before export."
+        : "Ready for block review and export.";
+  nodes.diagnosticSummary.innerHTML = [
+    `<div class="diagnostic-status ${status}"><span>${statusLabel}</span><b>${invalid.length} invalid / ${state.blocks.length} blocks</b></div>`,
+    `<div class="diagnostic-primary"><span>Primary issue</span><b>${primaryLabel}</b></div>`,
+    `<div class="diagnostic-suggestion"><span>Suggested fix</span><b>${suggestion}</b></div>`,
+  ].join("");
 };
 
 const evaluateHistoricalFamilyValidation = () => {
@@ -3901,7 +8256,7 @@ const evaluateHistoricalFamilyValidation = () => {
       key: "offset-coherence",
       label: "Intrados/extrados offset coherence",
       status: offsetOk ? "pass" : "warn",
-      detail: offsetOk ? `Thickness ${state.params.thickness.toFixed(2)} m with intrados, neutral, and extrados visible.` : "Show intrados, neutral curve, and extrados with positive thickness.",
+      detail: offsetOk ? `Thickness ${metersToCmInput(state.params.thickness)} cm with intrados, neutral, and extrados visible.` : "Show intrados, neutral curve, and extrados with positive thickness.",
     },
     {
       key: "fallacara-family",
@@ -3930,6 +8285,122 @@ const renderHistoricalValidation = () => {
   ].join("");
 };
 
+const edgeKeyFromUv = (a, b) => {
+  const pa = `${Number(a[0]).toFixed(5)},${Number(a[1]).toFixed(5)}`;
+  const pb = `${Number(b[0]).toFixed(5)},${Number(b[1]).toFixed(5)}`;
+  return pa < pb ? `${pa}|${pb}` : `${pb}|${pa}`;
+};
+
+const analyzeBlockNgonTopology = (blocks = state.blocks) => {
+  const edgeMap = new Map();
+  const vertexMap = new Map();
+  const addVertex = (p, neighbour) => {
+    const key = `${Number(p[0]).toFixed(5)},${Number(p[1]).toFixed(5)}`;
+    if (!vertexMap.has(key)) vertexMap.set(key, new Set());
+    if (neighbour) vertexMap.get(key).add(neighbour);
+    return key;
+  };
+  blocks.forEach((block) => {
+    const uv = block.uv || [];
+    uv.forEach((p, i) => {
+      const next = uv[(i + 1) % uv.length];
+      const prev = uv[(i - 1 + uv.length) % uv.length];
+      const key = addVertex(p);
+      vertexMap.get(key).add(addVertex(next));
+      vertexMap.get(key).add(addVertex(prev));
+      const edgeKey = edgeKeyFromUv(p, next);
+      if (!edgeMap.has(edgeKey)) edgeMap.set(edgeKey, { blocks: [], length: 0 });
+      const entry = edgeMap.get(edgeKey);
+      entry.blocks.push(block.id);
+      entry.length = Math.hypot(next[0] - p[0], next[1] - p[1]);
+    });
+  });
+  const edges = [...edgeMap.values()];
+  const nakedEdges = edges.filter((edge) => edge.blocks.length === 1);
+  const sharedEdges = edges.filter((edge) => edge.blocks.length === 2);
+  const nonManifoldEdges = edges.filter((edge) => edge.blocks.length > 2);
+  const valences = [...vertexMap.values()].map((neighbours) => neighbours.size);
+  return {
+    faceCount: blocks.length,
+    edgeCount: edges.length,
+    vertexCount: vertexMap.size,
+    nakedEdgeCount: nakedEdges.length,
+    sharedEdgeCount: sharedEdges.length,
+    nonManifoldEdgeCount: nonManifoldEdges.length,
+    averageValence: valences.length ? valences.reduce((sum, v) => sum + v, 0) / valences.length : 0,
+    maxValence: valences.length ? Math.max(...valences) : 0,
+    averageEdgeLength: edges.length ? edges.reduce((sum, edge) => sum + edge.length, 0) / edges.length : 0,
+  };
+};
+
+const analyzeBlockPlanarity = (blocks = state.blocks) => {
+  const deviations = [];
+  const plane = new THREE.Plane();
+  blocks.forEach((block) => {
+    const q = block.metrics?.q || [];
+    if (q.length < 3) return;
+    plane.setFromCoplanarPoints(q[0], q[1], q[2]);
+    if (plane.normal.lengthSq() < 1e-8) return;
+    const maxDeviation = q.reduce((max, point) => Math.max(max, Math.abs(plane.distanceToPoint(point))), 0);
+    deviations.push(maxDeviation);
+  });
+  return {
+    checkedFaceCount: deviations.length,
+    maxDeviation: deviations.length ? Math.max(...deviations) : 0,
+    averageDeviation: deviations.length ? deviations.reduce((sum, v) => sum + v, 0) / deviations.length : 0,
+    aboveToleranceCount: deviations.filter((v) => v > state.constraints.fabTolerance).length,
+  };
+};
+
+const renderNgonDiagnostics = () => {
+  const el = nodes.ngonDiagnostics;
+  if (!el) return;
+  const blockTopology = analyzeBlockNgonTopology();
+  const planarity = analyzeBlockPlanarity();
+  const source = state.importedTopology;
+  const sourceRows = source ? [
+    ["Source Meshes", source.meshCount],
+    ["Source Triangles", source.triangleCount],
+    ["Source Vertices", source.vertexCount],
+    ["Source Edges", source.edgeCount],
+    ["Boundary Edges", source.boundaryEdgeCount],
+    ["Feature Edges", source.featureEdgeCount],
+    ["Non-Manifold", source.nonManifoldEdgeCount],
+    ["Avg Valence", source.averageValence.toFixed(2)],
+  ] : [
+    ["Source Meshes", "Built-in"],
+    ["Source Triangles", "parametric"],
+    ["Source Vertices", "derived"],
+    ["Source Edges", "derived"],
+  ];
+  const blockRows = [
+    ["Topology Cells", blockTopology.faceCount],
+    ["Cell Edges", blockTopology.edgeCount],
+    ["Cell Vertices", blockTopology.vertexCount],
+    ["Shared Edges", blockTopology.sharedEdgeCount],
+    ["Naked Edges", blockTopology.nakedEdgeCount],
+    ["Non-Manifold Cells", blockTopology.nonManifoldEdgeCount],
+    ["Cell Avg Valence", blockTopology.averageValence.toFixed(2)],
+    ["Avg UV Edge", blockTopology.averageEdgeLength.toFixed(3)],
+  ];
+  const tolerance = state.constraints.fabTolerance;
+  const planarityStatus = planarity.aboveToleranceCount ? "warn" : "ok";
+  const manifoldStatus = (source?.nonManifoldEdgeCount || blockTopology.nonManifoldEdgeCount) ? "bad" : "ok";
+  const statusRows = [
+    ["Planarity Max", `${metersToCmInput(planarity.maxDeviation)} cm`, planarityStatus],
+    ["Planarity Avg", `${metersToCmInput(planarity.averageDeviation)} cm`, planarityStatus],
+    ["Faces Over Tol.", `${planarity.aboveToleranceCount}/${Math.max(planarity.checkedFaceCount, 1)}`, planarityStatus],
+    ["Tolerance", `${metersToCmInput(tolerance)} cm`, "ok"],
+    ["Manifold Review", manifoldStatus === "ok" ? "clean" : "check", manifoldStatus],
+  ];
+  const row = ([k, v, status = ""]) => `<div class="diagnostic-cell ${status}"><b>${k}</b><span>${v}</span></div>`;
+  el.innerHTML = [
+    `<div class="diagnostic-group"><h3>Source Topology</h3>${sourceRows.map(row).join("")}</div>`,
+    `<div class="diagnostic-group"><h3>Generated Cells</h3>${blockRows.map(row).join("")}</div>`,
+    `<div class="diagnostic-group"><h3>Planarity + Manifold</h3>${statusRows.map(row).join("")}</div>`,
+  ].join("");
+};
+
 const buildFabricationCheckOverlay2d = (frames) => {
   if (!state.view2dOptions.showFabricationChecks || !state.view2dOptions.showFabricationLegend) return [];
   const { failedBlocks, summary } = summarizeFabricationFailures();
@@ -3951,7 +8422,7 @@ const buildFabricationCheckOverlay2d = (frames) => {
     `<g class="fabrication-check-overlay">`,
     `<text class="fabrication-check-title" x="${x.toFixed(2)}" y="${y.toFixed(2)}">${title}</text>`,
     `<text class="fabrication-check-label ${failedBlocks ? "bad" : "ok"}" x="${x.toFixed(2)}" y="${(y + 22).toFixed(2)}">${status}</text>`,
-    `<text class="fabrication-check-label" x="${x.toFixed(2)}" y="${(y + 36).toFixed(2)}">tolerance ${state.constraints.fabTolerance.toFixed(3)} m</text>`,
+    `<text class="fabrication-check-label" x="${x.toFixed(2)}" y="${(y + 36).toFixed(2)}">tolerance ${metersToCmInput(state.constraints.fabTolerance)} cm</text>`,
     ...rowText,
     `<line class="fabrication-tolerance-rule" x1="${x.toFixed(2)}" y1="${toleranceY.toFixed(2)}" x2="${(x + 64).toFixed(2)}" y2="${toleranceY.toFixed(2)}"/>`,
     `<text class="fabrication-check-label small" x="${x.toFixed(2)}" y="${(toleranceY + 14).toFixed(2)}">outside bounding box</text>`,
@@ -3959,9 +8430,202 @@ const buildFabricationCheckOverlay2d = (frames) => {
   ];
 };
 
+const buildContourFieldOverlay2d = (frames) => {
+  if (isCustomHostWorkflow()) return [];
+  if (!state.contourField.enabled || !state.contourField.showContours || !state.view2dOptions.showContourField) return [];
+  const layout = frames.layout;
+  const bands = clamp(Math.round(state.contourField.bands || 8), 2, 24);
+  const lines = [];
+  for (let i = 1; i < bands; i++) {
+    const t = i / bands;
+    if (["height", "weight", "reaction"].includes(state.contourField.source)) {
+      const y = layout.y + (1 - t) * layout.h;
+      lines.push(`<line class="contour-line2d" x1="${layout.x.toFixed(2)}" y1="${y.toFixed(2)}" x2="${(layout.x + layout.w).toFixed(2)}" y2="${y.toFixed(2)}"/>`);
+    } else {
+      const cx = layout.x + layout.w * 0.5;
+      const cy = layout.y + layout.h * 0.5;
+      const rx = layout.w * (0.08 + t * 0.44);
+      const ry = layout.h * (0.08 + t * 0.44);
+      lines.push(`<ellipse class="contour-line2d" cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}"/>`);
+    }
+  }
+  if (state.contourField.showMasks && state.view2dOptions.showContourField && state.contourField.maskMode !== "none") {
+    if (state.contourField.maskMode === "opening" || state.contourField.maskMode === "crown") {
+      lines.push(`<ellipse class="contour-mask2d" cx="${(layout.x + layout.w * 0.5).toFixed(2)}" cy="${(layout.y + layout.h * 0.5).toFixed(2)}" rx="${(layout.w * 0.105).toFixed(2)}" ry="${(layout.h * 0.105).toFixed(2)}"/>`);
+    } else if (state.contourField.maskMode === "boundary") {
+      lines.push(`<rect class="contour-mask2d" x="${layout.x.toFixed(2)}" y="${layout.y.toFixed(2)}" width="${layout.w.toFixed(2)}" height="${layout.h.toFixed(2)}" fill="none"/>`);
+    } else if (state.contourField.maskMode === "support") {
+      [[0, 0], [1, 0], [1, 1], [0, 1]].forEach(([u, v]) => {
+        lines.push(`<circle class="contour-mask2d" cx="${(layout.x + u * layout.w).toFixed(2)}" cy="${(layout.y + (1 - v) * layout.h).toFixed(2)}" r="26"/>`);
+      });
+    } else if (state.contourField.maskMode === "low-weight") {
+      lines.push(`<text class="contour-label2d" x="${layout.x.toFixed(2)}" y="${(layout.y - 10).toFixed(2)}">mask: low field weight</text>`);
+    }
+  }
+  lines.push(`<text class="contour-label2d" x="${layout.x.toFixed(2)}" y="${(layout.y - 50).toFixed(2)}">contours: ${state.contourField.source}; bands ${bands}</text>`);
+  return [`<g class="contour-field-overlay">`, ...lines, `</g>`];
+};
+
+const buildStreamlineOverlay2d = (frames) => {
+  if (isCustomHostWorkflow()) return [];
+  if (!state.contourField.streamlines || !state.view2dOptions.showStreamlines) return [];
+  const layout = frames.layout;
+  const count = clamp(Math.round(state.contourField.streamlineCount || 9), 2, 24);
+  const source = state.contourField.streamlineSource;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) / count;
+    const pts = [];
+    for (let s = 0; s <= 24; s++) {
+      const p = s / 24;
+      let u = p;
+      let v = t;
+      if (source === "principal-curvature") {
+        v = t + Math.sin((p * Math.PI * 2) + t * Math.PI) * 0.055;
+      } else if (source === "guide") {
+        const angle = (state.contourField.guideDirectionDeg || 0) * Math.PI / 180;
+        u = p;
+        v = t + (p - 0.5) * Math.tan(angle) * 0.35;
+      } else {
+        const pull = Math.sin(p * Math.PI) * 0.12;
+        v = THREE.MathUtils.lerp(t, 0.5, pull);
+      }
+      pts.push(uvToLayoutPoint([clamp(u, 0, 1), clamp(v, 0, 1)], layout));
+    }
+    const d = pts.map(([x, y], idx) => `${idx ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ");
+    out.push(`<path class="streamline2d" d="${d}"/>`);
+  }
+  out.push(`<text class="contour-label2d" x="${(layout.x + layout.w).toFixed(2)}" y="${(layout.y - 50).toFixed(2)}" text-anchor="end">streamlines: ${source}</text>`);
+  return [`<g class="streamline-overlay">`, ...out, `</g>`];
+};
+
+const buildTopologyMorphOverlay2d = (frames) => {
+  const show =
+    state.strategyViewMode === "component-mapping" ||
+    state.strategyViewMode === "distortion" ||
+    (isPanelQuadSource(state.customPatternSource) && (state.panelMorphStrength || 0) > 0.001);
+  if (!show || !isPanelQuadSource(state.customPatternSource) || !state.importedTissueCells?.length) return [];
+  const layout = frames.layout;
+  const maxCells = 2400;
+  const stride = Math.max(1, Math.ceil(state.importedTissueCells.length / maxCells));
+  const heat = [];
+  const sourceEdges = [];
+  const uvToTopologyLayoutPoint = ([u, v]) => [
+    layout.x + clamp(u, 0, 1) * layout.w,
+    layout.y + clamp(v, 0, 1) * layout.h,
+  ];
+  const weightColor = (weight) => {
+    const w = clamp(weight, 0, 1);
+    const stops = [
+      [42, 92, 205],
+      [56, 190, 220],
+      [112, 220, 138],
+      [240, 214, 76],
+      [235, 112, 64],
+      [200, 50, 65],
+    ];
+    const scaled = w * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(scaled));
+    const t = scaled - i;
+    const c = stops[i].map((value, channel) => Math.round(THREE.MathUtils.lerp(value, stops[i + 1][channel], t)));
+    return `rgba(${c[0]},${c[1]},${c[2]},${THREE.MathUtils.lerp(0.18, 0.5, w).toFixed(2)})`;
+  };
+  const candidateLoops = state.importedTissueCells
+    .map((cell, index) => {
+      if (index % stride !== 0 || cell.uv?.length < 3) return null;
+      const sourceUv = cell.uv;
+      return { cell, index, sourceUv };
+    })
+    .filter(Boolean);
+  const allEdgeLengths = candidateLoops
+    .flatMap(({ sourceUv }) => sourceUv.map((point, i) => {
+      const next = sourceUv[(i + 1) % sourceUv.length];
+      return Math.hypot(next[0] - point[0], next[1] - point[1]);
+    }))
+    .filter((value) => Number.isFinite(value) && value > 1e-6)
+    .sort((a, b) => a - b);
+  const typicalEdge = allEdgeLengths[Math.floor(allEdgeLengths.length * 0.5)] || 0.05;
+  const maxDrawableEdge = clamp(typicalEdge * 5, 0.08, 0.24);
+  const edgeTouchesSurface = (a, b) => {
+    if (!state.importedSurface) return true;
+    const samples = [0.25, 0.5, 0.75].map((t) => [
+      THREE.MathUtils.lerp(a[0], b[0], t),
+      THREE.MathUtils.lerp(a[1], b[1], t),
+    ]);
+    return samples.every(([u, v]) => !!getImportedSurfaceSample(clamp(u, 0, 1), clamp(v, 0, 1)));
+  };
+  const isDrawableLoop = (uvLoop) => {
+    if (!uvLoop?.length || uvLoop.length < 3) return false;
+    if (uvLoop.some(([u, v]) => !Number.isFinite(u) || !Number.isFinite(v))) return false;
+    const lengths = uvLoop.map((point, i) => {
+      const next = uvLoop[(i + 1) % uvLoop.length];
+      return Math.hypot(next[0] - point[0], next[1] - point[1]);
+    }).filter(Number.isFinite);
+    if (!lengths.length) return false;
+    const maxEdge = Math.max(...lengths);
+    const medianEdge = [...lengths].sort((a, b) => a - b)[Math.floor(lengths.length * 0.5)] || maxEdge;
+    const us = uvLoop.map(([u]) => u);
+    const vs = uvLoop.map(([, v]) => v);
+    const uSpan = Math.max(...us) - Math.min(...us);
+    const vSpan = Math.max(...vs) - Math.min(...vs);
+    if (uSpan > 0.55 || vSpan > 0.55) return false;
+    if (maxEdge > maxDrawableEdge || maxEdge > Math.max(0.08, medianEdge * 4)) return false;
+    const screenPts = uvLoop.map(uvToTopologyLayoutPoint);
+    const xs = screenPts.map(([x]) => x);
+    const ys = screenPts.map(([, y]) => y);
+    const screenSpanX = Math.max(...xs) - Math.min(...xs);
+    const screenSpanY = Math.max(...ys) - Math.min(...ys);
+    const longestScreenSpan = Math.max(screenSpanX / layout.w, screenSpanY / layout.h);
+    if (longestScreenSpan > 0.55) return false;
+    const screenArea = Math.abs(screenPts.reduce((sum, [x1, y1], i) => {
+      const [x2, y2] = screenPts[(i + 1) % screenPts.length];
+      return sum + x1 * y2 - x2 * y1;
+    }, 0)) * 0.5;
+    const bboxArea = Math.max(1, screenSpanX * screenSpanY);
+    if (longestScreenSpan > 0.18 && screenArea / bboxArea < 0.04) return false;
+    return true;
+  };
+  candidateLoops.forEach(({ index, sourceUv }) => {
+    if (!isDrawableLoop(sourceUv)) return;
+    const screenPts = sourceUv.map(uvToTopologyLayoutPoint);
+    const points = screenPts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+    const weight = getPanelMorphWeight(sourceUv, `topology-weight-${index}`);
+    heat.push(`<polygon class="topology-weight2d" points="${points}" style="fill:${weightColor(weight)};"/>`);
+    sourceUv.forEach((point, i) => {
+      const nextIndex = (i + 1) % sourceUv.length;
+      const next = sourceUv[nextIndex];
+      const edgeLength = Math.hypot(next[0] - point[0], next[1] - point[1]);
+      if (!Number.isFinite(edgeLength) || edgeLength > maxDrawableEdge) return;
+      const [x1, y1] = screenPts[i];
+      const [x2, y2] = screenPts[nextIndex];
+      sourceEdges.push(
+        `<line class="topology-source2d" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`,
+      );
+    });
+  });
+  if (!heat.length && !sourceEdges.length) return [];
+  const labelY = layout.y + 18;
+  const rampX = layout.x + 378;
+  const ramp = Array.from({ length: 32 }, (_, i) => {
+    const w0 = i / 32;
+    return `<rect class="topology-ramp-cell2d" x="${(rampX + i * 5).toFixed(2)}" y="${(labelY - 6).toFixed(2)}" width="5.2" height="9" style="fill:${weightColor(w0)};"/>`;
+  });
+  return [
+    `<g class="topology-morph-overlay">`,
+    ...heat,
+    ...sourceEdges,
+    `<line class="topology-morph-key2d" x1="${layout.x.toFixed(2)}" y1="${labelY.toFixed(2)}" x2="${(layout.x + 42).toFixed(2)}" y2="${labelY.toFixed(2)}"/>`,
+    `<text class="topology-morph-label2d" x="${(layout.x + 50).toFixed(2)}" y="${(labelY + 4).toFixed(2)}">curvature / field weight</text>`,
+    ...ramp,
+    `<text class="topology-morph-label2d" x="${(rampX - 24).toFixed(2)}" y="${(labelY + 4).toFixed(2)}">low</text>`,
+    `<text class="topology-morph-label2d" x="${(rampX + 170).toFixed(2)}" y="${(labelY + 4).toFixed(2)}">high</text>`,
+    `</g>`,
+  ];
+};
+
 const buildProjectionOperationOverlay2d = (frames) => {
   const op = projectionDevelopmentOperations[state.projectionOperation];
-  if (!op || !state.view2dOptions.showLabels || state.drawingPreset !== "Teaching View") return [];
+  if (!op || !state.view2dOptions.showLabels || !isTeachingDrawingPreset()) return [];
   const layout = frames.layout;
   const x = layout.x;
   const y = layout.y + layout.h + 38;
@@ -3973,8 +8637,28 @@ const buildProjectionOperationOverlay2d = (frames) => {
   ];
 };
 
+const buildStrategyViewOverlay2d = (frames) => {
+  const mode = state.strategyViewMode || "uv-layout";
+  if (mode === "uv-layout") return [];
+  const layout = frames.layout;
+  const panelName = state.customPanel?.name || "built-in component";
+  const text = {
+    "component-mapping": `component mapping preview: ${panelName} -> ${labelStrategyValue(state.strategy.scale)}`,
+    "assembly-sequence": `assembly sequence: ${state.blocks.length} generated blocks`,
+    distortion: "distortion review: stretch, twist, taper, and fabrication checks",
+    zones: `zone / weight view: ${labelStrategyValue(state.fieldWeights.source)} field`,
+  }[mode] || strategyViewLabels[mode] || "strategy view";
+  return [
+    `<g class="strategy-view-overlay">`,
+    `<rect class="strategy-view-banner" x="${layout.x.toFixed(2)}" y="${(layout.y + layout.h + 14).toFixed(2)}" width="${Math.min(layout.w, 560).toFixed(2)}" height="30"/>`,
+    `<text class="strategy-view-label" x="${(layout.x + 12).toFixed(2)}" y="${(layout.y + layout.h + 34).toFixed(2)}">${text}</text>`,
+    `</g>`,
+  ];
+};
+
 const buildMeasurementAnnotationOverlay2d = (frames) => {
   if (!state.view2dOptions.showAnnotations || !state.view2dOptions.showLabels) return [];
+  if (isCustomHostWorkflow()) return [];
   const opts = state.view2dOptions;
   const ref = frames.reference;
   const layout = frames.layout;
@@ -3990,6 +8674,7 @@ const buildMeasurementAnnotationOverlay2d = (frames) => {
     label.push(`<text class="dimension-label" x="${tx.toFixed(2)}" y="${ty.toFixed(2)}" text-anchor="${anchor}">${text}</text>`);
   };
   const fmt = (v) => `${v.toFixed(v >= 10 ? 1 : 2)} m`;
+  const fmtCm = (v) => `${metersToCmInput(v)} cm`;
   const cx = ref.x + ref.w * 0.5;
   const springY = ref.y + ref.h * 0.78;
   const halfW = clamp(state.params.span * 8.5 * 0.5, 60, ref.w * 0.42);
@@ -4007,7 +8692,7 @@ const buildMeasurementAnnotationOverlay2d = (frames) => {
   if (ref.h > 0) {
     if (opts.showSpanDimension) dimLine(left, springY + 28, right, springY + 28, `span ${fmt(state.params.span)}`, cx, springY + 44);
     if (opts.showRiseDimension) dimLine(right + 22, springY, right + 22, apexY, `rise ${fmt(state.params.rise)}`, right + 30, (springY + apexY) * 0.5, "start");
-    if (opts.showThicknessDimension) dimLine(cx + halfW * 0.3, apexY, cx + halfW * 0.3, apexY - tPx, `thickness ${fmt(state.params.thickness)}`, cx + halfW * 0.3 + 8, apexY - tPx * 0.5, "start");
+    if (opts.showThicknessDimension) dimLine(cx + halfW * 0.3, apexY, cx + halfW * 0.3, apexY - tPx, `thickness ${fmtCm(state.params.thickness)}`, cx + halfW * 0.3 + 8, apexY - tPx * 0.5, "start");
     if (opts.showRadiusLabels) {
       line.push(`<path class="dimension-radius" d="M ${cx.toFixed(2)} ${apexY.toFixed(2)} Q ${(cx - halfW * 0.25).toFixed(2)} ${(springY - risePx * 0.42).toFixed(2)} ${left.toFixed(2)} ${springY.toFixed(2)}"/>`);
       label.push(`<text class="dimension-label" x="${(cx - halfW * 0.44).toFixed(2)}" y="${(springY - risePx * 0.58).toFixed(2)}">R ${fmt(radius)}</text>`);
@@ -4023,16 +8708,16 @@ const buildMeasurementAnnotationOverlay2d = (frames) => {
     label.push(`<text class="dimension-label strong" x="${layout.x.toFixed(2)}" y="${(layout.y - 28).toFixed(2)}">courses ${courses}</text>`);
   }
   if (opts.showBlockWidth) {
-    label.push(`<text class="dimension-label strong" x="${(layout.x + 120).toFixed(2)}" y="${(layout.y - 28).toFixed(2)}">block width ${fmt(blockW)}</text>`);
+    label.push(`<text class="dimension-label strong" x="${(layout.x + 120).toFixed(2)}" y="${(layout.y - 28).toFixed(2)}">block width ${fmtCm(blockW)}</text>`);
   }
   if (opts.showJointGap) {
-    label.push(`<text class="dimension-label strong" x="${(layout.x + 280).toFixed(2)}" y="${(layout.y - 28).toFixed(2)}">joint gap ${fmt(state.constraints.jointGap)}</text>`);
+    label.push(`<text class="dimension-label strong" x="${(layout.x + 280).toFixed(2)}" y="${(layout.y - 28).toFixed(2)}">joint gap ${fmtCm(state.constraints.jointGap)}</text>`);
   }
   if (opts.showTrueLength) {
     label.push(`<text class="dimension-label strong" x="${(layout.x + layout.w).toFixed(2)}" y="${(layout.y + layout.h + 58).toFixed(2)}" text-anchor="end">true length ${fmt(archLength)}</text>`);
   }
   if (opts.showSurfaceFamilyLabel) {
-    label.push(`<text class="dimension-surface-label" x="${(layout.x + layout.w).toFixed(2)}" y="${(layout.y - 28).toFixed(2)}" text-anchor="end">surface family: ${state.surfacePrinciple.toLowerCase()}</text>`);
+    label.push(`<text class="dimension-surface-label" x="${(layout.x + layout.w).toFixed(2)}" y="${(layout.y - 76).toFixed(2)}" text-anchor="end">surface family: ${state.surfacePrinciple.toLowerCase()}</text>`);
   }
 
   return [`<g class="measurement-annotations">`, ...line, ...label, `</g>`];
@@ -4040,11 +8725,54 @@ const buildMeasurementAnnotationOverlay2d = (frames) => {
 
 const get2dFrames = () => {
   const margin = 24;
-  const hasReference = state.view2dOptions.showReferenceGeometry && state.view2dOptions.showGuides;
+  const hasReference = state.view2dOptions.showReferenceGeometry && state.view2dOptions.showGuides && !isCustomHostWorkflow();
   return {
     reference: { x: margin, y: 24, w: 952, h: hasReference ? 160 : 0 },
     layout: { x: margin, y: hasReference ? 210 : 24, w: 952, h: hasReference ? 466 : 652 },
   };
+};
+
+const uvToLayoutPoint = ([u, v], frame) => {
+  if (isBarrelLikeVault()) {
+    return [frame.x + clamp(v, 0, 1) * frame.w, frame.y + (1 - clamp(u, 0, 1)) * frame.h];
+  }
+  return [frame.x + wrap01(u) * frame.w, frame.y + clamp(v, 0, 1) * frame.h];
+};
+
+const layoutPointToUv = (sx, sy, frame) => {
+  const a = clamp((sx - frame.x) / frame.w, 0, 1);
+  const b = clamp((sy - frame.y) / frame.h, 0, 1);
+  if (isBarrelLikeVault()) return [1 - b, a];
+  return [a, b];
+};
+
+const buildAttractorFieldOverlay2d = (frames) => {
+  const field = getAttractorField();
+  const frame = frames.layout;
+  const pieces = [`<text class="attractor-label" x="${(frame.x + 12).toFixed(2)}" y="${(frame.y + 20).toFixed(2)}">TOP VIEW / FIELD CONTROLS</text>`];
+  const toScreen = (uv) => uvToLayoutPoint(uv, frame);
+  field.elements.forEach((element, index) => {
+    const selected = element.id === field.selectedId ? " selected" : "";
+    const points = element.points || [];
+    if (!points.length) return;
+    const screen = points.map(toScreen);
+    if (element.type === "curve" && screen.length > 1) {
+      pieces.push(`<polyline class="attractor-curve${selected}" data-attractor-id="${element.id}" points="${screen.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" ")}"/>`);
+      screen.forEach(([x, y], vertex) => pieces.push(`<circle class="attractor-vertex${selected}" data-attractor-id="${element.id}" data-attractor-vertex="${vertex}" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5"/>`));
+      pieces.push(`<text class="attractor-label" x="${screen[0][0] + 8}" y="${screen[0][1] - 8}">C${index + 1}</text>`);
+    } else {
+      const [x, y] = screen[0];
+      const radius = Math.max(5, element.radius * Math.min(frame.w, frame.h));
+      pieces.push(`<circle class="attractor-influence" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${radius.toFixed(2)}"/>`);
+      pieces.push(`<circle class="attractor-point${selected}" data-attractor-id="${element.id}" data-attractor-vertex="0" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="6"/>`);
+      pieces.push(`<text class="attractor-label" x="${x + 9}" y="${y - 9}">P${index + 1}</text>`);
+    }
+  });
+  if (field.pendingCurve.length) {
+    const points = field.pendingCurve.map(toScreen).map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" ");
+    pieces.push(`<polyline class="attractor-pending" points="${points}"/>`);
+  }
+  return pieces;
 };
 
 const draw2d = () => {
@@ -4053,21 +8781,65 @@ const draw2d = () => {
   const iw = frames.layout.w;
   const layoutY = frames.layout.y;
   const ih = frames.layout.h;
-  const lines = buildDraftingGrid2d();
+  const showDraftingGrid = !(
+    isCustomHostWorkflow() &&
+    isPanelQuadSource(state.customPatternSource) &&
+    state.strategyViewMode === "component-mapping"
+  );
+  const topologyDrawingOnly = (
+    isCustomHostWorkflow() &&
+    isPanelQuadSource(state.customPatternSource) &&
+    state.strategyViewMode === "component-mapping"
+  );
+  const lines = showDraftingGrid ? buildDraftingGrid2d() : [];
   const baseFill = state.layoutStyle === "Paper" ? "rgba(245,240,228,0.6)" : state.layoutStyle === "High Contrast" ? "rgba(8,8,8,0.5)" : state.layoutStyle === "Rhino Gray" ? "rgba(96,102,112,0.45)" : "rgba(3,10,18,0.35)";
   nodes.layout2d.setAttribute("viewBox", `${state.view2d.x} ${state.view2d.y} ${state.view2d.w} ${state.view2d.h}`);
   nodes.layout2d.setAttribute("data-trait-focus", state.activeTraitFocus || "all");
+  nodes.layout2d.setAttribute("data-drawing-preset", state.drawingPreset);
+  const render2dBlocks = state.view2dOptions.showBlocks && (
+    state.patternAppliedToModel ||
+    state.designMode !== "Custom Import" ||
+    state.vaultType !== "Custom Imported Rhino Surface"
+  );
+  const getDrawableUvEdgeLimit = (uvLoop) => {
+    const lengths = uvLoop.map((point, i) => {
+      const next = uvLoop[(i + 1) % uvLoop.length];
+      return Math.hypot(next[0] - point[0], next[1] - point[1]);
+    }).filter((value) => Number.isFinite(value) && value > 1e-6);
+    if (!lengths.length) return 0;
+    const sorted = [...lengths].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length * 0.5)] || sorted[0];
+    return Math.max(0.075, median * 3.25);
+  };
+  const buildCustomBlockEdgeSegments2d = (b, screenPts, stroke) => {
+    const limit = getDrawableUvEdgeLimit(b.uv);
+    const segments = b.uv.map((point, i) => {
+      const nextIndex = (i + 1) % b.uv.length;
+      const next = b.uv[nextIndex];
+      const len = Math.hypot(next[0] - point[0], next[1] - point[1]);
+      if (!Number.isFinite(len) || len > limit) return "";
+      const [x1, y1] = screenPts[i];
+      const [x2, y2] = screenPts[nextIndex];
+      return `<line class="block2d custom-edge" data-id="${b.id}" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" style="stroke:${stroke};"/>`;
+    }).join("");
+    return segments;
+  };
   nodes.layout2d.innerHTML = [
     `<rect x="${state.view2d.x}" y="${state.view2d.y}" width="${state.view2d.w}" height="${state.view2d.h}" fill="${baseFill}"/>`,
     ...lines,
-    ...buildReferenceGeometryOverlay2d(frames.reference.x, frames.reference.y, frames.reference.w, frames.reference.h),
-    ...buildStereotomicGuideOverlay2d(margin, iw, ih, layoutY),
-    ...buildTraitOverlay2d(frames),
-    ...buildDerivedStereotomyOverlay2d(frames),
+    ...(topologyDrawingOnly ? [] : buildReferenceGeometryOverlay2d(frames.reference.x, frames.reference.y, frames.reference.w, frames.reference.h)),
+    ...(topologyDrawingOnly ? [] : buildStereotomicGuideOverlay2d(margin, iw, ih, layoutY)),
+    ...(topologyDrawingOnly ? [] : buildTraitOverlay2d(frames)),
+    ...(topologyDrawingOnly ? [] : buildDerivedStereotomyOverlay2d(frames)),
+    ...(topologyDrawingOnly ? [] : buildContourFieldOverlay2d(frames)),
+    ...(topologyDrawingOnly ? [] : buildStreamlineOverlay2d(frames)),
+    ...buildAttractorFieldOverlay2d(frames),
+    ...buildTopologyMorphOverlay2d(frames),
     ...buildOriginAxes2d(),
-    ...(state.view2dOptions.showGuides ? buildGroinPlanOverlay2d(margin, iw, ih, layoutY) : []),
-    ...(state.view2dOptions.showBlocks ? state.blocks.map((b, idx) => {
-      const screenPts = b.uv.map(([u, v]) => [margin + wrap01(u) * iw, layoutY + v * ih]);
+    ...(topologyDrawingOnly ? [] : state.view2dOptions.showGuides ? buildGroinPlanOverlay2d(margin, iw, ih, layoutY) : []),
+    ...(!topologyDrawingOnly && render2dBlocks ? state.blocks.map((b, idx) => {
+      if (!isDrawableBlockUvLoop(b.uv)) return "";
+      const screenPts = b.uv.map((uv) => uvToLayoutPoint(uv, frames.layout));
       const pts = screenPts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
       const pcx = screenPts.reduce((s, p) => s + p[0], 0) / screenPts.length;
       const pcy = screenPts.reduce((s, p) => s + p[1], 0) / screenPts.length;
@@ -4076,18 +8848,33 @@ const draw2d = () => {
       const sel = state.selectedBlockId === b.id ? " selected" : "";
       const stroke = hexToRgba(state.view2dOptions.blockStroke, state.view2dOptions.blockStrokeOpacity);
       const fill = hexToRgba(state.view2dOptions.blockFill, state.view2dOptions.blockFillOpacity);
+      const customEdges = isCustomHostWorkflow() ? buildCustomBlockEdgeSegments2d(b, screenPts, stroke) : "";
       const labelStride = Math.max(1, Math.ceil(state.blocks.length / 90));
       const showId = state.view2dOptions.showBlockIds && idx % labelStride === 0;
       const showMetric = state.view2dOptions.showBlockMetrics && (sel || failsActiveCheck || idx % Math.max(labelStride * 2, 1) === 0);
       const idLabel = showId ? `<text class="block-label id" x="${pcx.toFixed(2)}" y="${(pcy + 3).toFixed(2)}" text-anchor="middle">${b.id}</text>` : "";
       const metricLabel = showMetric && b.metrics
-        ? `<text class="block-label metric" x="${pcx.toFixed(2)}" y="${(pcy + 12).toFixed(2)}" text-anchor="middle">${b.metrics.avgLength.toFixed(1)} x ${b.metrics.avgWidth.toFixed(1)}m</text>`
+        ? `<text class="block-label metric" x="${pcx.toFixed(2)}" y="${(pcy + 12).toFixed(2)}" text-anchor="middle">${metersToCmInput(b.metrics.avgLength)} x ${metersToCmInput(b.metrics.avgWidth)} cm</text>`
         : "";
       const handles = state.view2dOptions.showVertices
-        ? b.uv.map(([u, v], i) => `<circle class="uv-handle${sel}" data-id="${b.id}" data-vertex="${i}" cx="${(margin + wrap01(u) * iw).toFixed(2)}" cy="${(layoutY + v * ih).toFixed(2)}" r="4"/>`).join("")
+        ? b.uv.map((uv, i) => {
+          const [hx, hy] = uvToLayoutPoint(uv, frames.layout);
+          return `<circle class="uv-handle${sel}" data-id="${b.id}" data-vertex="${i}" cx="${hx.toFixed(2)}" cy="${hy.toFixed(2)}" r="4"/>`;
+        }).join("")
         : "";
-      return `<g class="generated-block"><polygon class="block2d${bad}${sel}" data-id="${b.id}" points="${pts}" style="fill:${fill};stroke:${stroke};"/>${idLabel}${metricLabel}${handles}</g>`;
+      const body = isCustomHostWorkflow()
+        ? customEdges
+        : `<polygon class="block2d${bad}${sel}" data-id="${b.id}" points="${pts}" style="fill:${fill};stroke:${stroke};"/>`;
+      return `<g class="generated-block">${body}${idLabel}${metricLabel}${handles}</g>`;
     }) : []),
+    ...(!topologyDrawingOnly && render2dBlocks && state.strategy.topology !== "dual" && state.dualPreviewLoops?.length ? state.dualPreviewLoops.map((loop) => {
+      const screenPts = loop.uv.map((uv) => uvToLayoutPoint(uv, frames.layout));
+      const pts = screenPts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+      const fill = loop.isBoundary ? "rgba(255,214,120,0.08)" : "rgba(91,213,255,0.06)";
+      const stroke = loop.isBoundary ? "rgba(255,214,120,0.42)" : "rgba(91,213,255,0.38)";
+      return `<polygon class="dual-preview2d" points="${pts}" style="fill:${fill};stroke:${stroke};stroke-dasharray:5 4;stroke-width:1.1;pointer-events:none;"/>`;
+    }) : []),
+    ...buildStrategyViewOverlay2d(frames),
     ...buildProjectionOperationOverlay2d(frames),
     ...buildMeasurementAnnotationOverlay2d(frames),
     ...buildFabricationCheckOverlay2d(frames),
@@ -4119,9 +8906,9 @@ const renderFormForceDiagrams = () => {
 
   for (let i = 0; i < blocks.length; i++) {
     const uv = blocks[i].uv;
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < uv.length; k++) {
       const a = uv[k];
-      const b = uv[(k + 1) % 4];
+      const b = uv[(k + 1) % uv.length];
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       const edgeKey = `${i}:${k}`;
       const locked = Boolean(state.forceLocks[edgeKey]);
@@ -4167,30 +8954,402 @@ const renderFormForceDiagrams = () => {
   };
 };
 
+const buildTopologyLattice = () => {
+  clearGroup(topologyLatticeGroup);
+  const settings = state.topologyLattice;
+  if (!settings.enabled) return;
+  const showU = settings.showU !== false;
+  const showV = settings.showV !== false;
+  const edges = new Map();
+  state.blocks.forEach((block) => {
+    const uv = block.uv || [];
+    if (uv.length < 3) return;
+    const points = block.targetPoints?.length === uv.length ? block.targetPoints : null;
+    for (let index = 0; index < uv.length; index++) {
+      const next = (index + 1) % uv.length;
+      const key = topologyEdgeKey(uv[index], uv[next]);
+      if (edges.has(key)) continue;
+      const midUv = [(uv[index][0] + uv[next][0]) * 0.5, (uv[index][1] + uv[next][1]) * 0.5];
+      const pointAt = (corner) => points?.[corner]?.clone?.() || getHostField().pointAt(clamp(uv[corner][0], 0, 1), clamp(uv[corner][1], 0, 1));
+      const a = pointAt(index);
+      const b = pointAt(next);
+      const normal = points ? (getFaceNormalFromPoints(points) || new THREE.Vector3(0, 1, 0)) : getHostField().normalAt(midUv[0], midUv[1]).clone();
+      const direction = new THREE.Vector3().subVectors(b, a);
+      const length = direction.length();
+      if (length < 1e-5) continue;
+      direction.normalize();
+      const isU = uv.length === 4
+        ? index === 0 || index === 2
+        : Math.abs(uv[next][0] - uv[index][0]) >= Math.abs(uv[next][1] - uv[index][1]);
+      const field = computeRawSourceWeight({ id: `lattice-${key}`, uv: [midUv] }).sourceWeight;
+      // Imported cells do not always preserve identical UV coordinates along a
+      // common edge. Join the physical mesh vertices instead (1 mm tolerance).
+      const pointKey = (point) => `${point.x.toFixed(3)},${point.y.toFixed(3)},${point.z.toFixed(3)}`;
+      edges.set(key, { a, b, aKey: pointKey(a), bKey: pointKey(b), midUv, normal: normal.normalize(), direction, length, isU, field });
+    }
+  });
+  const topLayer = {
+    width: Math.max(0.01, settings.railWidth),
+    depth: Math.max(0.005, settings.railDepth),
+    fillet: Math.max(0, settings.fillet ?? 0),
+    opening: clamp(settings.opening, 0, 0.85),
+    density: clamp(Math.round(settings.density), 0, 8),
+  };
+  const bottomLayer = {
+    width: Math.max(0.01, settings.bottomWidth ?? settings.railWidth),
+    depth: Math.max(0.005, settings.bottomDepth ?? settings.railDepth),
+    fillet: Math.max(0, settings.bottomFillet ?? settings.fillet ?? 0),
+    opening: clamp(settings.bottomOpening ?? settings.opening, 0, 0.85),
+    density: clamp(Math.round(settings.bottomDensity ?? settings.density), 0, 8),
+  };
+  const getLayer = (isU) => isU ? topLayer : bottomLayer;
+  const getRailAnchor = (isU) => isU ? "bottom-edge" : "top-edge";
+  const materialU = new THREE.MeshStandardMaterial({ color: 0x8db2d9, roughness: 0.52, metalness: 0.04 });
+  const materialV = new THREE.MeshStandardMaterial({ color: 0xd48aa5, roughness: 0.50, metalness: 0.04 });
+  const materialBinding = new THREE.MeshStandardMaterial({ color: 0xc54d78, roughness: 0.46, metalness: 0.08 });
+  const buildRailChains = (isU) => {
+    const groupEdges = [...edges.values()].filter((edge) => edge.isU === isU);
+    const adjacency = new Map();
+    groupEdges.forEach((edge) => {
+      [edge.aKey, edge.bKey].forEach((key) => {
+        if (!adjacency.has(key)) adjacency.set(key, []);
+        adjacency.get(key).push(edge);
+      });
+    });
+    const used = new Set();
+    const trace = (startKey, first) => {
+      const keys = [startKey];
+      const railEdges = [];
+      let currentKey = startKey;
+      let current = first;
+      let previousDirection = null;
+      while (current && !used.has(current)) {
+        used.add(current);
+        railEdges.push(current);
+        const nextKey = current.aKey === currentKey ? current.bKey : current.aKey;
+        const nextDirection = (current.aKey === currentKey ? current.direction : current.direction.clone().negate()).clone();
+        keys.push(nextKey);
+        const candidates = (adjacency.get(nextKey) || []).filter((edge) => !used.has(edge));
+        previousDirection = nextDirection;
+        current = candidates.sort((a, b) => {
+          const dirFor = (edge) => (edge.aKey === nextKey ? edge.direction : edge.direction.clone().negate());
+          return dirFor(b).dot(previousDirection) - dirFor(a).dot(previousDirection);
+        })[0] || null;
+        currentKey = nextKey;
+      }
+      return { keys, railEdges };
+    };
+    const starts = [...adjacency.entries()].filter(([, list]) => list.length === 1).map(([key]) => key);
+    const chains = [];
+    starts.forEach((key) => {
+      const edge = (adjacency.get(key) || []).find((item) => !used.has(item));
+      if (edge) chains.push(trace(key, edge));
+    });
+    groupEdges.forEach((edge) => { if (!used.has(edge)) chains.push(trace(edge.aKey, edge)); });
+    return chains;
+  };
+  const filletRailPath = (points, radius) => {
+    if (points.length < 3 || radius <= 1e-5) return points;
+    const path = [points[0].clone()];
+    for (let index = 1; index < points.length - 1; index++) {
+      const previous = points[index - 1], corner = points[index], next = points[index + 1];
+      const inbound = previous.clone().sub(corner); const outbound = next.clone().sub(corner);
+      const inboundLength = inbound.length(), outboundLength = outbound.length();
+      if (inboundLength < 1e-5 || outboundLength < 1e-5) continue;
+      inbound.multiplyScalar(1 / inboundLength); outbound.multiplyScalar(1 / outboundLength);
+      const trim = Math.min(radius, inboundLength * 0.42, outboundLength * 0.42);
+      const entry = corner.clone().addScaledVector(inbound, trim);
+      const exit = corner.clone().addScaledVector(outbound, trim);
+      path.push(entry);
+      for (let step = 1; step <= 4; step++) {
+        const t = step / 4; const a = entry.clone().lerp(corner, t); const b = corner.clone().lerp(exit, t);
+        path.push(a.lerp(b, t));
+      }
+    }
+    path.push(points[points.length - 1].clone());
+    return path;
+  };
+  const offsetRailPathInPlane = (points, normal, distance, miterLimit = 3) => {
+    if (!points?.length || Math.abs(distance) < 1e-6) return points.map((point) => point.clone());
+    if (points.length < 2) return points.map((point) => point.clone());
+    const normalSafe = normal.clone().normalize();
+    const segmentLaterals = [];
+    for (let index = 0; index < points.length - 1; index++) {
+      const tangent = points[index + 1].clone().sub(points[index]);
+      if (tangent.lengthSq() < 1e-10) {
+        segmentLaterals.push(segmentLaterals.at(-1)?.clone() || new THREE.Vector3(1, 0, 0));
+        continue;
+      }
+      tangent.normalize();
+      const lateral = new THREE.Vector3().crossVectors(normalSafe, tangent);
+      if (lateral.lengthSq() < 1e-10) segmentLaterals.push(segmentLaterals.at(-1)?.clone() || new THREE.Vector3(1, 0, 0));
+      else segmentLaterals.push(lateral.normalize());
+    }
+    return points.map((point, index) => {
+      if (index === 0) return point.clone().addScaledVector(segmentLaterals[0], distance);
+      if (index === points.length - 1) return point.clone().addScaledVector(segmentLaterals[segmentLaterals.length - 1], distance);
+      const prev = segmentLaterals[index - 1];
+      const next = segmentLaterals[index];
+      const miter = prev.clone().add(next);
+      if (miter.lengthSq() < 1e-10) return point.clone().addScaledVector(next, distance);
+      miter.normalize();
+      const denom = miter.dot(next);
+      const scale = Math.abs(denom) > 1e-5 ? distance / denom : distance;
+      const limited = clamp(scale, -Math.abs(distance) * miterLimit, Math.abs(distance) * miterLimit);
+      return point.clone().addScaledVector(miter, limited);
+    });
+  };
+  const sweepRectRail = (points, normal, width, railDepth, isU, fillet = 0, materialOverride = null, anchor = "center") => {
+    const path = filletRailPath(points, fillet);
+    if (path.length < 2) return;
+    const ring = [];
+    const normalOffsets = anchor === "bottom-edge"
+      ? [railDepth, railDepth, 0, 0]
+      : anchor === "top-edge"
+        ? [0, 0, -railDepth, -railDepth]
+        : [railDepth * 0.5, railDepth * 0.5, -railDepth * 0.5, -railDepth * 0.5];
+    path.forEach((point, index) => {
+      const tangent = path[Math.min(path.length - 1, index + 1)].clone().sub(path[Math.max(0, index - 1)]).normalize();
+      const lateral = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+      ring.push([
+        point.clone().addScaledVector(lateral, width * 0.5).addScaledVector(normal, normalOffsets[0]),
+        point.clone().addScaledVector(lateral, -width * 0.5).addScaledVector(normal, normalOffsets[1]),
+        point.clone().addScaledVector(lateral, -width * 0.5).addScaledVector(normal, normalOffsets[2]),
+        point.clone().addScaledVector(lateral, width * 0.5).addScaledVector(normal, normalOffsets[3]),
+      ]);
+    });
+    const vertices = ring.flat(); const indices = [];
+    for (let i = 0; i < ring.length - 1; i++) for (let j = 0; j < 4; j++) { const n = (j + 1) % 4; const a = i * 4 + j, b = i * 4 + n, c = (i + 1) * 4 + n, d = (i + 1) * 4 + j; indices.push(a, b, c, a, c, d); }
+    indices.push(0, 2, 1, 0, 3, 2); const end = (ring.length - 1) * 4; indices.push(end, end + 1, end + 2, end, end + 2, end + 3);
+    const geometry = new THREE.BufferGeometry().setFromPoints(vertices); geometry.setIndex(indices); geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, materialOverride || (isU ? materialU : materialV)); mesh.name = materialOverride ? "topology-lattice-strip-binding" : (isU ? "topology-lattice-u-rail" : "topology-lattice-v-rail"); topologyLatticeGroup.add(mesh);
+  };
+  const getChainGeometry = ({ keys, railEdges }) => {
+    const vertexPoints = new Map();
+    railEdges.forEach((edge) => { vertexPoints.set(edge.aKey, edge.a); vertexPoints.set(edge.bKey, edge.b); });
+    return {
+      normal: railEdges.reduce((sum, edge) => sum.add(edge.normal), new THREE.Vector3()).normalize(),
+      field: railEdges.reduce((sum, edge) => sum + edge.field, 0) / railEdges.length,
+      points: keys.map((key) => vertexPoints.get(key).clone()),
+    };
+  };
+  const pointChainKey = (point, slot, precision = 3) => `${slot}:${point.x.toFixed(precision)},${point.y.toFixed(precision)},${point.z.toFixed(precision)}`;
+  const chainRailSegments = (segments) => {
+    const adjacency = new Map();
+    segments.forEach((segment) => {
+      [segment.aKey, segment.bKey].forEach((key) => {
+        if (!adjacency.has(key)) adjacency.set(key, []);
+        adjacency.get(key).push(segment);
+      });
+    });
+    const used = new Set();
+    const orientPoints = (segment, startKey) => segment.aKey === startKey ? segment.points : segment.points.slice().reverse();
+    const trace = (startKey, first) => {
+      const pieces = [];
+      let currentKey = startKey;
+      let current = first;
+      let previousDirection = null;
+      while (current && !used.has(current.id)) {
+        used.add(current.id);
+        const pts = orientPoints(current, currentKey);
+        pieces.push({ ...current, points: pts });
+        const nextKey = current.aKey === currentKey ? current.bKey : current.aKey;
+        const nextDirection = pts.at(-1).clone().sub(pts[0]).normalize();
+        const candidates = (adjacency.get(nextKey) || []).filter((segment) => !used.has(segment.id));
+        previousDirection = nextDirection;
+        current = candidates.sort((a, b) => {
+          const dirFor = (segment) => {
+            const oriented = orientPoints(segment, nextKey);
+            return oriented.at(-1).clone().sub(oriented[0]).normalize();
+          };
+          return dirFor(b).dot(previousDirection) - dirFor(a).dot(previousDirection);
+        })[0] || null;
+        currentKey = nextKey;
+      }
+      const points = [];
+      pieces.forEach((piece) => {
+        piece.points.forEach((point, index) => {
+          if (points.length && index === 0 && point.distanceTo(points.at(-1)) < 1e-4) return;
+          points.push(point.clone());
+        });
+      });
+      return {
+        points,
+        normal: pieces.reduce((sum, piece) => sum.add(piece.normal), new THREE.Vector3()).normalize(),
+        field: pieces.reduce((sum, piece) => sum + piece.field, 0) / Math.max(1, pieces.length),
+      };
+    };
+    const starts = [...adjacency.entries()].filter(([, list]) => list.length === 1).map(([key]) => key);
+    const chains = [];
+    starts.forEach((key) => {
+      const segment = (adjacency.get(key) || []).find((item) => !used.has(item.id));
+      if (segment) chains.push(trace(key, segment));
+    });
+    segments.forEach((segment) => { if (!used.has(segment.id)) chains.push(trace(segment.aKey, segment)); });
+    return chains.filter((chain) => chain.points.length > 1);
+  };
+  const buildTweenRailChains = (layer, isU) => {
+    const count = clamp(Math.round(layer.density || 0), 0, 8);
+    if (!count) return [];
+    const segments = [];
+    let id = 0;
+    state.blocks.forEach((block, blockIndex) => {
+      if (block.uv?.length !== 4) return;
+      const field = computeRawSourceWeight(block).sourceWeight;
+      const corners = block.targetPoints?.length === 4 ? block.targetPoints : block.uv.map(([u, v]) => getHostField().pointAt(u, v));
+      const normal = getFaceNormalFromPoints(corners) || new THREE.Vector3(0, 1, 0);
+      for (let slot = 1; slot <= count; slot++) {
+        const t = slot / (count + 1);
+        const points = isU
+          ? Array.from({ length: 5 }, (_, s) => bilerpVector3(corners, s / 4, t))
+          : Array.from({ length: 5 }, (_, s) => bilerpVector3(corners, t, s / 4));
+        segments.push({
+          id: `tween-${blockIndex}-${slot}-${id++}`,
+          slot,
+          aKey: pointChainKey(points[0], slot),
+          bKey: pointChainKey(points.at(-1), slot),
+          points,
+          normal,
+          field,
+        });
+      }
+    });
+    return chainRailSegments(segments);
+  };
+  let chainCount = 0;
+  const chainRecords = [];
+  [true, false].filter((isU) => isU ? showU : showV).forEach((isU) => buildRailChains(isU).forEach((chain) => {
+    const { keys, railEdges } = chain;
+    if (keys.length < 2) return;
+    const { normal, field, points: chainPoints } = getChainGeometry(chain);
+    const layer = getLayer(isU);
+    const width = layer.width * (1 - clamp(field, 0, 1) * layer.opening);
+    sweepRectRail(chainPoints, normal, width, layer.depth, isU, layer.fillet, null, getRailAnchor(isU));
+    chainRecords.push({ ...chain, isU });
+    chainCount += 1;
+  }));
+  const tweenRecords = [];
+  [
+    { layer: topLayer, isU: true },
+    { layer: bottomLayer, isU: false },
+  ].filter(({ isU }) => isU ? showU : showV).forEach(({ layer, isU }) => {
+    buildTweenRailChains(layer, isU).forEach((chain) => {
+      const width = layer.width * (1 - clamp(chain.field, 0, 1) * layer.opening);
+      sweepRectRail(chain.points, chain.normal, width, layer.depth, isU, layer.fillet, null, getRailAnchor(isU));
+      tweenRecords.push({ ...chain, isU });
+      chainCount += 1;
+    });
+  });
+  const bindings = settings.loopBindings || {};
+  let bindingCount = 0;
+  if (bindings.enabled) {
+    const every = clamp(Math.round(bindings.every || 4), 1, 20);
+    const family = bindings.family || "both";
+    const candidates = [...chainRecords, ...tweenRecords].filter((record) => {
+      if (record.isU && !showU) return false;
+      if (!record.isU && !showV) return false;
+      return family === "both" || (family === "u" && record.isU) || (family === "v" && !record.isU);
+    });
+    candidates.forEach((record, index) => {
+      if (index % every !== 0) return;
+      const bindingDepth = Math.max(0.005, bindings.depth || 0.08);
+      const bindingWidth = Math.max(0.01, bindings.width || 0.08);
+      const normal = record.normal || getChainGeometry(record).normal;
+      const rawPoints = record.points || getChainGeometry(record).points;
+      sweepRectRail(rawPoints, normal, bindingWidth, bindingDepth, record.isU, Math.max(0, bindings.fillet || 0), materialBinding, getRailAnchor(record.isU));
+      bindingCount += 1;
+    });
+  }
+  if (nodes.topologyLatticeStatus) nodes.topologyLatticeStatus.textContent = `${chainCount} continuous topology paths traced from ${edges.size} shared edges${bindingCount ? `; ${bindingCount} structural strip bindings added` : ""}. Rail paths now anchor rectangle faces: U bottom face and V top face sit on the rail.`;
+};
+
 const build3d = () => {
   clearGroup(blockGroup);
   clearGroup(solidVaultGroup);
   clearGroup(supportWallGroup);
-  buildSupportWalls();
+  clearGroup(scaffoldGroup);
+  clearGroup(topologyLatticeGroup);
   if (!state.patternAppliedToModel) {
+    if (state.designMode === "Custom Import" && state.vaultType === "Custom Imported Rhino Surface") {
+      buildSupportScaffold();
+      applyDisplayPreset();
+      return;
+    }
+    if (state.vaultType === "Groin Vault") buildSupportWalls();
     buildSolidVaultMesh();
+    buildSupportScaffold();
     applyDisplayPreset();
     return;
   }
+  // Always retain the generated host solid behind its applied blocks.
+  // The masonry layer no longer replaces the barrel vault with support panels.
+  if (state.designMode !== "Custom Import" || state.vaultType !== "Custom Imported Rhino Surface") {
+    buildSolidVaultMesh();
+    solidVaultGroup.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach((material) => {
+        material.transparent = true;
+        material.opacity = Math.min(Number(material.opacity ?? 1), 0.28);
+        material.depthWrite = false;
+      });
+    });
+  }
+  try {
+    buildSupportWalls();
+    buildSupportScaffold();
+  } catch (err) {
+    console.error("build3d/buildSupport failed", err);
+    setPipelineStatus(`Support build failed (${err.message}); showing vault blocks only.`);
+  }
+  let builtCount = 0;
+  const buildErrors = [];
   state.blocks.forEach((b) => {
-    const m = buildBlockMesh(b);
-    b.metrics = m;
-    b.failed = validate(m);
-    const mesh = new THREE.Mesh(m.geometry, new THREE.MeshStandardMaterial({ color: b.failed.length ? 0xd15a5a : 0x7ab8df, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92 }));
-    mesh.userData.blockId = b.id;
-    const seam = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 16), new THREE.LineBasicMaterial({ color: 0xcff2ff, transparent: true, opacity: 0.5 }));
-    seam.scale.setScalar(Math.max(0.9, 1 - state.constraints.jointGap));
-    seam.name = "seam";
-    mesh.add(seam);
-    b.mesh = mesh;
-    blockGroup.add(mesh);
+    try {
+      const m = buildBlockMesh(b);
+      const position = m.geometry?.getAttribute("position");
+      if (!position?.count) throw new Error("missing block positions");
+      const hasFinitePositions = Array.from(position.array).every((value) => Number.isFinite(value));
+      if (!hasFinitePositions) throw new Error("non-finite block geometry");
+      b.metrics = m;
+      b.failed = validate(m, b);
+      const smoothImportedSurface = String(m.jointFaceType || "").includes("sampled imported-surface");
+      const mesh = new THREE.Mesh(m.geometry, new THREE.MeshStandardMaterial({ color: b.failed.length ? 0xd15a5a : 0x7ab8df, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92, side: THREE.DoubleSide, flatShading: !smoothImportedSurface }));
+      mesh.userData.blockId = b.id;
+      mesh.userData.smoothImportedSurface = smoothImportedSurface;
+      if (state.strategy.merge !== "merge-visual" && state.strategy.merge !== "merge-fabrication") {
+        const seam = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 16), new THREE.LineBasicMaterial({ color: 0xf1eadc, transparent: true, opacity: 0.26 }));
+        seam.name = "seam";
+        mesh.add(seam);
+      } else {
+        mesh.userData.mergeMode = state.strategy.merge;
+      }
+      b.mesh = mesh;
+      blockGroup.add(mesh);
+      builtCount += 1;
+    } catch (err) {
+      b.mesh = null;
+      buildErrors.push({ id: b.id, err });
+    }
   });
+  if (buildErrors.length) console.error("build3d/buildBlockMesh skipped blocks", buildErrors);
+  if (!builtCount) {
+    clearGroup(blockGroup);
+    state.blocks.forEach((b) => {
+      try {
+        blockGroup.add(buildProxyBlockVisual(b));
+        builtCount += 1;
+      } catch (err) {
+        buildErrors.push({ id: b.id, err });
+      }
+    });
+    const firstError = buildErrors[0]?.err?.message || "unknown error";
+    setPipelineStatus(`Applied proxy blocks because refined block geometry failed (${firstError}).`);
+    applyDisplayPreset();
+    return;
+  }
   applyDisplayPreset();
+  buildTopologyLattice();
 };
 
 const buildSupportWalls = () => {
@@ -4201,10 +9360,202 @@ const buildSupportWalls = () => {
   const def = vaultLibrary[state.vaultType];
   if (!def?.construction3D?.toLowerCase().includes("extrud") && !isBarrelLikeVault()) return;
   if (isBarrelLikeVault()) {
-    // Barrel now derives wall continuity from the joined section profile itself.
-    // Do not add separate support-wall boxes here, or we get duplicate/offset walls.
+    buildBarrelSupportWallBlocks();
     return;
   }
+};
+
+const makeScaffoldRibMesh = (samples, datumForPoint, thickness, material) => {
+  if (samples.length < 2) return null;
+  const half = Math.max(0.005, thickness * 0.5);
+  const verts = [];
+  const normals = [];
+  const sections = samples.map((point, index) => {
+    const prev = samples[Math.max(0, index - 1)];
+    const next = samples[Math.min(samples.length - 1, index + 1)];
+    const tangent = next.clone().sub(prev);
+    tangent.y = 0;
+    if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0);
+    tangent.normalize();
+    const lateral = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize().multiplyScalar(half);
+    const top = point.clone();
+    const bottomY = typeof datumForPoint === "function" ? datumForPoint(point) : datumForPoint;
+    const bottom = new THREE.Vector3(point.x, bottomY, point.z);
+    return {
+      tl: top.clone().add(lateral),
+      tr: top.clone().sub(lateral),
+      bl: bottom.clone().add(lateral),
+      br: bottom.clone().sub(lateral),
+    };
+  });
+  const pushTri = (a, b, c) => {
+    const normal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
+    [a, b, c].forEach((p) => {
+      verts.push(p.x, p.y, p.z);
+      normals.push(normal.x, normal.y, normal.z);
+    });
+  };
+  const pushQuad = (a, b, c, d) => {
+    pushTri(a, b, c);
+    pushTri(a, c, d);
+  };
+  for (let i = 0; i < sections.length - 1; i++) {
+    const a = sections[i];
+    const b = sections[i + 1];
+    pushQuad(a.tl, b.tl, b.tr, a.tr);
+    pushQuad(a.bl, a.br, b.br, b.bl);
+    pushQuad(a.tl, a.bl, b.bl, b.tl);
+    pushQuad(a.tr, b.tr, b.br, a.br);
+  }
+  const first = sections[0];
+  const last = sections[sections.length - 1];
+  pushQuad(first.tl, first.tr, first.br, first.bl);
+  pushQuad(last.tl, last.bl, last.br, last.tr);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+};
+
+const buildSupportScaffold = () => {
+  if (!state.supportScaffold?.enabled) {
+    if (nodes.supportScaffoldStatus) nodes.supportScaffoldStatus.textContent = "Scaffold hidden.";
+    return;
+  }
+  const usingImportedHost = state.designMode === "Custom Import" || state.vaultType === "Custom Imported Rhino Surface";
+  if (usingImportedHost && !state.importedSurface && !state.importedRhinoBrepFaces?.length) {
+    if (nodes.supportScaffoldStatus) nodes.supportScaffoldStatus.textContent = "Import a host surface before generating custom falsework.";
+    return;
+  }
+  const settings = state.supportScaffold;
+  const host = getHostField();
+  const xCount = clamp(Math.round(settings.xCount || 8), 2, 40);
+  const yCount = clamp(Math.round(settings.yCount || 10), 2, 40);
+  const ribThickness = clamp(settings.ribThickness || 0.08, 0.01, 1);
+  const samplesPerRib = 72;
+  const scaffoldSampleAt = (u, v) => {
+    if (usingImportedHost) {
+      const sample = getImportedSurfaceSample(clamp(u, 0, 1), clamp(v, 0, 1));
+      return sample?.normal?.y > 0.08 ? sample : null;
+    }
+    return { point: host.pointAt(u, v), normal: host.normalAt(u, v) };
+  };
+  const samplePointAt = (u, v) => scaffoldSampleAt(u, v)?.point || null;
+  const isFinitePoint = (point) => point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z);
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let y = 0; y <= yCount; y++) {
+    const v = y / yCount;
+    for (let x = 0; x <= xCount; x++) {
+      const u = x / xCount;
+      const p = samplePointAt(u, v);
+      if (!isFinitePoint(p)) continue;
+      if (Number.isFinite(p.y)) minY = Math.min(minY, p.y);
+      if (Number.isFinite(p.y)) maxY = Math.max(maxY, p.y);
+    }
+  }
+  if (!Number.isFinite(minY)) {
+    if (nodes.supportScaffoldStatus) nodes.supportScaffoldStatus.textContent = "Could not sample the active host surface for falsework.";
+    return;
+  }
+  const scaffoldDatumY = 0 <= maxY && 0 <= minY ? 0 : Math.min(0, minY);
+  const autoDepth = Math.max(0.1, maxY - scaffoldDatumY);
+  state.supportScaffold.ribDepth = autoDepth;
+  setInputValue(nodes.supportScaffoldDepth, metersToCmInput(autoDepth), { force: true });
+  const ribMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd7c39a,
+    roughness: 0.72,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.68,
+    side: THREE.DoubleSide,
+  });
+  const hostSize = state.importedSurfaceBbox?.getSize(new THREE.Vector3()) || getBaseSourceDimensions();
+  const maxSampleBridge = Math.max(0.25, Math.hypot(hostSize.x || 0, hostSize.z || 0) / Math.max(8, samplesPerRib) * 3.5);
+  const addRibSegment = (path, name) => {
+    const mesh = makeScaffoldRibMesh(path, () => scaffoldDatumY, ribThickness, ribMaterial.clone());
+    if (!mesh) return;
+    mesh.name = name;
+    scaffoldGroup.add(mesh);
+  };
+  const addSampledRib = (uvAt, name) => {
+    let segment = [];
+    let previous = null;
+    let segmentIndex = 1;
+    const flushSegment = () => {
+      if (segment.length >= 2) addRibSegment(segment, `${name}-${segmentIndex++}`);
+      segment = [];
+      previous = null;
+    };
+    for (let i = 0; i <= samplesPerRib; i++) {
+      const [u, v] = uvAt(i / samplesPerRib);
+      const p = samplePointAt(u, v);
+      const valid = isFinitePoint(p) && p.y > scaffoldDatumY + 1e-4;
+      if (!valid || (previous && p.distanceTo(previous) > maxSampleBridge)) {
+        flushSegment();
+        continue;
+      }
+      segment.push(p);
+      previous = p;
+    }
+    flushSegment();
+  };
+  for (let x = 1; x < xCount; x++) {
+    const u = x / xCount;
+    addSampledRib((t) => [u, t], `waffle-scaffold-x-${x + 1}`);
+  }
+  for (let y = 1; y < yCount; y++) {
+    const v = y / yCount;
+    addSampledRib((t) => [t, v], `waffle-scaffold-y-${y + 1}`);
+  }
+  if (nodes.supportScaffoldStatus) nodes.supportScaffoldStatus.textContent = `Planar waffle falsework from ${usingImportedHost ? "uploaded host" : "vault surface"}: ${Math.max(0, xCount - 1)} X ribs, ${Math.max(0, yCount - 1)} Y ribs, datum ${scaffoldDatumY.toFixed(2)} m, auto depth ${autoDepth.toFixed(2)} m.`;
+};
+
+const buildBarrelSupportWallBlocks = () => {
+  if (!state.patternAppliedToModel) return;
+  const scale = state.cubeScale;
+  const halfW = state.params.span * scale * 0.5;
+  const length = state.params.length * scale;
+  const springY = getBarrelSpringingY(scale);
+  const wallT = Math.max(0.08, getMasonryThickness(scale));
+  const courseH = Math.max(0.08, (state.constraints.courseHeight || 0.65) * scale);
+  const appliedDimensions = state.blockDimensionMode !== "fit";
+  const targetWidth = Math.max(0.1, state.targetBlockWidth || 1.2);
+  const lengthCount = appliedDimensions
+    ? Math.max(1, Math.min(240, Math.ceil((state.params.length || 1) / targetWidth)))
+    : Math.max(2, Math.round(state.params.blockCount || (state.params.length / targetWidth)));
+  const wallRows = Math.max(1, Math.ceil(springY / courseH));
+  const mat = new THREE.MeshStandardMaterial({ color: 0xb8b2a7, roughness: 0.56, metalness: 0.04, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xf1eadc, transparent: true, opacity: 0.22 });
+  [-1, 1].forEach((side) => {
+    const x = side * (halfW + wallT * 0.5);
+    for (let row = 0; row < wallRows; row++) {
+      const y0 = row * courseH;
+      const y1 = Math.min(springY, (row + 1) * courseH);
+      if (y1 - y0 < 1e-5) continue;
+      const lengthSpans = appliedDimensions
+        ? getBarrelAppliedLengthSpans(row, targetWidth, wallRows)
+        : getBarrelLengthCourseSpans(row, lengthCount, wallRows);
+      for (const { bay, v0, v1 } of lengthSpans) {
+        const z0 = (v0 - 0.5) * length;
+        const z1 = (v1 - 0.5) * length;
+        const geo = new THREE.BoxGeometry(wallT, y1 - y0, z1 - z0);
+        const block = new THREE.Mesh(geo, mat.clone());
+        block.position.set(x, (y0 + y1) * 0.5, (z0 + z1) * 0.5);
+        block.name = `barrel-wall-block-${side > 0 ? "right" : "left"}-${row + 1}-${bay + 1}`;
+        block.castShadow = true;
+        block.receiveShadow = true;
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 18), edgeMat.clone());
+        edges.name = "wall-block-edges";
+        block.add(edges);
+        supportWallGroup.add(block);
+      }
+    }
+  });
 };
 
 const buildGroinCornerColumns = () => {
@@ -4460,6 +9811,9 @@ const buildGroinPieredSolidMesh = () => {
 };
 
 const buildSolidVaultMesh = () => {
+  if (state.vaultType === "Custom Imported Rhino Surface") {
+    return;
+  }
   if (state.vaultType === "Barrel Vault") {
     buildBarrelSolidExtrusionMesh();
     return;
@@ -4720,6 +10074,20 @@ const createFoilMaterial = (color) => {
   });
 };
 
+const createStoneMaterial = (color, options = {}) => new THREE.MeshPhysicalMaterial({
+  color,
+  metalness: 0,
+  roughness: options.roughness ?? 0.68,
+  clearcoat: options.clearcoat ?? 0.08,
+  clearcoatRoughness: options.clearcoatRoughness ?? 0.82,
+  sheen: options.sheen ?? 0.22,
+  sheenRoughness: options.sheenRoughness ?? 0.76,
+  sheenColor: new THREE.Color(options.sheenColor ?? 0xf1eadf),
+  transparent: !!options.transparent,
+  opacity: options.opacity ?? 1,
+  side: options.side ?? THREE.DoubleSide,
+});
+
 const getFoilGradientColor = (t) => {
   const a = new THREE.Color(state.foilGradient.a);
   const b = new THREE.Color(state.foilGradient.b);
@@ -4740,6 +10108,7 @@ const refreshBboxHelpers = () => {
   mk(solidVaultGroup, 0x9be6be);
   mk(copiedGeometryGroup, 0xd7b4ff);
   mk(supportWallGroup, 0xa0a7b3);
+  mk(scaffoldGroup, 0xd7c39a);
   mk(importedSurfaceGroup, 0x78cfff);
 };
 
@@ -4747,6 +10116,7 @@ const refreshImportedSurfaceBbox = () => {
   if (!state.importedSurface) return;
   state.importedSurface.updateMatrixWorld(true);
   state.importedSurfaceBbox = new THREE.Box3().setFromObject(state.importedSurface);
+  state.importedTopology = analyzeImportedMeshTopology(state.importedSurface, state.importedSurfaceBbox);
 };
 
 const applySourceTransform = () => {
@@ -4761,21 +10131,54 @@ const applySourceTransform = () => {
   importedSurfaceGroup.updateMatrixWorld(true);
   refreshImportedSurfaceBbox();
   refreshBboxHelpers();
+  renderSourceGeometryDimensions();
+};
+
+const getOriginalVaultSurfaceVisibility = () => {
+  const hasImportedHost = !!state.importedSurface || state.designMode === "Custom Import" || state.vaultType === "Custom Imported Rhino Surface";
+  const hasBuiltInHost = state.vaultType !== "Custom Imported Rhino Surface";
+  const relevant = [];
+  if (hasImportedHost) relevant.push("sourceModel");
+  if (hasBuiltInHost) relevant.push("builtInForm");
+  if (!relevant.length) relevant.push("sourceModel", "builtInForm");
+  return relevant.some((key) => !!state.layers[key]);
+};
+
+const setOriginalVaultSurfaceVisibility = (visible) => {
+  const hasImportedHost = !!state.importedSurface || state.designMode === "Custom Import" || state.vaultType === "Custom Imported Rhino Surface";
+  const hasBuiltInHost = state.vaultType !== "Custom Imported Rhino Surface";
+  if (hasImportedHost || !hasBuiltInHost) state.layers.sourceModel = visible;
+  if (hasBuiltInHost || !hasImportedHost) state.layers.builtInForm = visible;
+  if (byId("layerSourceModel")) byId("layerSourceModel").checked = state.layers.sourceModel;
+  if (byId("layerBuiltInForm")) byId("layerBuiltInForm").checked = state.layers.builtInForm;
+};
+
+const syncImportedSurfaceToggle = () => {
+  const button = byId("toggleImportedSurface");
+  if (!button) return;
+  const visible = getOriginalVaultSurfaceVisibility();
+  button.textContent = visible ? "Hide Original Vault Surface" : "Show Original Vault Surface";
+  button.classList.toggle("active", !visible);
+  button.setAttribute("aria-pressed", String(!visible));
 };
 
 const applyLayerVisibility = () => {
   importedSurfaceGroup.visible = !!state.layers.sourceModel;
   solidVaultGroup.visible = !!state.layers.builtInForm;
-  blockGroup.visible = !!state.layers.blocks;
+  blockGroup.visible = !!state.layers.blocks && !state.topologyLattice.enabled;
+  topologyLatticeGroup.visible = !!state.topologyLattice.enabled;
   copiedGeometryGroup.visible = !!state.layers.copies;
   supportWallGroup.visible = !!state.layers.supports;
+  scaffoldGroup.visible = !!state.supportScaffold?.enabled && !!state.layers.supports;
   gridHelper.visible = !!state.display.baseGrid && !!state.layers.guides;
-  axesHelper.visible = !!state.display.baseGrid && !!state.layers.guides;
+  shadowPlane.visible = !!state.layers.guides && state.displayPreset !== "Wireframe";
+  axesHelper.visible = false;
   originAxesGroup.visible = !!state.layers.guides;
   lightRigHelpers.visible = !!state.display.latticeControls && !!state.layers.guides;
   sectionGizmoGroup.visible = !!state.layers.guides;
   sectionActiveGizmoGroup.visible = !!state.layers.guides;
   bboxHelpersGroup.visible = !!state.layers.guides;
+  syncImportedSurfaceToggle();
 };
 
 const cloneMaterialsForCopy = (obj) => {
@@ -4839,22 +10242,23 @@ const applyDisplayPreset = () => {
   state.displayPreset = mappedPreset;
   const foilBase = getFoilGradientColor(0.5);
   const foilFail = foilBase.clone().lerp(new THREE.Color(0xd8b078), 0.5);
+  const masonryColor = 0xc9c1b5;
+  const keystoneColor = 0xd9bd7e;
   state.blocks.forEach((b, i) => {
     if (!b.mesh) return;
     const failed = b.failed.length > 0;
+    const blockColor = b.isKeystone ? keystoneColor : masonryColor;
     const seam = b.mesh.getObjectByName("seam");
     if (b.mesh.material) b.mesh.material.dispose();
-    const sideMode = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
+    b.mesh.castShadow = true;
+    b.mesh.receiveShadow = true;
+    const sideMode = THREE.DoubleSide;
     if (state.displayPreset === "Rendered") {
-      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(failed ? foilFail : foilBase) : new THREE.MeshStandardMaterial({
-        color: failed ? 0xd5a86f : 0xc7ced6, roughness: 0.42, metalness: 0.14, transparent: false,
-      });
+      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(foilBase) : createStoneMaterial(blockColor, { roughness: 0.64, clearcoat: 0.1 });
       b.mesh.material.side = sideMode;
-      if (seam) seam.visible = false;
+      if (seam) seam.visible = true;
     } else if (state.displayPreset === "Shaded") {
-      b.mesh.material = new THREE.MeshStandardMaterial({
-        color: failed ? 0xd5a86f : 0xc6ccd4, roughness: 0.62, metalness: 0.03, transparent: false,
-      });
+      b.mesh.material = createStoneMaterial(blockColor, { roughness: 0.72, clearcoat: 0.04 });
       b.mesh.material.side = sideMode;
       if (seam) seam.visible = state.display.seamDebug;
     } else if (state.displayPreset === "XRay") {
@@ -4876,9 +10280,7 @@ const applyDisplayPreset = () => {
       b.mesh.material.side = THREE.DoubleSide;
       if (seam) seam.visible = true;
     } else if (state.displayPreset === "Clay") {
-      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(failed ? foilFail : foilBase) : new THREE.MeshStandardMaterial({
-        color: failed ? 0xd5a86f : 0xd9d4cc, roughness: 0.86, metalness: 0.02, transparent: false,
-      });
+      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(foilBase) : createStoneMaterial(blockColor, { roughness: 0.88, clearcoat: 0.02, sheen: 0.12 });
       b.mesh.material.side = sideMode;
       if (seam) seam.visible = state.display.seamDebug ? false : false;
     } else if (state.displayPreset === "Technical Wire") {
@@ -4904,12 +10306,12 @@ const applyDisplayPreset = () => {
       b.mesh.material.side = sideMode;
       if (seam) seam.visible = state.display.seamDebug;
     } else {
-      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(failed ? foilFail : foilBase) : new THREE.MeshStandardMaterial({
-        color: failed ? 0xd5a86f : 0xb8c0cc, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92,
-      });
+      b.mesh.material = state.display.foilMaterial ? createFoilMaterial(foilBase) : createStoneMaterial(blockColor, { roughness: 0.64, clearcoat: 0.1 });
       b.mesh.material.side = sideMode;
       if (seam) seam.visible = state.display.seamDebug;
     }
+    b.mesh.material.flatShading = !b.mesh.userData.smoothImportedSurface;
+    b.mesh.material.side = sideMode;
     if (state.display.meshWires) b.mesh.material.wireframe = true;
     b.mesh.material.needsUpdate = true;
   });
@@ -4920,19 +10322,24 @@ const applyDisplayPreset = () => {
       obj.material.wireframe = true;
       obj.material.transparent = true;
       obj.material.opacity = 0.88;
+      obj.material.side = THREE.DoubleSide;
     } else if (state.displayPreset === "XRay") {
       obj.material.wireframe = false;
       obj.material.transparent = true;
       obj.material.opacity = 0.22;
+      obj.material.side = THREE.DoubleSide;
     } else if (state.displayPreset === "Ghosted") {
       obj.material.wireframe = false;
       obj.material.transparent = true;
       obj.material.opacity = 0.45;
+      obj.material.side = THREE.DoubleSide;
     } else {
       obj.material.wireframe = false;
-      obj.material.transparent = true;
-      obj.material.opacity = 0.5;
+      obj.material.transparent = false;
+      obj.material.opacity = 1;
+      obj.material.side = THREE.DoubleSide;
     }
+    obj.material.flatShading = false;
     obj.material.needsUpdate = true;
   });
   solidVaultGroup.traverse((obj) => {
@@ -4944,7 +10351,7 @@ const applyDisplayPreset = () => {
     const sideMode = state.display.backFaces ? THREE.DoubleSide : THREE.FrontSide;
     const c = getFoilGradientColor(0.5);
     if (state.displayPreset === "Shaded") {
-      obj.material = new THREE.MeshStandardMaterial({ color: 0xc6ccd4, roughness: 0.62, metalness: 0.03, transparent: false, opacity: 1 });
+      obj.material = createStoneMaterial(0xd0d4d8, { roughness: 0.7, clearcoat: 0.04 });
     } else if (state.displayPreset === "XRay") {
       obj.material = new THREE.MeshStandardMaterial({ color: 0xcfd6e0, roughness: 0.55, metalness: 0.02, transparent: true, opacity: 0.24 });
     } else if (state.displayPreset === "Wireframe") {
@@ -4954,7 +10361,7 @@ const applyDisplayPreset = () => {
     } else {
       obj.material = state.display.foilMaterial
         ? createFoilMaterial(c)
-        : new THREE.MeshStandardMaterial({ color: 0xc7ced6, roughness: 0.44, metalness: 0.06, transparent: false, opacity: 1 });
+        : createStoneMaterial(0xd3d6da, { roughness: 0.62, clearcoat: 0.1, sheen: 0.18 });
     }
     obj.material.polygonOffset = true;
     obj.material.polygonOffsetFactor = 1;
@@ -5007,8 +10414,8 @@ const applyDisplayPreset = () => {
       obj.material.side = THREE.DoubleSide;
     } else {
       obj.material.wireframe = false;
-      obj.material.transparent = true;
-      obj.material.opacity = 0.92;
+      obj.material.transparent = false;
+      obj.material.opacity = 1;
     }
     obj.material.needsUpdate = true;
   });
@@ -5022,11 +10429,17 @@ const fitCameraToBlocks = () => {
   const s = new THREE.Box3().setFromObject(solidVaultGroup);
   const c = new THREE.Box3().setFromObject(copiedGeometryGroup);
   const w = new THREE.Box3().setFromObject(supportWallGroup);
+  const f = new THREE.Box3().setFromObject(scaffoldGroup);
   if (!a.isEmpty()) box.union(a);
   if (!s.isEmpty()) box.union(s);
   if (!c.isEmpty()) box.union(c);
   if (!w.isEmpty()) box.union(w);
+  if (!f.isEmpty()) box.union(f);
   if (box.isEmpty()) return;
+  if (isBarrelLikeVault() && state.designMode !== "Custom Import") {
+    fitCameraToBarrelProfile(box);
+    return;
+  }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 1);
@@ -5036,9 +10449,25 @@ const fitCameraToBlocks = () => {
   controls.update();
 };
 
+const fitCameraToBarrelProfile = (box) => {
+  if (!box || box.isEmpty()) return false;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const profileDim = Math.max(size.x, size.y, 1);
+  const dist = Math.max(profileDim * 1.85, size.z * 1.2, 6);
+  camera.position.set(center.x, center.y + profileDim * 0.06, center.z + dist);
+  controls.target.copy(center);
+  controls.update();
+  return true;
+};
+
 const fitCameraToObject = (obj) => {
   const box = new THREE.Box3().setFromObject(obj);
   if (box.isEmpty()) return;
+  if (isBarrelLikeVault() && state.designMode !== "Custom Import") {
+    fitCameraToBarrelProfile(box);
+    return;
+  }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 1);
@@ -5046,6 +10475,34 @@ const fitCameraToObject = (obj) => {
   camera.position.set(center.x + dist * 0.9, center.y + dist * 0.7, center.z + dist * 0.9);
   controls.target.copy(center);
   controls.update();
+};
+
+const fitCameraToPreviewSource = () => {
+  if (state.designMode === "Custom Import" && state.vaultType === "Custom Imported Rhino Surface") {
+    fitCameraToObject(importedSurfaceGroup);
+    return;
+  }
+  if (solidVaultGroup.children.length || supportWallGroup.children.length || scaffoldGroup.children.length) {
+    const box = new THREE.Box3();
+    const solid = new THREE.Box3().setFromObject(solidVaultGroup);
+    const supports = new THREE.Box3().setFromObject(supportWallGroup);
+    const scaffold = new THREE.Box3().setFromObject(scaffoldGroup);
+    if (!solid.isEmpty()) box.union(solid);
+    if (!supports.isEmpty()) box.union(supports);
+    if (!scaffold.isEmpty()) box.union(scaffold);
+    if (!box.isEmpty()) {
+      if (isBarrelLikeVault() && fitCameraToBarrelProfile(box)) return;
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 1);
+      const dist = maxDim * 1.9;
+      camera.position.set(center.x + dist * 0.9, center.y + dist * 0.7, center.z + dist * 0.9);
+      controls.target.copy(center);
+      controls.update();
+      return;
+    }
+  }
+  fitCameraToBlocks();
 };
 
 const getImportedModelStats = (obj) => {
@@ -5063,19 +10520,234 @@ const getImportedModelStats = (obj) => {
   return { meshCount, vertexCount, triangleCount };
 };
 
+const pointToImportedUv = (point, bbox = state.importedSurfaceBbox) => {
+  if (!bbox || bbox.isEmpty()) return null;
+  const size = bbox.getSize(new THREE.Vector3());
+  return [
+    clamp((point.x - bbox.min.x) / Math.max(1e-9, size.x), 0, 1),
+    clamp((point.z - bbox.min.z) / Math.max(1e-9, size.z), 0, 1),
+  ];
+};
+
+const compactTopologyHints = (values, minGap = 0.018, limit = 80) => {
+  const sorted = values
+    .filter((v) => Number.isFinite(v) && v > 0.015 && v < 0.985)
+    .sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((v) => {
+    if (!out.length || Math.abs(v - out[out.length - 1]) >= minGap) out.push(v);
+    else out[out.length - 1] = (out[out.length - 1] + v) * 0.5;
+  });
+  if (out.length <= limit) return out;
+  const stride = out.length / limit;
+  return Array.from({ length: limit }, (_, i) => out[Math.floor(i * stride)]);
+};
+
+const analyzeImportedMeshTopology = (obj, bbox) => {
+  if (!obj || !bbox || bbox.isEmpty()) return null;
+  const edgeMap = new Map();
+  const vertexMap = new Map();
+  let triangleCount = 0;
+  let meshCount = 0;
+  const keyForPoint = (p) => `${p.x.toFixed(5)},${p.y.toFixed(5)},${p.z.toFixed(5)}`;
+  const ensureVertex = (p) => {
+    const key = keyForPoint(p);
+    if (!vertexMap.has(key)) vertexMap.set(key, { point: p.clone(), neighbours: new Set(), edgeCount: 0 });
+    return key;
+  };
+  const addEdge = (a, b, normal) => {
+    const ka = keyForPoint(a);
+    const kb = keyForPoint(b);
+    const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    ensureVertex(a);
+    ensureVertex(b);
+    vertexMap.get(ka).neighbours.add(kb);
+    vertexMap.get(kb).neighbours.add(ka);
+    vertexMap.get(ka).edgeCount += 1;
+    vertexMap.get(kb).edgeCount += 1;
+    if (!edgeMap.has(key)) {
+      edgeMap.set(key, {
+        a: a.clone(),
+        b: b.clone(),
+        center: a.clone().add(b).multiplyScalar(0.5),
+        normals: [],
+        count: 0,
+      });
+    }
+    const edge = edgeMap.get(key);
+    edge.normals.push(normal.clone());
+    edge.count += 1;
+  };
+
+  obj.updateMatrixWorld(true);
+  obj.traverse((mesh) => {
+    if (!mesh.isMesh || !mesh.geometry) return;
+    const pos = mesh.geometry.getAttribute("position");
+    if (!pos) return;
+    meshCount += 1;
+    const index = mesh.geometry.index;
+    const readVertex = (i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    const tri = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    const addTriangle = (ia, ib, ic) => {
+      tri[0].copy(readVertex(ia));
+      tri[1].copy(readVertex(ib));
+      tri[2].copy(readVertex(ic));
+      const normal = new THREE.Triangle(tri[0], tri[1], tri[2]).getNormal(new THREE.Vector3()).normalize();
+      if (normal.lengthSq() < 1e-8) return;
+      addEdge(tri[0], tri[1], normal);
+      addEdge(tri[1], tri[2], normal);
+      addEdge(tri[2], tri[0], normal);
+      triangleCount += 1;
+    };
+    if (index) {
+      for (let i = 0; i < index.count; i += 3) addTriangle(index.getX(i), index.getX(i + 1), index.getX(i + 2));
+    } else {
+      for (let i = 0; i < pos.count; i += 3) addTriangle(i, i + 1, i + 2);
+    }
+  });
+
+  const boundaryEdges = [];
+  const nonManifoldEdges = [];
+  const featureEdges = [];
+  const rawCurvatureSamples = [];
+  const courseHints = [];
+  const spanHints = [];
+  const sharpCos = Math.cos(THREE.MathUtils.degToRad(38));
+  edgeMap.forEach((edge) => {
+    const dx = Math.abs(edge.b.x - edge.a.x);
+    const dz = Math.abs(edge.b.z - edge.a.z);
+    const uv = pointToImportedUv(edge.center, bbox);
+    if (!uv) return;
+    if (edge.normals.length >= 2) {
+      const angle = edge.normals[0].angleTo(edge.normals[1]);
+      const length = Math.max(1e-6, edge.a.distanceTo(edge.b));
+      if (Number.isFinite(angle) && angle > 1e-5) {
+        rawCurvatureSamples.push({ uv, raw: angle / length });
+      }
+    }
+    let kind = null;
+    if (edge.count === 1) {
+      boundaryEdges.push(edge);
+      kind = "boundary";
+    } else if (edge.count > 2) {
+      nonManifoldEdges.push(edge);
+      kind = "non-manifold";
+    } else if (edge.normals.length >= 2 && edge.normals[0].dot(edge.normals[1]) < sharpCos) {
+      featureEdges.push(edge);
+      kind = "feature";
+    }
+    if (!kind) return;
+    if (dz >= dx * 0.75) courseHints.push(uv[0]);
+    if (dx >= dz * 0.75) spanHints.push(uv[1]);
+  });
+  const valences = [...vertexMap.values()].map((v) => v.neighbours.size);
+  const boundaryVertexKeys = new Set();
+  boundaryEdges.forEach((edge) => {
+    boundaryVertexKeys.add(keyForPoint(edge.a));
+    boundaryVertexKeys.add(keyForPoint(edge.b));
+  });
+  const sortedCurvature = rawCurvatureSamples.map((sample) => sample.raw).sort((a, b) => a - b);
+  const curvatureScale = sortedCurvature.length
+    ? Math.max(1e-6, sortedCurvature[Math.floor((sortedCurvature.length - 1) * 0.9)])
+    : 1;
+  const maxCurvatureSamples = 2400;
+  const curvatureStride = Math.max(1, Math.ceil(rawCurvatureSamples.length / maxCurvatureSamples));
+  const curvatureSamples = rawCurvatureSamples
+    .filter((_, index) => index % curvatureStride === 0)
+    .map((sample) => ({
+      uv: sample.uv,
+      value: clamp(sample.raw / curvatureScale, 0, 1),
+    }));
+
+  return {
+    meshCount,
+    triangleCount,
+    vertexCount: vertexMap.size,
+    edgeCount: edgeMap.size,
+    boundaryEdgeCount: boundaryEdges.length,
+    boundaryVertexCount: boundaryVertexKeys.size,
+    featureEdgeCount: featureEdges.length,
+    nonManifoldEdgeCount: nonManifoldEdges.length,
+    averageValence: valences.length ? valences.reduce((sum, v) => sum + v, 0) / valences.length : 0,
+    maxValence: valences.length ? Math.max(...valences) : 0,
+    courseHints: compactTopologyHints(courseHints),
+    spanHints: compactTopologyHints(spanHints),
+    curvatureSamples,
+    curvatureScale,
+  };
+};
+
+const getImportedMeshCurvatureIntensity = (u, v) => {
+  const samples = state.importedTopology?.curvatureSamples || [];
+  if (!samples.length) return null;
+  let weighted = 0;
+  let total = 0;
+  let nearest = { d2: Infinity, value: 0 };
+  samples.forEach((sample) => {
+    const du = sample.uv[0] - u;
+    const dv = sample.uv[1] - v;
+    const d2 = du * du + dv * dv;
+    if (d2 < nearest.d2) nearest = { d2, value: sample.value };
+    const w = 1 / Math.max(0.0006, d2);
+    weighted += sample.value * w;
+    total += w;
+  });
+  const blended = total > 0 ? weighted / total : nearest.value;
+  return clamp(Math.max(blended, nearest.d2 < 0.004 ? nearest.value : 0), 0, 1);
+};
+
+const normalizeImportedObjectToWorkspace = (obj) => {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return { normalized: false, scale: 1 };
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 1e-9);
+  const targetDim = clamp(Math.max(state.params.span || 18, state.params.length || 28) * 1.15, 18, 42);
+  const scale = targetDim / maxDim;
+  obj.scale.multiplyScalar(scale);
+  obj.position.sub(center.multiplyScalar(scale));
+  obj.updateMatrixWorld(true);
+  const normalizedBox = new THREE.Box3().setFromObject(obj);
+  if (!normalizedBox.isEmpty()) obj.position.y -= normalizedBox.min.y;
+  obj.updateMatrixWorld(true);
+  return { normalized: Math.abs(scale - 1) > 0.001, scale };
+};
+
+const prepareImportedGeometry = (obj) => {
+  let acceleratedMeshes = 0;
+  obj.updateMatrixWorld(true);
+  obj.traverse((c) => {
+    if (!c.isMesh || !c.geometry) return;
+    const geometry = c.geometry;
+    if (!geometry.getAttribute("normal")) geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    geometry.disposeBoundsTree?.();
+    geometry.computeBoundsTree?.();
+    c.castShadow = true;
+    c.receiveShadow = true;
+    acceleratedMeshes += 1;
+  });
+  return acceleratedMeshes;
+};
+
 const zoomExtents = () => {
   const combined = new THREE.Box3();
   const a = new THREE.Box3().setFromObject(blockGroup);
   const s = new THREE.Box3().setFromObject(solidVaultGroup);
   const c = new THREE.Box3().setFromObject(copiedGeometryGroup);
   const w = new THREE.Box3().setFromObject(supportWallGroup);
+  const f = new THREE.Box3().setFromObject(scaffoldGroup);
   const b = new THREE.Box3().setFromObject(importedSurfaceGroup);
   if (!a.isEmpty()) combined.union(a);
   if (!s.isEmpty()) combined.union(s);
   if (!c.isEmpty()) combined.union(c);
   if (!w.isEmpty()) combined.union(w);
+  if (!f.isEmpty()) combined.union(f);
   if (!b.isEmpty()) combined.union(b);
   if (combined.isEmpty()) return;
+  if (isBarrelLikeVault() && state.designMode !== "Custom Import" && fitCameraToBarrelProfile(combined)) return;
   const size = combined.getSize(new THREE.Vector3());
   const center = combined.getCenter(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 1);
@@ -5093,6 +10765,7 @@ const zoom2dExtents = () => {
 const zoomAllExtents = () => {
   zoomExtents();
   zoom2dExtents();
+  state.userDefinedCamera = true;
 };
 
 const renderInspector = () => {
@@ -5109,7 +10782,497 @@ const renderInspector = () => {
     nodes.inspector.innerHTML = "<b>Inspector</b><p>Select a block in 2D or 3D.</p>";
     return;
   }
-  nodes.inspector.innerHTML = `<b>Inspector</b><p>ID: ${b.id}</p><p>Length: ${b.metrics.avgLength.toFixed(2)} m</p><p>Width: ${b.metrics.avgWidth.toFixed(2)} m</p><p>Weight: ${b.metrics.weight.toFixed(1)} kg</p><p>Status: ${b.failed.length ? `Invalid (${b.failed.join(", ")})` : "Valid"}</p>`;
+  const strategy = b.strategy || getActiveStrategy();
+  const weights = b.fieldWeights || {};
+  const zoneLine = b.zone
+    ? `<p>Zone: ${labelStrategyValue(b.zone)}; Weight ${(weights.smoothedWeight ?? weights.sourceWeight ?? 0).toFixed(2)}; Compression ${(weights.compressionIntensity ?? 0).toFixed(2)}</p>`
+    : "";
+  const materialLine = b.materialTag ? `<p>Material: ${b.materialTag}; Band ${b.weightBand || "n/a"}</p>` : "";
+  const contourLine = b.contourBand != null ? `<p>Contour: band ${b.contourBand}; value ${(b.contourValue ?? 0).toFixed(2)}${b.reactionValue != null ? `; reaction ${b.reactionValue.toFixed(2)}` : ""}</p>` : "";
+  const def = b.metrics?.deformation;
+  const deformationLine = def ? `<p>Deformation: stretch ${def.stretchRatio}; twist ${def.twistAngle} deg; map ${def.mappingDistortion}</p>` : "";
+  const subdivisionLine = b.subdivisionCounts
+    ? `<p>Panel Subdivision: ${b.subdivisionCounts.u} x ${b.subdivisionCounts.v}${b.morphWeight != null ? `; Morph weight ${b.morphWeight.toFixed(2)}` : ""}</p>`
+    : "";
+  const editLine = [b.pinnedBoundary ? "pinned boundary" : "", b.supportMarked ? "support" : ""].filter(Boolean).join(", ");
+  const panelVariantLine = b.panelVariantRole ? `<p>Panel Variant: ${getPanelVariantLabel(b.panelVariantRole)}</p>` : "";
+  nodes.inspector.innerHTML = `<b>Inspector</b><p>ID: ${b.id}</p><p>Generator: ${b.generatorStrategyLabel || labelStrategyValue(strategy.field)}</p><p>Component: ${labelStrategyValue(b.componentVariant || strategy.component)} / ${labelStrategyValue(strategy.componentMode)}</p>${panelVariantLine}<p>Field: ${labelStrategyValue(strategy.field)}; ${labelStrategyValue(strategy.topology)}</p><p>Fill: ${labelStrategyValue(b.fillCellType || strategy.fill)}; ${labelStrategyValue(strategy.merge)}</p><p>Mapping: ${labelStrategyValue(strategy.scale)} / ${labelStrategyValue(strategy.rotation)} / ${labelStrategyValue(strategy.rotationVariation)} / ${labelStrategyValue(strategy.thickness)}</p>${zoneLine}${materialLine}${contourLine}${deformationLine}${subdivisionLine}${editLine ? `<p>Editor: ${editLine}</p>` : ""}<p>Length: ${metersToCmInput(b.metrics.avgLength)} cm</p><p>Width: ${metersToCmInput(b.metrics.avgWidth)} cm</p><p>Weight: ${b.metrics.weight.toFixed(1)} kg</p><p>Status: ${b.failed.length ? `Invalid (${b.failed.join(", ")})` : "Valid"}</p>`;
+};
+
+const classifyBlockZone = (weights = {}) => {
+  if (weights.supportZone >= 0.72) return "support";
+  if (weights.boundaryZone >= 0.72) return "boundary";
+  if (weights.crownZone >= 0.72) return "crown";
+  if (weights.compressionIntensity >= 0.72) return "compression";
+  return "field";
+};
+
+const getBlockWeightBasis = (block) => {
+  const uv = block.uv?.length ? block.uv : [[0.5, 0.5]];
+  const anchor = block.anchorUv || polygonCentroidUv(uv);
+  const [u, v] = anchor;
+  const host = getHostField();
+  const edgeDistance = Math.min(u, 1 - u, v, 1 - v);
+  const crown = isBarrelLikeVault()
+    ? clamp(1 - Math.abs(u - 0.5) * 2, 0, 1)
+    : clamp(1 - Math.hypot(u - 0.5, v - 0.5) * 2.2, 0, 1);
+  const support = block.supportMarked ? 1 : clamp(1 - edgeDistance / 0.14, 0, 1);
+  const boundary = block.pinnedBoundary ? 1 : clamp(1 - edgeDistance / 0.1, 0, 1);
+  const curvature = host.curvatureAt(u, v);
+  const curvatureIntensity = curvature.intensity != null
+    ? clamp(curvature.intensity, 0, 1)
+    : clamp((Math.abs(curvature.ku || 0) + Math.abs(curvature.kv || 0)) * 0.12, 0, 1);
+  const area = clamp(Math.sqrt(Math.abs(signedUvArea(uv))) * 3, 0, 1);
+  const compression = clamp(0.28 + crown * 0.32 + support * 0.22 + curvatureIntensity * 0.2, 0, 1);
+  const edgeBending = curvatureIntensity;
+  const edgeDeformation = clamp(curvatureIntensity * 0.68 + support * 0.2 + boundary * 0.12, 0, 1);
+  const harmonic = clamp((Math.sin((curvatureIntensity * 10 + u * 3 + v * 5) * Math.PI) + 1) * 0.5, 0, 1);
+  const attractor = normalizedAttractorWeightAt([u, v]);
+  const importedGroup = block.importedMaterialGroup || block.importedFaceGroup || block.topologyGroup || block.parentCellId || block.generatorStrategy || "default";
+  return {
+    u,
+    v,
+    area,
+    curvature: curvatureIntensity,
+    distance: clamp(edgeDistance / 0.5, 0, 1),
+    boundary,
+    crown,
+    support,
+    compression,
+    edgeBending,
+    edgeDeformation,
+    harmonic,
+    attractor,
+    random: (deterministicHash(`${state.fieldWeights.randomSeed}:${block.id}`) % 10000) / 9999,
+    material: importedGroup === "default" ? 0.5 : (deterministicHash(importedGroup) % 10000) / 9999,
+    importedGroup,
+    curvatureRaw: curvature,
+  };
+};
+
+const evaluateWeightFormula = (formula, basis) => {
+  const text = String(formula || "").trim();
+  if (!text) return 0;
+  if (!/^[\d\s+\-*/().,_a-zA-Z]+$/.test(text)) return 0;
+  const allowed = ["u", "v", "area", "curvature", "distance", "boundary", "crown", "support", "compression", "edgeBending", "edgeDeformation", "harmonic", "attractor", "random", "material"];
+  const names = Array.from(new Set(text.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || []));
+  if (names.some((name) => !allowed.includes(name))) return 0;
+  try {
+    const fn = new Function(...allowed, `"use strict"; return (${text});`);
+    return clamp(Number(fn(...allowed.map((key) => basis[key]))) || 0, 0, 1);
+  } catch {
+    return 0;
+  }
+};
+
+const computeRawSourceWeight = (block) => {
+  const basis = getBlockWeightBasis(block);
+  const source = state.fieldWeights.source || "curvature";
+  const sourceWeight = source === "formula"
+    ? evaluateWeightFormula(state.fieldWeights.formula, basis)
+    : source === "attractorCurvature"
+      ? THREE.MathUtils.lerp(basis.attractor, basis.curvature, state.attractorField.curvatureMix)
+    : clamp(Number(basis[source] ?? basis.curvature) || 0, 0, 1);
+  return { basis, sourceWeight };
+};
+
+const getWeightBand = (weight = 0) => {
+  if (weight >= 0.78) return { id: "high", materialTag: "compression-heavy", component: "keyedVoussoir" };
+  if (weight >= 0.56) return { id: "upper", materialTag: "interlock-transition", component: "interlock" };
+  if (weight >= 0.34) return { id: "middle", materialTag: "voussoir-standard", component: "voussoir" };
+  return { id: "low", materialTag: "ashlar-light", component: "ashlar" };
+};
+
+const computeReactionPatternValue = (u, v, seed = state.fieldWeights.randomSeed) => {
+  const scale = THREE.MathUtils.lerp(4, 18, state.contourField.reactionScale || 0);
+  const a = Math.sin((u * scale + seed * 0.013) * Math.PI * 2);
+  const b = Math.cos((v * (scale * 0.74) - seed * 0.017) * Math.PI * 2);
+  const c = Math.sin(((u + v) * scale * 0.38 + seed * 0.007) * Math.PI * 2);
+  return clamp((a + b + c + 3) / 6, 0, 1);
+};
+
+const computeContourFieldValue = (block) => {
+  const basis = block.fieldWeights?.basis || getBlockWeightBasis(block);
+  const source = state.contourField.source || "height";
+  if (source === "height") return clamp(basis.v, 0, 1);
+  if (source === "curvature") return basis.curvature;
+  if (source === "compression") return basis.compression;
+  if (source === "weight") return block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? computeRawSourceWeight(block).sourceWeight;
+  if (source === "reaction") return computeReactionPatternValue(basis.u, basis.v);
+  return clamp(basis.v, 0, 1);
+};
+
+const contourMaskRejectsBlock = (block) => {
+  if (!state.contourField.enabled) return false;
+  const mode = state.contourField.maskMode || "none";
+  if (mode === "none") return false;
+  const basis = block.fieldWeights?.basis || getBlockWeightBasis(block);
+  const weight = block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? 0;
+  if (mode === "boundary") return basis.boundary > 0.78;
+  if (mode === "support") return basis.support > 0.78;
+  if (mode === "crown") return basis.crown > 0.82;
+  if (mode === "opening") return Math.hypot(basis.u - 0.5, basis.v - 0.5) < 0.105;
+  if (mode === "low-weight") return weight < 0.16;
+  return false;
+};
+
+const applyContourBandsAndMasks = (blocks) => {
+  if (!state.contourField.enabled) return blocks;
+  const bands = clamp(Math.round(state.contourField.bands || 8), 2, 24);
+  const kept = [];
+  blocks.forEach((block) => {
+    const value = computeContourFieldValue(block);
+    const band = clamp(Math.floor(value * bands), 0, bands - 1);
+    block.contourValue = Number(value.toFixed(4));
+    block.contourBand = band;
+    block.reactionValue = state.contourField.reactionDiffusion
+      ? Number(computeReactionPatternValue(block.fieldWeights?.basis?.u ?? polygonCentroidUv(block.uv)[0], block.fieldWeights?.basis?.v ?? polygonCentroidUv(block.uv)[1]).toFixed(4))
+      : null;
+    block.maskedByContour = contourMaskRejectsBlock(block);
+    if (!block.maskedByContour) kept.push(block);
+  });
+  return kept.length ? kept : blocks;
+};
+
+const buildBlockAdjacency = (blocks) => {
+  const edgeMap = new Map();
+  blocks.forEach((block, blockIndex) => {
+    (block.uv || []).forEach((point, i) => {
+      const next = block.uv[(i + 1) % block.uv.length];
+      if (!next) return;
+      const key = topologyEdgeKey(point, next);
+      if (!edgeMap.has(key)) edgeMap.set(key, []);
+      edgeMap.get(key).push(blockIndex);
+    });
+  });
+  const neighbors = blocks.map(() => new Set());
+  edgeMap.forEach((owners) => {
+    owners.forEach((a) => owners.forEach((b) => {
+      if (a !== b) neighbors[a].add(b);
+    }));
+  });
+  return neighbors;
+};
+
+const applyFieldWeightSmoothingToBlocks = (blocks) => {
+  blocks.forEach((block) => {
+    const raw = computeRawSourceWeight(block);
+    block.fieldWeights = {
+      ...(block.fieldWeights || {}),
+      basis: raw.basis,
+      source: state.fieldWeights.source,
+      sourceWeight: Number(raw.sourceWeight.toFixed(4)),
+      smoothedWeight: Number(raw.sourceWeight.toFixed(4)),
+    };
+  });
+  const mode = state.fieldWeights.smoothing || "none";
+  const iterations = mode === "none" ? 0 : clamp(Math.round(state.fieldWeights.smoothingIterations || 0), 0, 8);
+  if (!iterations || blocks.length < 2) return blocks;
+  const neighbors = buildBlockAdjacency(blocks);
+  let values = blocks.map((block) => block.fieldWeights.sourceWeight || 0);
+  for (let iter = 0; iter < iterations; iter++) {
+    values = values.map((value, index) => {
+      const ns = Array.from(neighbors[index]);
+      if (!ns.length) return value;
+      const fixed = mode === "harmonic" && (
+        blocks[index].fieldWeights.basis.boundary > 0.82 ||
+        blocks[index].fieldWeights.basis.support > 0.82 ||
+        blocks[index].fieldWeights.basis.crown > 0.82
+      );
+      if (fixed) return value;
+      const avg = ns.reduce((sum, n) => sum + values[n], 0) / ns.length;
+      return mode === "harmonic" ? avg : THREE.MathUtils.lerp(value, avg, 0.5);
+    });
+  }
+  blocks.forEach((block, index) => {
+    block.fieldWeights.smoothedWeight = Number(clamp(values[index], 0, 1).toFixed(4));
+  });
+  return blocks;
+};
+
+const applyFieldDrivenBlockProperties = (blocks, activeStrategy = getActiveStrategy()) => {
+  const canUsePanelVariants = activeStrategy.component === "custom" && !!state.customPanel?.geometryData;
+  const shouldDriveComponent =
+    state.fieldWeights.driveComponent &&
+    activeStrategy.componentMode !== "single" &&
+    !(activeStrategy.component === "custom" && state.customPanel);
+  blocks.forEach((block) => {
+    const weight = block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? 0;
+    const basis = block.fieldWeights?.basis || {};
+    const band = getWeightBand(weight);
+    block.weightBand = band.id;
+    block.materialTag = state.fieldWeights.materialStrategy === "imported-groups"
+      ? `group-${basis.importedGroup || "default"}`
+      : state.fieldWeights.materialStrategy === "zones"
+        ? `zone-${classifyBlockZone(block.fieldWeights)}`
+        : band.materialTag;
+    if (shouldDriveComponent) {
+      block.componentVariant = band.component;
+      block.componentType = band.component;
+      block.fieldDrivenComponent = true;
+    } else {
+      if (block.fieldDrivenComponent) {
+        block.componentVariant = activeStrategy.component;
+        block.fieldDrivenComponent = false;
+      }
+      block.componentType = block.componentVariant || activeStrategy.component;
+    }
+    if (state.fieldWeights.driveRotation && !(activeStrategy.component === "custom" && state.customPanel && block.targetPoints?.length)) {
+      block.rotationShift = Math.round(weight * Math.max(1, (block.uv?.length || 1) - 1));
+      block.uv = block.rotationShift ? rotateUvLoop(block.uv, block.rotationShift) : block.uv;
+    }
+    if (state.fieldWeights.driveTaper) block.taperBias = Number((weight * 1.2).toFixed(3));
+    if (state.fieldWeights.driveZones) block.zone = classifyBlockZone(block.fieldWeights);
+    block.panelVariantRole = canUsePanelVariants ? resolvePanelVariantRoleForBlock(block) : null;
+  });
+  return blocks;
+};
+
+const computeBlockFieldWeights = (block) => {
+  const basis = getBlockWeightBasis(block);
+  const u = basis.u;
+  const v = basis.v;
+  const host = getHostField();
+  const boundaryInfo = host.boundaryAt(u, v);
+  const groinBoost = state.vaultType === "Groin Vault" ? clamp(1 - Math.abs(u - v) * 2.2, 0, 1) * 0.18 : 0;
+  const raw = computeRawSourceWeight(block);
+  const sourceWeight = raw.sourceWeight;
+  const smoothedWeight = block.fieldWeights?.smoothedWeight ?? sourceWeight;
+  return {
+    anchorUv: [Number(u.toFixed(5)), Number(v.toFixed(5))],
+    boundaryZone: Number(basis.boundary.toFixed(4)),
+    crownZone: Number(basis.crown.toFixed(4)),
+    supportZone: Number(basis.support.toFixed(4)),
+    compressionIntensity: Number(clamp(basis.compression + groinBoost, 0, 1).toFixed(4)),
+    source: state.fieldWeights.source,
+    sourceWeight: Number(sourceWeight.toFixed(4)),
+    smoothedWeight: Number(smoothedWeight.toFixed(4)),
+    basis,
+    curvature: basis.curvatureRaw,
+    importedGroup: basis.importedGroup,
+    weightBand: getWeightBand(smoothedWeight).id,
+    boundary: boundaryInfo,
+  };
+};
+
+const annotateBlockForStrategy = (block, activeStrategy = getActiveStrategy()) => {
+  const canUsePanelVariants = activeStrategy.component === "custom" && !!state.customPanel?.geometryData;
+  block.strategy = { ...activeStrategy };
+  block.strategyField = activeStrategy.field;
+  block.componentType = block.componentVariant || activeStrategy.component;
+  block.mapping = {
+    rotation: activeStrategy.rotation,
+    rotationVariation: activeStrategy.rotationVariation,
+    scale: activeStrategy.scale,
+    thickness: activeStrategy.thickness,
+    patchSubdivision: activeStrategy.patchSubdivision,
+    patchSmoothing: activeStrategy.patchSmoothing,
+    topology: activeStrategy.topology,
+    dualBoundaryCleanup: activeStrategy.dualBoundaryCleanup,
+    fill: activeStrategy.fill,
+    merge: activeStrategy.merge,
+    boundary: activeStrategy.boundary,
+  };
+  block.fieldWeights = computeBlockFieldWeights(block);
+  block.zone = classifyBlockZone(block.fieldWeights);
+  block.panelVariantRole = canUsePanelVariants ? resolvePanelVariantRoleForBlock(block) : null;
+  return block;
+};
+
+const refreshEditedBlocks = () => {
+  const activeStrategy = refreshStrategyDescriptor();
+  const validBlocks = [];
+  state.blocks.forEach((block) => annotateBlockForStrategy(block, activeStrategy));
+  applyFieldWeightSmoothingToBlocks(state.blocks);
+  applyFieldDrivenBlockProperties(state.blocks, activeStrategy);
+  state.blocks = applyContourBandsAndMasks(state.blocks);
+  state.blocks.forEach((block) => {
+    try {
+      const m = buildBlockMesh(block);
+      block.metrics = m;
+      block.failed = validate(m, block);
+      if (m.geometry) m.geometry.dispose();
+      validBlocks.push(block);
+    } catch (err) {
+      console.warn("2D editor skipped block refresh", block.id, err);
+    }
+  });
+  if (validBlocks.length) state.blocks = validBlocks;
+  state.patternAppliedToModel = true;
+  build3d();
+  draw2d();
+  renderFormForceDiagrams();
+  renderMetrics();
+  renderActiveVaultTools();
+  applySelection();
+  renderBlockPreview();
+};
+
+const disposePreviewObject = (object) => {
+  object.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (Array.isArray(child.material)) child.material.forEach((mat) => {
+      if (mat.map) mat.map.dispose();
+      mat.dispose();
+    });
+    else if (child.material) {
+      if (child.material.map) child.material.map.dispose();
+      child.material.dispose();
+    }
+  });
+};
+
+const clearBlockPreview = () => {
+  while (blockPreviewGroup.children.length) {
+    const child = blockPreviewGroup.children.pop();
+    disposePreviewObject(child);
+  }
+};
+
+const getPreviewBlocks = () => {
+  if (!state.blocks.length) return [];
+  const requestedCount = clamp(Math.round(state.blockPreviewCount || 1), 1, 6);
+  const selectedIndex = state.blocks.findIndex((b) => b.id === state.selectedBlockId);
+  const fallbackIndex = Math.max(0, state.blocks.findIndex((b) => b.isKeystone));
+  const anchor = selectedIndex >= 0 ? selectedIndex : fallbackIndex;
+  const start = Math.min(anchor, Math.max(0, state.blocks.length - requestedCount));
+  return state.blocks.slice(start, start + requestedCount);
+};
+
+const addPreviewDimensionLine = (group, label, start, end, color, textColor) => {
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.92, depthTest: false });
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), mat);
+  line.renderOrder = 9000;
+  group.add(line);
+  const dir = end.clone().sub(start);
+  const len = dir.length();
+  if (len > 1e-6) {
+    const unit = dir.clone().normalize();
+    const headLen = Math.min(0.12, len * 0.18);
+    const arrowA = new THREE.ArrowHelper(unit, start, headLen, color, headLen * 0.55, headLen * 0.34);
+    const arrowB = new THREE.ArrowHelper(unit.clone().multiplyScalar(-1), end, headLen, color, headLen * 0.55, headLen * 0.34);
+    arrowA.renderOrder = 9000;
+    arrowB.renderOrder = 9000;
+    group.add(arrowA, arrowB);
+  }
+  const labelSprite = makePreviewTextSprite(label, textColor);
+  if (labelSprite) {
+    labelSprite.position.copy(start).add(end).multiplyScalar(0.5);
+    labelSprite.position.y += 0.16;
+    group.add(labelSprite);
+  }
+};
+
+const addPreviewDimensionAnnotations = (size) => {
+  const group = new THREE.Group();
+  group.name = "block-preview-dimensions";
+  const sx = size.x * 0.5;
+  const sy = size.y * 0.5;
+  const sz = size.z * 0.5;
+  const pad = Math.max(0.18, Math.max(size.x, size.y, size.z) * 0.1);
+  addPreviewDimensionLine(
+    group,
+    "Length - run",
+    new THREE.Vector3(-sx - pad, -sy - pad, -sz),
+    new THREE.Vector3(-sx - pad, -sy - pad, sz),
+    0x7db7ff,
+    "#b9d8ff"
+  );
+  addPreviewDimensionLine(
+    group,
+    "Width - course",
+    new THREE.Vector3(-sx, -sy - pad * 0.2, sz + pad),
+    new THREE.Vector3(sx, -sy - pad * 0.2, sz + pad),
+    0xffd27a,
+    "#ffe2a0"
+  );
+  addPreviewDimensionLine(
+    group,
+    "Height",
+    new THREE.Vector3(-sx - pad, -sy, -sz - pad),
+    new THREE.Vector3(-sx - pad, sy, -sz - pad),
+    0x96e6a5,
+    "#c8ffd1"
+  );
+  blockPreviewGroup.add(group);
+};
+
+const renderBlockPreview = () => {
+  if (!blockPreviewRenderer || !nodes.blockPreviewInfo || !nodes.blockPreviewTitle) return;
+  clearBlockPreview();
+  if (!state.patternAppliedToModel) {
+    nodes.blockPreviewTitle.textContent = "source preview";
+    nodes.blockPreviewInfo.innerHTML = "<span><b>Status</b> Apply to model to preview blocks</span>";
+    return;
+  }
+  const previewBlocks = getPreviewBlocks();
+  if (!previewBlocks.length) {
+    nodes.blockPreviewTitle.textContent = "no block";
+    nodes.blockPreviewInfo.innerHTML = "<span><b>Status</b> Generate blocks</span>";
+    return;
+  }
+  const previewRoot = new THREE.Group();
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32 });
+  const selectedId = state.selectedBlockId || previewBlocks[0].id;
+  let anchorMetrics = null;
+  previewBlocks.forEach((block) => {
+    try {
+      const metrics = buildBlockMesh(block);
+      if (!anchorMetrics && block.id === selectedId) anchorMetrics = metrics;
+      if (!anchorMetrics) anchorMetrics = metrics;
+      const isSelected = block.id === selectedId;
+      const color = block.isKeystone ? 0xc09a4a : isSelected ? 0x90aee0 : 0xb8b2a7;
+      const smoothImportedSurface = String(metrics.jointFaceType || "").includes("sampled imported-surface");
+      const mesh = new THREE.Mesh(metrics.geometry, new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.55,
+        metalness: 0.04,
+        transparent: false,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        flatShading: !smoothImportedSurface,
+      }));
+      mesh.userData.blockId = block.id;
+      mesh.userData.smoothImportedSurface = smoothImportedSurface;
+      const seams = new THREE.LineSegments(new THREE.EdgesGeometry(metrics.geometry, 12), edgeMat.clone());
+      seams.name = "preview-seams";
+      mesh.add(seams);
+      previewRoot.add(mesh);
+    } catch (err) {
+      console.error("renderBlockPreview skipped block", block.id, err);
+    }
+  });
+  if (!previewRoot.children.length) {
+    nodes.blockPreviewTitle.textContent = "preview unavailable";
+    nodes.blockPreviewInfo.innerHTML = "<span><b>Status</b> Block geometry failed</span>";
+    return;
+  }
+  const box = new THREE.Box3().setFromObject(previewRoot);
+  const center = box.getCenter(new THREE.Vector3());
+  previewRoot.position.sub(center);
+  blockPreviewGroup.add(previewRoot);
+  const size = box.getSize(new THREE.Vector3());
+  addPreviewDimensionAnnotations(size);
+  const maxSize = Math.max(0.25, size.x, size.y, size.z);
+  const distance = maxSize * 2.35;
+  blockPreviewCamera.position.set(distance, distance * 0.72, distance * 0.95);
+  blockPreviewCamera.near = Math.max(0.01, distance / 100);
+  blockPreviewCamera.far = Math.max(100, distance * 10);
+  blockPreviewCamera.updateProjectionMatrix();
+  if (blockPreviewControls) {
+    blockPreviewControls.target.set(0, 0, 0);
+    blockPreviewControls.update();
+  }
+  nodes.blockPreviewTitle.textContent = `${previewBlocks.length} block${previewBlocks.length === 1 ? "" : "s"}`;
+  const targetLabel = `${metersToCmInput(state.targetBlockWidth)} x ${metersToCmInput(state.constraints.courseHeight)} x ${metersToCmInput(state.params.thickness)} cm`;
+  nodes.blockPreviewInfo.innerHTML = [
+    `<span><b>ID</b> ${previewBlocks[0].id}</span>`,
+    `<span><b>Length</b> ${anchorMetrics ? metersToCmInput(anchorMetrics.avgWidth) : "--"} cm</span>`,
+    `<span><b>Width</b> ${anchorMetrics ? metersToCmInput(anchorMetrics.avgLength) : "--"} cm</span>`,
+    `<span><b>Height</b> ${metersToCmInput(state.params.thickness)} cm</span>`,
+    `<span><b>Joint</b> ${metersToCmInput(state.constraints.jointGap)} cm</span>`,
+    `<span><b>L/W/H</b> ${targetLabel}</span>`,
+  ].join("");
 };
 
 const renderMetrics = () => {
@@ -5122,29 +11285,30 @@ const renderMetrics = () => {
   if (state.pipelineStage < 5 || !state.patternAppliedToModel) processWarnings.push("voussoir solids not applied to model");
   if (state.pipelineStage >= 6 && state.jointMode !== "Physical cut") processWarnings.push("physical cut mode not enabled");
   if (state.vaultType === "Groin Vault" && state.pipelineStage >= 7 && state.pattern !== "Groin-line courses") processWarnings.push("compare current layout against groin-line course default");
+  state.historicalValidationResults = evaluateHistoricalFamilyValidation();
+  const historicalIssues = state.historicalValidationResults.filter((item) => item.status !== "pass");
+  const summary = {};
+  invalid.forEach((b) => b.failed.forEach((f) => { summary[f] = (summary[f] || 0) + 1; }));
+  renderDiagnosticSummary({ invalid, summary, processWarnings, historicalIssues });
   nodes.metrics.innerHTML = [
     ["Stage", `${state.pipelineStage || 0} ${state.stereotomyProcess.stageName}`],
     ["Block Count", state.blocks.length],
     ["Invalid Blocks", invalid.length],
     ["Total Volume", `${vol.toFixed(2)} m^3`],
     ["Total Weight", `${(wt / 1000).toFixed(2)} t`],
-    ["Source Mode", state.vaultType === "Custom Imported Rhino Surface" ? "Uploaded Model" : "Built-In"],
+    ["Source Mode", state.vaultType === "Custom Imported Rhino Surface" ? "Uploaded Host" : "Built-In"],
+    ["Pattern Mesh", state.importedTopologyMeshStats ? `${state.importedTopologyMeshStats.faceCount} faces` : "None"],
     ["Force Flow", state.stereotomyProcess.forceFlowDiagram],
     ["Registration", state.registrationMode],
     ["Cube Scale", state.cubeScale.toFixed(2)],
     ["Array UxV", `${state.arrayU}x${state.arrayV}`],
     ["Tile Layers", state.tileLayers],
   ].map(([k, v]) => `<div class="metric"><b>${k}</b><span>${v}</span></div>`).join("");
-  state.historicalValidationResults = evaluateHistoricalFamilyValidation();
   renderHistoricalValidation();
+  renderNgonDiagnostics();
   const warningItems = [];
   if (!invalid.length) warningItems.push('<li class="ok">All blocks satisfy current constraints.</li>');
-  else {
-    const summary = {};
-    invalid.forEach((b) => b.failed.forEach((f) => { summary[f] = (summary[f] || 0) + 1; }));
-    warningItems.push(...Object.entries(summary).map(([k, v]) => `<li class="bad">${k}: ${v} block(s)</li>`));
-  }
-  const historicalIssues = state.historicalValidationResults.filter((item) => item.status !== "pass");
+  else warningItems.push(...Object.entries(summary).map(([k, v]) => `<li class="bad">${diagnosticLabel(k)}: ${v} block(s)</li>`));
   if (!historicalIssues.length) {
     warningItems.push('<li class="ok">Historical family validation passes.</li>');
   } else {
@@ -5183,10 +11347,18 @@ const renderPrecedent = () => {
 };
 
 const syncInputsFromState = () => {
-  ["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
+  ["span", "rise", "length", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
     syncInputPair(id, state.params[id]);
   });
+  syncCmInputPair("thickness", state.params.thickness);
+  syncCmInput("blockHeight", state.params.thickness);
+  setInputValue(nodes.blockPreviewHeight, metersToCmInput(state.params.thickness));
+  syncInputPair("panelSubdivisionU", state.panelSubdivisionU);
+  syncInputPair("panelSubdivisionV", state.panelSubdivisionV);
+  syncInputPair("panelMorphStrength", state.panelMorphStrength);
+  if (nodes.panelWeightSubdivision) nodes.panelWeightSubdivision.checked = !!state.panelWeightSubdivision;
   if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+  if (byId("vaultDesignerType")) byId("vaultDesignerType").value = state.vaultType;
   if (byId("constructionTemplate")) byId("constructionTemplate").value = state.constructionTemplate;
   if (byId("surfacePrinciple")) byId("surfacePrinciple").value = state.surfacePrinciple;
   if (byId("traitStep")) byId("traitStep").value = state.traitStep;
@@ -5202,11 +11374,45 @@ const syncInputsFromState = () => {
   syncInputPair("springingAngle", state.springingAngle);
   syncInputPair("taperScale", state.taperScale);
   if (byId("archType")) byId("archType").value = state.archType;
-  syncInputPair("targetBlockWidth", state.targetBlockWidth);
+  syncCmInputPair("targetBlockWidth", state.targetBlockWidth);
+  setInputValue(nodes.blockPreviewLength, metersToCmInput(state.targetBlockWidth));
+  if (byId("blockDimensionMode")) byId("blockDimensionMode").value = state.blockDimensionMode;
+  if (byId("blockPreviewCount")) byId("blockPreviewCount").value = String(state.blockPreviewCount);
+  const appliedDims = state.blockDimensionMode !== "fit";
+  const importedCellLayout = state.designMode === "Custom Import" && state.vaultType === "Custom Imported Rhino Surface";
+  ["courseCount", "courseCountNum", "blockCount", "blockCountNum", "subdivisionDensity", "subdivisionDensityNum"].forEach((id) => {
+    const el = byId(id);
+    if (!el) return;
+    el.disabled = appliedDims && !importedCellLayout;
+    el.title = appliedDims && !importedCellLayout
+      ? "Derived from block length, block width, and the active topology strategy."
+      : "";
+  });
+  if (nodes.ngonCellType) nodes.ngonCellType.value = state.ngonCellType;
+  setInputValue(nodes.ngonShape, state.ngonShape);
+  setInputValue(nodes.ngonShapeNum, state.ngonShape);
+  if (nodes.strategyPreset && !nodes.strategyPreset.value) nodes.strategyPreset.value = "custom";
+  setInputValue(nodes.strategyComponent, state.strategy.component, { force: true });
+  setInputValue(nodes.strategyComponentMode, state.strategy.componentMode, { force: true });
+  setInputValue(nodes.strategyFill, state.strategy.fill, { force: true });
+  setInputValue(nodes.strategyRotation, state.strategy.rotation, { force: true });
+  setInputValue(nodes.strategyRotationVariation, state.strategy.rotationVariation, { force: true });
+  setInputValue(nodes.strategyComponentMapping, state.strategy.scale, { force: true });
+  setInputValue(nodes.strategyThickness, state.strategy.thickness, { force: true });
+  setInputValue(nodes.strategyPatchSubdivision, state.strategy.patchSubdivision, { force: true });
+  setInputValue(nodes.strategyPatchSubdivisionNum, state.strategy.patchSubdivision, { force: true });
+  setInputValue(nodes.strategyPatchSmoothing, state.strategy.patchSmoothing, { force: true });
+  setInputValue(nodes.strategyPatchSmoothingNum, state.strategy.patchSmoothing, { force: true });
+  setInputValue(nodes.strategyTopology, state.strategy.topology, { force: true });
+  if (nodes.strategyDualBoundaryCleanup) nodes.strategyDualBoundaryCleanup.checked = state.strategy.dualBoundaryCleanup !== false;
+  setInputValue(nodes.strategyMerge, state.strategy.merge, { force: true });
+  syncFieldWeightControls();
+  syncContourFieldControls();
+  syncCustomPatternSourceInputs();
   if (byId("barrelBondMode")) byId("barrelBondMode").value = state.barrelBondMode;
   if (byId("dragSensitivity")) byId("dragSensitivity").value = state.dragSensitivity;
   if (byId("barrelOffsetSide")) byId("barrelOffsetSide").value = state.barrelOffsetSide;
-  syncInputPair("wallThickness", state.wallThickness);
+  syncCmInputPair("wallThickness", state.wallThickness);
   syncInputPair("wallHeightOffset", state.wallHeightOffset);
   if (byId("bayRatio")) byId("bayRatio").value = `${state.bayRatioX}:${state.bayRatioY}`;
   syncInputPair("ribCount", state.ribCount);
@@ -5214,6 +11420,17 @@ const syncInputsFromState = () => {
   syncInputPair("netFrequency", state.netFrequency);
   syncInputPair("tileLayers", state.tileLayers);
   syncInputPair("extradosOffset", state.extradosOffset);
+  syncCmInput("courseHeight", state.constraints.courseHeight);
+  setInputValue(nodes.blockPreviewWidth, metersToCmInput(state.constraints.courseHeight));
+  syncCmInput("bedDepth", state.constraints.bedDepth);
+  syncCmInput("jointGap", state.constraints.jointGap);
+  setInputValue(nodes.customPanelSeamAllowance, metersToCmInput(state.customPanelSeamAllowance));
+  setInputValue(nodes.customPanelThicknessScale, state.customPanelThicknessScale);
+  setInputValue(nodes.customPanelThicknessOffset, metersToCmInput(state.customPanelThicknessOffset));
+  renderPanelVariantControls();
+  renderPanelAttractorResponseControls();
+  syncSupportScaffoldControls();
+  syncTopologyLatticeControls();
   if (byId("supportTopology")) byId("supportTopology").value = state.supportTopology;
   syncInputPair("groinMorph", state.groinMorph);
   syncInputPair("lInterlockBias", state.lInterlockBias);
@@ -5222,15 +11439,22 @@ const syncInputsFromState = () => {
   if (byId("layoutStyle")) byId("layoutStyle").value = state.layoutStyle;
   if (byId("foilColorA")) byId("foilColorA").value = state.foilGradient.a;
   if (byId("foilColorB")) byId("foilColorB").value = state.foilGradient.b;
-  if (byId("foilMix")) byId("foilMix").value = String(state.foilGradient.mix);
-  if (byId("foilMixNum")) byId("foilMixNum").value = String(state.foilGradient.mix);
-  if (byId("sourceTx")) byId("sourceTx").value = String(state.sourceTransform.tx);
-  if (byId("sourceTy")) byId("sourceTy").value = String(state.sourceTransform.ty);
-  if (byId("sourceTz")) byId("sourceTz").value = String(state.sourceTransform.tz);
-  if (byId("sourceRx")) byId("sourceRx").value = String(state.sourceTransform.rx);
-  if (byId("sourceRy")) byId("sourceRy").value = String(state.sourceTransform.ry);
-  if (byId("sourceRz")) byId("sourceRz").value = String(state.sourceTransform.rz);
-  if (byId("sourceScale")) byId("sourceScale").value = String(state.sourceTransform.scale);
+  setInputValue(byId("foilMix"), state.foilGradient.mix);
+  setInputValue(byId("foilMixNum"), state.foilGradient.mix);
+  const sourceSizeMode = usesSourceSizeInputs();
+  const sourceDims = getBaseSourceDimensions();
+  const sourceScale = Math.max(0.001, Number(state.sourceTransform.scale) || 1);
+  if (byId("sourceXLabel")) byId("sourceXLabel").textContent = sourceSizeMode ? "X Size" : "X Position";
+  if (byId("sourceYLabel")) byId("sourceYLabel").textContent = sourceSizeMode ? "Y Size" : "Y Position";
+  if (byId("sourceZLabel")) byId("sourceZLabel").textContent = sourceSizeMode ? "Z Size" : "Z Position";
+  setInputValue(byId("sourceTx"), sourceSizeMode ? (sourceDims.outsideSpan * sourceScale).toFixed(2) : state.sourceTransform.tx);
+  setInputValue(byId("sourceTy"), sourceSizeMode ? (sourceDims.length * sourceScale).toFixed(2) : state.sourceTransform.tz);
+  setInputValue(byId("sourceTz"), sourceSizeMode ? (sourceDims.outsideHeight * sourceScale).toFixed(2) : state.sourceTransform.ty);
+  setInputValue(byId("sourceRx"), state.sourceTransform.rx);
+  setInputValue(byId("sourceRy"), state.sourceTransform.ry);
+  setInputValue(byId("sourceRz"), state.sourceTransform.rz);
+  setInputValue(byId("sourceScale"), state.sourceTransform.scale);
+  renderSourceGeometryDimensions();
   if (byId("drawingMode2d")) byId("drawingMode2d").value = state.view2dOptions.mode;
   if (byId("show2dReference")) byId("show2dReference").checked = state.view2dOptions.showReferenceGeometry;
   if (byId("show2dTraitLines")) byId("show2dTraitLines").checked = state.view2dOptions.showTraitLines;
@@ -5263,12 +11487,12 @@ const syncInputsFromState = () => {
   if (byId("show2dGuides")) byId("show2dGuides").checked = state.view2dOptions.showGuides;
   if (byId("show2dLabels")) byId("show2dLabels").checked = state.view2dOptions.showLabels;
   if (byId("show2dCutLines")) byId("show2dCutLines").checked = state.view2dOptions.showCutLines;
-  if (byId("guideDensity2d")) byId("guideDensity2d").value = String(state.view2dOptions.guideDensity);
-  if (byId("guideDensity2dNum")) byId("guideDensity2dNum").value = String(state.view2dOptions.guideDensity);
+  setInputValue(byId("guideDensity2d"), state.view2dOptions.guideDensity);
+  setInputValue(byId("guideDensity2dNum"), state.view2dOptions.guideDensity);
   if (byId("blockLineColor2d")) byId("blockLineColor2d").value = state.view2dOptions.blockStroke;
   if (byId("blockFillColor2d")) byId("blockFillColor2d").value = state.view2dOptions.blockFill;
-  if (byId("blockFillOpacity2d")) byId("blockFillOpacity2d").value = String(state.view2dOptions.blockFillOpacity);
-  if (byId("blockFillOpacity2dNum")) byId("blockFillOpacity2dNum").value = String(state.view2dOptions.blockFillOpacity);
+  setInputValue(byId("blockFillOpacity2d"), state.view2dOptions.blockFillOpacity);
+  setInputValue(byId("blockFillOpacity2dNum"), state.view2dOptions.blockFillOpacity);
   [
     ["springing", "entitySpringing"],
     ["axis", "entityAxis"],
@@ -5284,9 +11508,13 @@ const syncInputsFromState = () => {
     if (byId(id)) byId(id).checked = item.show;
     if (byId(`${id}Color`)) byId(`${id}Color`).value = item.color;
   });
-  ["maxLength", "maxWidth", "minThickness", "maxWeight", "maxTaper", "minEdgeLength", "fabTolerance"].forEach((k) => {
-    if (byId(k)) byId(k).value = String(state.constraints[k]);
-    if (byId(`${k}Slider`)) byId(`${k}Slider`).value = String(state.constraints[k]);
+  ["maxLength", "maxWidth", "minThickness", "minEdgeLength", "fabTolerance"].forEach((k) => {
+    setInputValue(byId(k), metersToCmInput(state.constraints[k]));
+    setInputValue(byId(`${k}Slider`), metersToCmInput(state.constraints[k]));
+  });
+  ["maxWeight", "maxTaper"].forEach((k) => {
+    setInputValue(byId(k), state.constraints[k]);
+    setInputValue(byId(`${k}Slider`), state.constraints[k]);
   });
   if (byId("toggleBaseGrid")) byId("toggleBaseGrid").checked = state.display.baseGrid;
   document.querySelectorAll('[data-status-toggle="grid"]').forEach((el) => { el.checked = state.display.baseGrid; });
@@ -5303,10 +11531,12 @@ const syncInputsFromState = () => {
   if (byId("layerCopies")) byId("layerCopies").checked = state.layers.copies;
   if (byId("layerSupports")) byId("layerSupports").checked = state.layers.supports;
   if (byId("layerGuides")) byId("layerGuides").checked = state.layers.guides;
+  syncImportedSurfaceToggle();
   syncTransformToolbar();
   renderDrawingPresetButtons();
   renderCurrentTraitState();
   renderTraitFocusControls();
+  renderActiveAssetStrip();
 };
 
 const applyReferencePreset = (name) => {
@@ -5386,7 +11616,10 @@ const applyVaultStartupSolution = (vaultType) => {
   if (typeof sol.taperScale === "number") state.taperScale = sol.taperScale;
   if (typeof sol.bayRatioX === "number") state.bayRatioX = sol.bayRatioX;
   if (typeof sol.bayRatioY === "number") state.bayRatioY = sol.bayRatioY;
-  if (isBarrelLikeVault(vaultType)) state.barrelOffsetSide = "Inside";
+  if (isBarrelLikeVault(vaultType)) {
+    state.barrelOffsetSide = "Inside";
+    state.barrelBondMode = "5";
+  }
   if (byId("subdivision")) byId("subdivision").value = state.pattern;
   if (byId("structuralDirection")) byId("structuralDirection").value = state.structuralDirection;
   syncWallThicknessWithVault();
@@ -5398,8 +11631,9 @@ const fitStartupParamsToConstraints = (vaultType) => {
   if (isBarrelLikeVault(vaultType)) {
     const w = clamp(state.targetBlockWidth || 1.2, 0.1, 5);
     const h = clamp(c.courseHeight || 0.65, 0.1, 5);
-    state.params.blockCount = clamp(Math.round(state.params.span / w), 6, 60);
-    state.params.courseCount = clamp(Math.round(state.params.length / h), 4, 80);
+    const archLen = estimateBarrelArchLength();
+    state.params.blockCount = clamp(Math.round(state.params.length / w), 2, 160);
+    state.params.courseCount = clamp(Math.round(archLen / h), 4, 120);
     return;
   }
   const maxL = Math.max(0.2, c.maxLength - c.fabTolerance);
@@ -5488,9 +11722,41 @@ const applySelection = () => {
   });
   draw2d();
   renderInspector();
+  renderBlockPreview();
 };
 
 const rebuild = () => {
+  const activeStrategy = refreshStrategyDescriptor();
+  const sourcePreviewOnly =
+    state.vaultDesignerPreview ||
+    !state.patternAppliedToModel &&
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    state.importedSurface;
+  if (sourcePreviewOnly) {
+    state.blocks = [];
+    state.selectedBlockId = null;
+    build3d();
+    syncInputsFromState();
+    applySourceTransform();
+    applyLayerVisibility();
+    applySelection();
+    renderMetrics();
+    renderPrecedent();
+    renderActiveVaultTools();
+    renderTraitConstructionSteps();
+    renderConstructionTemplateDetails();
+    renderProjectionOperationDetails();
+    renderJointPrincipleDetails();
+    renderBlockPreview();
+    if (!state.userDefinedCamera) {
+      if (state.vaultDesignerPreview) fitCameraToPreviewSource();
+      else fitCameraToObject(importedSurfaceGroup);
+    }
+    draw2d();
+    renderFormForceDiagrams();
+    return;
+  }
   if (!state.patternAppliedToModel) {
     build3d();
   }
@@ -5500,7 +11766,16 @@ const rebuild = () => {
     console.error("rebuild/generatePatternBlocks failed", err);
     state.blocks = [];
   }
-  if (!state.blocks.length) {
+  const explicitCustomNgon =
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    ["NGon Cells", "NGon Adaptive"].includes(state.customPatternSource);
+  const explicitTopology =
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    state.importedTopologyPolys?.length &&
+    (state.customPatternSource === "Imported Topology Mesh" || state.pattern === "Hex / NGon");
+  if (!state.blocks.length && !explicitCustomNgon && !explicitTopology) {
     const rows = Math.max(2, Math.floor(state.params.courseCount || 12));
     const cols = Math.max(2, Math.floor(state.params.blockCount || 12));
     for (let r = 0; r < rows; r++) {
@@ -5516,12 +11791,26 @@ const rebuild = () => {
       }
     }
   }
+  state.blocks.forEach((block) => annotateBlockForStrategy(block, activeStrategy));
+  applyFieldWeightSmoothingToBlocks(state.blocks);
+  applyFieldDrivenBlockProperties(state.blocks, activeStrategy);
+  state.blocks = applyContourBandsAndMasks(state.blocks);
+  const validBlocks = [];
+  const validationErrors = [];
   state.blocks.forEach((b) => {
-    const m = buildBlockMesh(b);
-    b.metrics = m;
-    b.failed = validate(m);
-    if (m.geometry) m.geometry.dispose();
+    try {
+      const m = buildBlockMesh(b);
+      b.metrics = m;
+      b.failed = validate(m, b);
+      if (m.geometry) m.geometry.dispose();
+      validBlocks.push(b);
+    } catch (err) {
+      validationErrors.push({ id: b.id, err });
+    }
   });
+  if (validationErrors.length) console.error("rebuild/prevalidation skipped blocks", validationErrors);
+  if (validBlocks.length) state.blocks = validBlocks;
+  syncInputsFromState();
   if (state.patternAppliedToModel) {
     build3d();
   }
@@ -5533,7 +11822,10 @@ const rebuild = () => {
     );
     blockGroup.add(dbg);
   }
-  if (!state.suspendViewportFit) fitCameraToBlocks();
+  if (!state.suspendViewportFit && !state.userDefinedCamera) {
+    if (state.patternAppliedToModel) fitCameraToBlocks();
+    else fitCameraToPreviewSource();
+  }
   draw2d();
   renderFormForceDiagrams();
   renderMetrics();
@@ -5547,54 +11839,871 @@ const rebuild = () => {
   applySourceTransform();
   applyLayerVisibility();
   applySelection();
+  renderBlockPreview();
 };
 
-const load3DObject = async (file) => {
+const loadObjectFromFile = async (file) => {
   const url = URL.createObjectURL(file);
   const lower = file.name.toLowerCase();
   let obj = null;
-  if (lower.endsWith(".obj")) {
-    const txt = await file.text();
-    obj = objLoader.parse(txt);
-  } else if (lower.endsWith(".stl")) {
-    const arr = await file.arrayBuffer();
-    const geometry = stlLoader.parse(arr);
-    const pos = geometry.getAttribute("position");
-    if (pos) {
-      for (let i = 0; i < pos.count; i++) {
-        const y = pos.getY(i);
-        const z = pos.getZ(i);
-        pos.setY(i, z);
-        pos.setZ(i, y);
+  try {
+    if (lower.endsWith(".obj")) {
+      const txt = await file.text();
+      obj = objLoader.parse(txt);
+    } else if (lower.endsWith(".stl")) {
+      const arr = await file.arrayBuffer();
+      const geometry = stlLoader.parse(arr);
+      const pos = geometry.getAttribute("position");
+      if (pos) {
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i);
+          const z = pos.getZ(i);
+          pos.setY(i, z);
+          pos.setZ(i, y);
+        }
+        pos.needsUpdate = true;
+        geometry.computeVertexNormals();
+        geometry.computeBoundingBox();
       }
-      pos.needsUpdate = true;
-      geometry.computeVertexNormals();
-      geometry.computeBoundingBox();
+      obj = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x8eb8d4, roughness: 0.52, metalness: 0.04, side: THREE.DoubleSide }));
+    } else if (lower.endsWith(".glb") || lower.endsWith(".gltf")) {
+      const gltf = await new Promise((resolve, reject) => gltfLoader.load(url, resolve, undefined, reject));
+      obj = gltf.scene;
+    } else if (lower.endsWith(".3dm")) {
+      obj = await rhinoLoader.loadAsync(url);
     }
-    obj = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x6ea2c7, wireframe: false, transparent: true, opacity: 0.35 }));
-  } else if (lower.endsWith(".glb") || lower.endsWith(".gltf")) {
-    const gltf = await new Promise((resolve, reject) => gltfLoader.load(url, resolve, undefined, reject));
-    obj = gltf.scene;
+  } finally {
+    URL.revokeObjectURL(url);
   }
-  URL.revokeObjectURL(url);
-  if (!obj) return;
-  clearGroup(importedSurfaceGroup);
-  importedSurfaceGroup.add(obj);
-  obj.traverse((c) => {
-    if (c.isMesh) {
-      c.material = new THREE.MeshStandardMaterial({ color: 0x7ca7c6, transparent: true, opacity: 0.26, side: THREE.DoubleSide });
-      c.geometry.computeBoundingBox();
+  return obj;
+};
+
+const disposeImportedRhinoDoc = () => {
+  try {
+    (state.importedRhinoBrepFaces || []).forEach((item) => {
+      item.surface?.delete?.();
+      item.face?.delete?.();
+    });
+    state.importedRhinoDoc?.delete?.();
+  } catch {}
+  state.importedRhinoDoc = null;
+  state.importedRhinoBrepFaces = null;
+};
+
+const loadRhinoBrepData = async (file) => {
+  disposeImportedRhinoDoc();
+  if (!file.name.toLowerCase().endsWith(".3dm")) return [];
+  const rhino = await getRhinoModule();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const doc = rhino.File3dm.fromByteArray(bytes);
+  const objects = doc.objects();
+  const facesOut = [];
+  for (let objectIndex = 0; objectIndex < objects.count; objectIndex++) {
+    const object = objects.get(objectIndex);
+    const geometry = object?.geometry?.();
+    const objectType = geometry?.objectType;
+    if (objectType === rhino.ObjectType.Brep && geometry.faces) {
+      const faces = geometry.faces();
+      for (let faceIndex = 0; faceIndex < faces.count; faceIndex++) {
+        const face = faces.get(faceIndex);
+        const surface = face.duplicateSurface?.() || face.underlyingSurface?.();
+        if (!surface?.pointAt || !surface?.normalAt) {
+          face?.delete?.();
+          continue;
+        }
+        const du = rhinoDomain(surface, 0);
+        const dv = rhinoDomain(surface, 1);
+        const reversed = typeof face.orientationIsReversed === "function" ? !!face.orientationIsReversed() : !!face.orientationIsReversed;
+        facesOut.push({
+          objectIndex,
+          faceIndex,
+          surface,
+          reversed,
+          rhinoDomain: { u0: du[0], u1: du[1], v0: dv[0], v1: dv[1] },
+        });
+        face?.delete?.();
+      }
+      faces?.delete?.();
+    }
+    object?.delete?.();
+  }
+  const count = facesOut.length;
+  facesOut.forEach((item, index) => {
+    const u0 = index / Math.max(1, count);
+    const u1 = (index + 1) / Math.max(1, count);
+    item.patch = {
+      id: `brep-face-${item.objectIndex + 1}-${item.faceIndex + 1}`,
+      uv: [[u0, 0], [u1, 0], [u1, 1], [u0, 1]],
+      domain: { u0, u1, v0: 0, v1: 1 },
+      rhinoDomain: item.rhinoDomain,
+      source: "rhino-brep-face-domain",
+    };
+  });
+  state.importedRhinoDoc = doc;
+  state.importedRhinoBrepFaces = facesOut;
+  state.importedBrepPatches = facesOut.map((item) => item.patch);
+  return facesOut;
+};
+
+const objectHasRenderableMesh = (obj) => {
+  let hasMesh = false;
+  obj?.traverse?.((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    const pos = child.geometry.getAttribute("position");
+    if (pos?.count) hasMesh = true;
+  });
+  return hasMesh;
+};
+
+const disposeObject = (object) => {
+  object?.traverse?.((child) => {
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) {
+      child.material.forEach((mat) => {
+        mat.map?.dispose?.();
+        mat.dispose?.();
+      });
+    } else {
+      child.material?.map?.dispose?.();
+      child.material?.dispose?.();
     }
   });
+};
+
+const buildRhinoBrepPreviewObject = (brepFaces) => {
+  const group = new THREE.Group();
+  group.name = "rhino-brep-preview";
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x8eb8d4,
+    roughness: 0.52,
+    metalness: 0.04,
+    side: THREE.DoubleSide,
+  });
+  brepFaces.forEach((item) => {
+    const surface = item.surface;
+    const d = item.rhinoDomain;
+    if (!surface?.pointAt || !d) return;
+    const uSteps = 28;
+    const vSteps = 28;
+    const vertices = [];
+    const indices = [];
+    for (let y = 0; y <= vSteps; y++) {
+      for (let x = 0; x <= uSteps; x++) {
+        const u = THREE.MathUtils.lerp(d.u0, d.u1, x / uSteps);
+        const v = THREE.MathUtils.lerp(d.v0, d.v1, y / vSteps);
+        const point = rhinoPointToVector3(surface.pointAt(u, v));
+        if (!point || !Number.isFinite(point.x + point.y + point.z)) return;
+        vertices.push(point.x, point.y, point.z);
+      }
+    }
+    const row = uSteps + 1;
+    for (let y = 0; y < vSteps; y++) {
+      for (let x = 0; x < uSteps; x++) {
+        const a = y * row + x;
+        const b = a + 1;
+        const c = a + row + 1;
+        const e = a + row;
+        if (item.reversed) indices.push(a, c, b, a, e, c);
+        else indices.push(a, b, c, a, c, e);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(vertices), 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    if (!geometry.boundingBox?.isEmpty()) {
+      const mesh = new THREE.Mesh(geometry, material.clone());
+      mesh.name = item.patch?.id || "rhino-brep-face";
+      group.add(mesh);
+    } else {
+      geometry.dispose();
+    }
+  });
+  return group.children.length ? group : null;
+};
+
+const getDominantPlanarAxes = (points) => {
+  const ranges = ["x", "y", "z"].map((axis) => {
+    const values = points.map((p) => p[axis]);
+    return { axis, range: Math.max(...values) - Math.min(...values) };
+  }).sort((a, b) => b.range - a.range);
+  return [ranges[0]?.axis || "x", ranges[1]?.axis || "z"];
+};
+
+const normalizePointFacesToUv = (faces) => {
+  const allPoints = faces.flat();
+  if (!allPoints.length) return [];
+  const ranges = ["x", "y", "z"].map((axis) => {
+    const values = allPoints.map((p) => p[axis]);
+    return { axis, range: Math.max(...values) - Math.min(...values) };
+  }).sort((a, b) => b.range - a.range);
+  const [axisU, axisV] = [ranges[0]?.axis || "x", ranges[1]?.axis || "z"];
+  const outOfPlane = ranges[2]?.range || 0;
+  const inPlane = Math.max(ranges[0]?.range || 0, ranges[1]?.range || 0, 1e-9);
+  if (outOfPlane > Math.max(0.001, inPlane * 0.025)) return [];
+  const minU = Math.min(...allPoints.map((p) => p[axisU]));
+  const maxU = Math.max(...allPoints.map((p) => p[axisU]));
+  const minV = Math.min(...allPoints.map((p) => p[axisV]));
+  const maxV = Math.max(...allPoints.map((p) => p[axisV]));
+  const scaleU = Math.max(1e-9, maxU - minU);
+  const scaleV = Math.max(1e-9, maxV - minV);
+  return faces
+    .map((face) => face.map((p) => [
+      clamp((p[axisU] - minU) / scaleU, 0, 1),
+      clamp((p[axisV] - minV) / scaleV, 0, 1),
+    ]))
+    .map((uv) => cellHasUsableArea(uv, 0.000001))
+    .filter(Boolean);
+};
+
+const parseObjTopologyPolygons = (text) => {
+  return normalizePointFacesToUv(parseObjPointFaces(text));
+};
+
+const parseObjPointFaces = (text) => {
+  const vertices = [];
+  const faces = [];
+  const logicalLines = text
+    .replace(/\\\r?\n/g, " ")
+    .split(/\r?\n/);
+  logicalLines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const parts = trimmed.split(/\s+/);
+    if (parts[0] === "v" && parts.length >= 4) {
+      vertices.push(new THREE.Vector3(Number(parts[1]), Number(parts[2]), Number(parts[3])));
+    } else if (parts[0] === "f" && parts.length >= 4) {
+      const face = parts.slice(1)
+        .map((token) => Number(token.split("/")[0]))
+        .map((index) => vertices[index < 0 ? vertices.length + index : index - 1])
+        .filter(Boolean)
+        .map((p) => p.clone());
+      const first = face[0];
+      const last = face[face.length - 1];
+      if (face.length > 3 && first && last && first.distanceTo(last) < 1e-8) face.pop();
+      if (face.length >= 3) faces.push(face);
+    }
+  });
+  return faces;
+};
+
+const buildTissueCellsFromPointFaces = (faces, obj) => {
+  if (!faces?.length || !obj) return [];
+  obj.updateMatrixWorld(true);
+  const mappedFaces = faces
+    .map((face) => face.map((point) => point.clone().multiply(obj.scale).add(obj.position)))
+    .filter((face) => face.length >= 3);
+  const allPoints = mappedFaces.flat();
+  if (!allPoints.length) return [];
+  const bbox = new THREE.Box3().setFromPoints(allPoints);
+  const size = bbox.getSize(new THREE.Vector3());
+  const axisRanges = ["x", "y", "z"].map((axis) => ({ axis, range: size[axis] })).sort((a, b) => b.range - a.range);
+  const axisU = axisRanges[0]?.axis || "x";
+  const axisV = axisRanges[1]?.axis || "z";
+  const rangeU = Math.max(1e-9, bbox.max[axisU] - bbox.min[axisU]);
+  const rangeV = Math.max(1e-9, bbox.max[axisV] - bbox.min[axisV]);
+  const cells = mappedFaces
+    .map((points, faceIndex) => {
+      const uv = points.map((p) => [
+        clamp((p[axisU] - bbox.min[axisU]) / rangeU, 0, 1),
+        clamp((p[axisV] - bbox.min[axisV]) / rangeV, 0, 1),
+      ]);
+      const cleaned = cleanPairedUvPoints(uv, points, 0.000001);
+      if (!cleaned) return null;
+      return {
+        faceIndex,
+        points: cleaned.points,
+        uv: cleaned.uv,
+        sourceCarrierUv: cleaned.uv.map((coord) => [...coord]),
+        faceNormal: getFaceNormalFromPoints(cleaned.points),
+      };
+    })
+    .filter(Boolean);
+  const normalMap = new Map();
+  cells.forEach((cell) => {
+    const normal = cell.faceNormal || new THREE.Vector3(0, 1, 0);
+    cell.points.forEach((point) => {
+      const key = tissuePointKey(point);
+      if (!normalMap.has(key)) normalMap.set(key, new THREE.Vector3());
+      normalMap.get(key).add(normal);
+    });
+  });
+  normalMap.forEach((normal) => {
+    if (normal.lengthSq() > 1e-10) normal.normalize();
+    else normal.set(0, 1, 0);
+  });
+  cells.forEach((cell) => {
+    cell.targetNormals = cell.points.map((point) => normalMap.get(tissuePointKey(point))?.clone() || cell.faceNormal?.clone() || new THREE.Vector3(0, 1, 0));
+  });
+  return cells;
+};
+
+const extractObjectTopologyPolygons = (obj) => {
+  const faces = [];
+  obj.updateMatrixWorld(true);
+  obj.traverse((mesh) => {
+    if (!mesh.isMesh || !mesh.geometry) return;
+    const pos = mesh.geometry.getAttribute("position");
+    if (!pos) return;
+    const index = mesh.geometry.index;
+    const readVertex = (i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    if (index) {
+      for (let i = 0; i < index.count; i += 3) {
+        faces.push([readVertex(index.getX(i)), readVertex(index.getX(i + 1)), readVertex(index.getX(i + 2))]);
+      }
+    } else {
+      for (let i = 0; i < pos.count; i += 3) {
+        faces.push([readVertex(i), readVertex(i + 1), readVertex(i + 2)]);
+      }
+    }
+  });
+  return normalizePointFacesToUv(faces);
+};
+
+const loadTopologyMesh = async (file) => {
+  const lower = file.name.toLowerCase();
+  let polys = [];
+  if (lower.endsWith(".obj")) {
+    polys = parseObjTopologyPolygons(await file.text());
+  } else if (lower.endsWith(".3dm")) {
+    const obj = await loadObjectFromFile(file);
+    if (obj) polys = extractObjectTopologyPolygons(obj);
+  }
+  if (!polys.length) return false;
+  state.importedTopologyPolys = polys;
+  state.importedTissueCells = null;
+  state.importedTopologyMeshName = file.name;
+  state.importedTopologyMeshStats = {
+    faceCount: polys.length,
+    vertexCount: polys.reduce((sum, poly) => sum + poly.length, 0),
+    minVertices: Math.min(...polys.map((poly) => poly.length)),
+    maxVertices: Math.max(...polys.map((poly) => poly.length)),
+  };
+  return true;
+};
+
+const load3DObject = async (file) => {
+  let brepFaces = [];
+  let objCarrierFaces = [];
+  if (file.name.toLowerCase().endsWith(".3dm")) {
+    try {
+      brepFaces = await loadRhinoBrepData(file);
+    } catch (err) {
+      console.error("load3DObject/loadRhinoBrepData failed", err);
+      disposeImportedRhinoDoc();
+    }
+  } else {
+    disposeImportedRhinoDoc();
+    if (file.name.toLowerCase().endsWith(".obj")) {
+      try {
+        objCarrierFaces = parseObjPointFaces(await file.text());
+      } catch (err) {
+        console.warn("load3DObject/parseObjPointFaces failed", err);
+      }
+    }
+  }
+  let obj = await loadObjectFromFile(file);
+  if (obj && brepFaces.length) {
+    const box = new THREE.Box3().setFromObject(obj);
+    const meshStats = getImportedModelStats(obj);
+    if (!objectHasRenderableMesh(obj) || box.isEmpty() || meshStats.triangleCount < 4) {
+      disposeObject(obj);
+      obj = buildRhinoBrepPreviewObject(brepFaces);
+    }
+  }
+  if (!obj) return false;
+  clearGroup(importedSurfaceGroup);
+  importedSurfaceGroup.add(obj);
+  const normalization = normalizeImportedObjectToWorkspace(obj);
+  obj.traverse((c) => {
+    if (c.isMesh) {
+      if (c.material) {
+        if (Array.isArray(c.material)) c.material.forEach((mat) => mat.dispose?.());
+        else c.material.dispose?.();
+      }
+      c.material = new THREE.MeshStandardMaterial({ color: 0x8eb8d4, roughness: 0.52, metalness: 0.04, side: THREE.DoubleSide, flatShading: false });
+    }
+  });
+  const acceleratedMeshes = prepareImportedGeometry(obj);
+  const tissueCells = objCarrierFaces.length ? buildTissueCellsFromPointFaces(objCarrierFaces, obj) : [];
   const bbox = new THREE.Box3().setFromObject(obj);
   state.importedSurface = obj;
   state.importedSurfaceBbox = bbox;
+  state.importedBrepPatches = brepFaces.length ? brepFaces.map((item) => item.patch) : null;
+  state.importedTopology = analyzeImportedMeshTopology(obj, bbox);
+  state.importedTopologyPolys = null;
+  state.importedTissueCells = tissueCells.length ? tissueCells : null;
+  state.importedTopologyMeshName = tissueCells.length
+    ? `${file.name} Panel carrier faces`
+    : brepFaces.length ? `${file.name} Rhino BREP faces` : "";
+  state.importedTopologyMeshStats = tissueCells.length ? {
+    faceCount: tissueCells.length,
+    vertexCount: tissueCells.reduce((sum, cell) => sum + cell.points.length, 0),
+    minVertices: Math.min(...tissueCells.map((cell) => cell.points.length)),
+    maxVertices: Math.max(...tissueCells.map((cell) => cell.points.length)),
+    source: "panel host mesh",
+  } : brepFaces.length ? {
+    faceCount: brepFaces.length,
+    vertexCount: brepFaces.length * 4,
+    minVertices: 4,
+    maxVertices: 4,
+  } : null;
   state.importedModelName = file.name;
-  state.importedModelStats = getImportedModelStats(obj);
+  state.importedModelStats = { ...getImportedModelStats(obj), acceleratedMeshes, normalizedScale: normalization.scale };
+  state.importedModelStats.rhinoBrepFaceCount = brepFaces.length;
   state.sourceTransform = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, scale: 1 };
   applySourceTransform();
   syncInputsFromState();
+  applyDisplayPreset();
   fitCameraToObject(obj);
+  return true;
+};
+
+const extractCustomPanelGeometryData = (obj, bbox = new THREE.Box3().setFromObject(obj)) => {
+  obj.updateMatrixWorld(true);
+  const positions = [];
+  const indices = [];
+  obj.traverse((mesh) => {
+    if (!mesh.isMesh || !mesh.geometry) return;
+    const pos = mesh.geometry.getAttribute("position");
+    if (!pos?.count) return;
+    const index = mesh.geometry.getIndex();
+    const base = positions.length;
+    for (let i = 0; i < pos.count; i++) {
+      positions.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld));
+    }
+    if (index?.count) {
+      for (let i = 0; i < index.count; i += 3) {
+        indices.push(base + index.getX(i), base + index.getX(i + 1), base + index.getX(i + 2));
+      }
+    } else {
+      for (let i = 0; i < pos.count - 2; i += 3) {
+        indices.push(base + i, base + i + 1, base + i + 2);
+      }
+    }
+  });
+  if (!positions.length || !indices.length) return null;
+  const size = bbox.getSize(new THREE.Vector3());
+  const ranges = [
+    { axis: "x", min: bbox.min.x, max: bbox.max.x, range: size.x },
+    { axis: "y", min: bbox.min.y, max: bbox.max.y, range: size.y },
+    { axis: "z", min: bbox.min.z, max: bbox.max.z, range: size.z },
+  ].sort((a, b) => b.range - a.range);
+  return {
+    positions,
+    indices,
+    axes: {
+      u: ranges[0],
+      v: ranges[1],
+      n: ranges[2],
+    },
+  };
+};
+
+const interpolateComponentCellUv = (sourceUv, u, v) => {
+  if (sourceUv.length === 4) {
+    const bottom = [
+      THREE.MathUtils.lerp(sourceUv[0][0], sourceUv[1][0], u),
+      THREE.MathUtils.lerp(sourceUv[0][1], sourceUv[1][1], u),
+    ];
+    const top = [
+      THREE.MathUtils.lerp(sourceUv[3][0], sourceUv[2][0], u),
+      THREE.MathUtils.lerp(sourceUv[3][1], sourceUv[2][1], u),
+    ];
+    return [
+      THREE.MathUtils.lerp(bottom[0], top[0], v),
+      THREE.MathUtils.lerp(bottom[1], top[1], v),
+    ];
+  }
+  const box = buildUvBoundingRect(sourceUv);
+  return [
+    THREE.MathUtils.lerp(box.minU, box.maxU, u),
+    THREE.MathUtils.lerp(box.minV, box.maxV, v),
+  ];
+};
+
+const getFaceNormalFromPoints = (points) => {
+  if (!points?.length || points.length < 3) return null;
+  const base = points[0];
+  for (let i = 1; i < points.length - 1; i++) {
+    const normal = new THREE.Vector3()
+      .crossVectors(points[i].clone().sub(base), points[i + 1].clone().sub(base));
+    if (normal.lengthSq() > 1e-10) return normal.normalize();
+  }
+  return new THREE.Vector3(0, 1, 0);
+};
+
+const interpolateTargetCellPoint = (points, u, v, sourceUv = null, clampCoordinates = true) => {
+  if (!points?.length) return new THREE.Vector3();
+  let uu = clampCoordinates ? clamp(u, 0, 1) : u;
+  let vv = clampCoordinates ? clamp(v, 0, 1) : v;
+  if (sourceUv?.length) {
+    const bounds = polygonBoundsUv(sourceUv);
+    const remappedU = (u - bounds.minU) / Math.max(1e-9, bounds.maxU - bounds.minU);
+    const remappedV = (v - bounds.minV) / Math.max(1e-9, bounds.maxV - bounds.minV);
+    uu = clampCoordinates ? clamp(remappedU, 0, 1) : remappedU;
+    vv = clampCoordinates ? clamp(remappedV, 0, 1) : remappedV;
+  }
+  if (points.length === 4) {
+    const bottom = points[0].clone().lerp(points[1], uu);
+    const top = points[3].clone().lerp(points[2], uu);
+    return bottom.lerp(top, vv);
+  }
+  if (points.length === 3) {
+    const a = points[0].clone().multiplyScalar(Math.max(0, 1 - uu - vv));
+    const b = points[1].clone().multiplyScalar(uu);
+    const c = points[2].clone().multiplyScalar(vv);
+    return a.add(b).add(c);
+  }
+  const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / points.length);
+  const angle = uu * Math.PI * 2;
+  const scaled = center.clone();
+  let closest = points[0];
+  let closestDot = -Infinity;
+  const normal = getFaceNormalFromPoints(points) || new THREE.Vector3(0, 1, 0);
+  const ref = points[0].clone().sub(center).normalize();
+  const bitangent = new THREE.Vector3().crossVectors(normal, ref).normalize();
+  points.forEach((point) => {
+    const dir = point.clone().sub(center).normalize();
+    const dot = dir.dot(ref) * Math.cos(angle) + dir.dot(bitangent) * Math.sin(angle);
+    if (dot > closestDot) {
+      closestDot = dot;
+      closest = point;
+    }
+  });
+  return scaled.lerp(closest, vv);
+};
+
+const interpolateTargetCellNormal = (normals, u, v, fallback = null) => {
+  if (!normals?.length) return fallback?.clone?.() || new THREE.Vector3(0, 1, 0);
+  const uu = clamp(u, 0, 1);
+  const vv = clamp(v, 0, 1);
+  if (normals.length === 4) {
+    const bottom = normals[0].clone().lerp(normals[1], uu);
+    const top = normals[3].clone().lerp(normals[2], uu);
+    const normal = bottom.lerp(top, vv);
+    return normal.lengthSq() > 1e-10 ? normal.normalize() : (fallback?.clone?.() || new THREE.Vector3(0, 1, 0));
+  }
+  const normal = normals.reduce((sum, n) => sum.add(n), new THREE.Vector3()).multiplyScalar(1 / normals.length);
+  return normal.lengthSq() > 1e-10 ? normal.normalize() : (fallback?.clone?.() || new THREE.Vector3(0, 1, 0));
+};
+
+const getTargetCellSeamExpansion = (points, allowance) => {
+  if (!points?.length || points.length !== 4 || Math.abs(allowance) < 1e-6) return { u: 0, v: 0 };
+  const bottom = points[0].distanceTo(points[1]);
+  const top = points[3].distanceTo(points[2]);
+  const left = points[0].distanceTo(points[3]);
+  const right = points[1].distanceTo(points[2]);
+  return {
+    u: clamp(allowance / Math.max(0.001, (bottom + top) * 0.5), -0.25, 0.25),
+    v: clamp(allowance / Math.max(0.001, (left + right) * 0.5), -0.25, 0.25),
+  };
+};
+
+const expandPanelCoordinateForSeam = (value, expansion) => {
+  if (Math.abs(expansion) < 1e-6) return value;
+  return 0.5 + (value - 0.5) * (1 + expansion * 2);
+};
+
+const getTargetCellDimensions = (points) => {
+  if (!points?.length || points.length < 3) return { u: 0, v: 0, average: 0 };
+  if (points.length === 4) {
+    const u = (points[0].distanceTo(points[1]) + points[3].distanceTo(points[2])) * 0.5;
+    const v = (points[0].distanceTo(points[3]) + points[1].distanceTo(points[2])) * 0.5;
+    return { u, v, average: (u + v) * 0.5 };
+  }
+  const edges = points.map((point, index) => point.distanceTo(points[(index + 1) % points.length]));
+  const average = edges.reduce((sum, edge) => sum + edge, 0) / edges.length;
+  return { u: average, v: average, average };
+};
+
+const getCustomPanelThicknessSettings = (data, targetPoints, baseThickness) => {
+  const mode = state.strategy.thickness === "relative-cell" ? "relative" : state.strategy.thickness || "constant";
+  const sourceThickness = Math.max(0.001, data.axes.n.range || baseThickness || 0.001);
+  const sourcePlan = Math.max(0.001, Math.max(data.axes.u.range || 0, data.axes.v.range || 0));
+  const targetDims = getTargetCellDimensions(targetPoints);
+  const targetPlan = Math.max(0.001, targetDims.average || baseThickness || sourcePlan);
+  const userScale = clamp(Number(state.customPanelThicknessScale) || 1, 0.05, 20);
+  const offset = Number(state.customPanelThicknessOffset) || 0;
+  if (mode === "relative") {
+    return {
+      thickness: clamp(targetPlan * (sourceThickness / sourcePlan) * userScale, 0.001, 20),
+      offset,
+      align: 0,
+    };
+  }
+  if (mode === "scale") {
+    return {
+      thickness: clamp(sourceThickness * userScale, 0.001, 20),
+      offset,
+      align: 0,
+    };
+  }
+  if (mode === "offset") {
+    return {
+      thickness: clamp(sourceThickness * userScale, 0.001, 20),
+      offset,
+      align: -0.5,
+    };
+  }
+  return {
+    thickness: Math.max(0.001, baseThickness),
+    offset,
+    align: 0,
+  };
+};
+
+const getNormalizedAxisValue = (point, axis) => clamp((point[axis.axis] - axis.min) / Math.max(axis.range, 1e-9), 0, 1);
+
+const getCustomPanelMorphCompatibility = (basisData, morphData) => {
+  if (!basisData?.positions?.length || !morphData?.positions?.length) return { compatible: false, reason: "missing mesh positions" };
+  if (basisData.positions.length !== morphData.positions.length) return { compatible: false, reason: "vertex count differs" };
+  if (basisData.indices?.length !== morphData.indices?.length) return { compatible: false, reason: "triangle count differs" };
+  if (!basisData.indices.every((value, index) => value === morphData.indices[index])) return { compatible: false, reason: "triangle indexing differs" };
+  const edgeTolerance = 0.024;
+  const boundaryTolerance = 0.003;
+  for (let index = 0; index < basisData.positions.length; index++) {
+    const base = basisData.positions[index];
+    const baseU = getNormalizedAxisValue(base, basisData.axes.u);
+    const baseV = getNormalizedAxisValue(base, basisData.axes.v);
+    if (Math.min(baseU, 1 - baseU, baseV, 1 - baseV) > edgeTolerance) continue;
+    const morph = morphData.positions[index];
+    const morphU = getNormalizedAxisValue(morph, morphData.axes.u);
+    const morphV = getNormalizedAxisValue(morph, morphData.axes.v);
+    if (Math.hypot(baseU - morphU, baseV - morphV) > boundaryTolerance) {
+      return { compatible: false, reason: "outer boundary vertices moved" };
+    }
+  }
+  return { compatible: true, reason: "matched topology and boundary" };
+};
+const customPanelMorphIsCompatible = (basisData, morphData) => getCustomPanelMorphCompatibility(basisData, morphData).compatible;
+
+const buildCustomPanelMappedGeometry = (block, sourceUv, thickness, useImportedSurface = false) => {
+  const panel = state.customPanel;
+  const data = panel?.geometryData;
+  if (!data?.positions?.length || !data?.indices?.length) return null;
+  const panelVariantRole = block.panelVariantRole || resolvePanelVariantRoleForBlock(block);
+  const panelTransform = getPanelVariantTransform(panelVariantRole);
+  const alignmentMode = panelTransform.align && panelTransform.align !== "strategy" ? panelTransform.align : state.strategy.rotation;
+  if (alignmentMode && alignmentMode !== state.strategy.rotation) block.mapping = { ...(block.mapping || {}), rotation: alignmentMode };
+  const morphData = panel?.morph?.compatible ? panel.morph.geometryData : null;
+  const host = getHostField();
+  const axisValue = (point, axis) => point[axis.axis];
+  const targetPoints = block.targetPoints?.length >= 3 ? block.targetPoints : null;
+  const targetNormal = targetPoints ? getFaceNormalFromPoints(targetPoints) : null;
+  const targetNormals = block.targetNormals?.length === targetPoints?.length ? block.targetNormals : null;
+  const seamExpansion = getTargetCellSeamExpansion(targetPoints, state.customPanelSeamAllowance || 0);
+  const thicknessSettings = getCustomPanelThicknessSettings(data, targetPoints, thickness);
+  const morphStrength = clamp(state.panelMorphStrength || 0, 0, 1);
+  const morphWeight = clamp(block.morphWeight ?? getPanelMorphWeight(sourceUv, block.id || "custom-panel-morph"), 0, 1);
+  const fieldWeight = clamp(block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? 0, 0, 1);
+  const response = state.panelAttractorResponse || { mode: "apertureMorph", amount: 1 };
+  const responseAmount = clamp(Number(response.amount) || 0, 0, 1);
+  const responseWeight = state.fieldWeights.driveDensity ? fieldWeight : 0;
+  const responseThickness = response.mode === "thickness"
+    ? thicknessSettings.thickness * (1 + responseWeight * responseAmount)
+    : thicknessSettings.thickness;
+  const responseOffset = response.mode === "offset"
+    ? thicknessSettings.thickness * responseWeight * responseAmount
+    : 0;
+  const targetPointAt = targetPoints ? (u, v) => interpolateTargetCellPoint(targetPoints, u, v, null, false) : null;
+  const targetNormalAt = targetNormals ? (u, v) => interpolateTargetCellNormal(targetNormals, u, v, targetNormal) : null;
+  const out = [];
+  const surfacePoints = [];
+  for (let i = 0; i < data.positions.length; i++) {
+    const point = data.positions[i];
+    const u = getNormalizedAxisValue(point, data.axes.u);
+    const v = getNormalizedAxisValue(point, data.axes.v);
+    const interiorShape = Math.sin(Math.PI * u) * Math.sin(Math.PI * v);
+    const cellMorphBlend = response.mode === "apertureMorph"
+      ? (morphData ? responseWeight * responseAmount : 0)
+      : morphStrength * morphWeight;
+    const shapeKeyBlend = morphData ? cellMorphBlend : cellMorphBlend * Math.max(0, interiorShape);
+    const morphPoint = morphData?.positions?.[i];
+    const morphU = morphPoint ? getNormalizedAxisValue(morphPoint, morphData.axes.u) : u;
+    const morphV = morphPoint ? getNormalizedAxisValue(morphPoint, morphData.axes.v) : v;
+    const h = data.axes.n.range > 1e-9 ? (axisValue(point, data.axes.n) - data.axes.n.min) / data.axes.n.range : 0;
+    const morphH = morphPoint && morphData.axes.n.range > 1e-9
+      ? (axisValue(morphPoint, morphData.axes.n) - morphData.axes.n.min) / morphData.axes.n.range
+      : h;
+    const [baseMappedU, baseMappedV] = applyPanelTransformToUv(u, v, panelTransform);
+    const [morphMappedU, morphMappedV] = applyPanelTransformToUv(morphU, morphV, panelTransform);
+    const mappedU = THREE.MathUtils.lerp(baseMappedU, morphMappedU, shapeKeyBlend);
+    const mappedV = THREE.MathUtils.lerp(baseMappedV, morphMappedV, shapeKeyBlend);
+    const sourceThickness = Math.max(data.axes.n.range, 1e-9);
+    const morphDepthDelta = morphPoint
+      ? clamp((axisValue(morphPoint, morphData.axes.n) - axisValue(point, data.axes.n)) / sourceThickness, -0.28, 0.28)
+      : 0;
+    const blendedH = THREE.MathUtils.lerp(h, morphH, shapeKeyBlend);
+    const mappedH = panelTransform.flipNormal ? 1 - blendedH : blendedH;
+    const scaledU = mappedU;
+    const scaledV = mappedV;
+    const targetU = expandPanelCoordinateForSeam(scaledU, seamExpansion.u);
+    const targetV = expandPanelCoordinateForSeam(scaledV, seamExpansion.v);
+    const morphNormalOffset = morphData ? morphDepthDelta * shapeKeyBlend * responseThickness : 0;
+    const syntheticOffset = morphData ? 0 : shapeKeyBlend * responseThickness * 2.2 * (0.35 + 0.65 * clamp(h, 0, 1));
+    const variantScaleZ = clamp(Number(panelTransform.scaleZ) || 1, 0.05, 8);
+    const variantOffset = Number(panelTransform.surfaceOffset) || 0;
+    const normalSign = panelTransform.flipNormal ? -1 : 1;
+    const normalOffset = (
+      thicknessSettings.offset +
+      (mappedH + thicknessSettings.align) * responseThickness * variantScaleZ +
+      morphNormalOffset +
+      syntheticOffset +
+      variantOffset + responseOffset
+    ) * normalSign;
+    const [su, sv] = interpolateComponentCellUv(sourceUv, mappedU, mappedV);
+    let base;
+    let normal;
+    if (targetPointAt && targetNormal) {
+      base = targetPointAt(targetU, targetV);
+      normal = targetNormalAt ? targetNormalAt(clamp(targetU, 0, 1), clamp(targetV, 0, 1)) : targetNormal;
+    } else if (useImportedSurface) {
+      const anchor = block.anchorUv || polygonCentroidUv(sourceUv);
+      const sample = getImportedSurfaceSampleNear(clamp(su, 0, 1), clamp(sv, 0, 1), clamp(anchor[0], 0, 1), clamp(anchor[1], 0, 1));
+      if (!sample) return null;
+      base = sample.point;
+      normal = sample.normal;
+    } else {
+      const cu = state.vaultType === "Dome" ? wrap01(su) : clamp(su, 0, 1);
+      const cv = clamp(sv, 0, 1);
+      base = host.pointAt(cu, cv);
+      normal = host.normalAt(cu, cv).clone();
+      if (normal.y < 0) normal.multiplyScalar(-1);
+    }
+    surfacePoints.push(base);
+    out.push(base.clone().addScaledVector(normal, normalOffset));
+  }
+  const pos = new Float32Array(out.length * 3);
+  out.forEach((p, i) => {
+    pos[i * 3] = p.x;
+    pos[i * 3 + 1] = p.y;
+    pos[i * 3 + 2] = p.z;
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(data.indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  return {
+    geometry,
+    q: targetPoints ? targetPoints.map((point) => point.clone()) : sourceUv.map(([u, v]) => {
+      if (useImportedSurface) {
+        const anchor = block.anchorUv || polygonCentroidUv(sourceUv);
+        const sample = getImportedSurfaceSampleNear(clamp(u, 0, 1), clamp(v, 0, 1), clamp(anchor[0], 0, 1), clamp(anchor[1], 0, 1));
+        return sample?.point?.clone() || new THREE.Vector3();
+      }
+      return host.pointAt(state.vaultType === "Dome" ? wrap01(u) : clamp(u, 0, 1), clamp(v, 0, 1));
+    }),
+    sourcePointCount: out.length,
+    sourceTriangleCount: Math.floor(data.indices.length / 3),
+  };
+};
+
+const extractPanelComponentFromFile = async (file) => {
+  const obj = await loadObjectFromFile(file);
+  if (!obj || !objectHasRenderableMesh(obj)) return false;
+  obj.updateMatrixWorld(true);
+  const bbox = new THREE.Box3().setFromObject(obj);
+  if (bbox.isEmpty()) {
+    disposeObject(obj);
+    return null;
+  }
+  const size = bbox.getSize(new THREE.Vector3());
+  const stats = getImportedModelStats(obj);
+  const geometryData = extractCustomPanelGeometryData(obj, bbox);
+  if (!geometryData?.positions?.length || !geometryData?.indices?.length) {
+    disposeObject(obj);
+    return null;
+  }
+  return { obj, size, stats, geometryData };
+};
+
+const loadCustomPanelComponent = async (file) => {
+  const extracted = await extractPanelComponentFromFile(file);
+  if (!extracted) return false;
+  const { obj, size, stats, geometryData } = extracted;
+  if (state.customPanelObject) disposeObject(state.customPanelObject);
+  if (state.customPanelMorphObject) disposeObject(state.customPanelMorphObject);
+  state.customPanelMorphObject = null;
+  if (nodes.importCustomPanelMorph) nodes.importCustomPanelMorph.value = "";
+  state.customPanelObject = obj;
+  state.customPanelVariantTransforms = {};
+  ensurePanelVariantTransforms();
+  state.activePanelVariantRole = "base";
+  state.panelVariantAssignmentMode = "auto";
+  state.customPanel = {
+    name: file.name,
+    meshCount: stats.meshCount,
+    vertexCount: stats.vertexCount,
+    triangleCount: stats.triangleCount,
+    size: { x: size.x, y: size.y, z: size.z },
+    geometryData,
+    mappingMode: state.strategy.scale,
+    loadedAt: new Date().toISOString(),
+  };
+  state.strategy.component = "custom";
+  state.strategy.componentMode = "family";
+  setInputValue(nodes.strategyComponent, "custom", { force: true });
+  setInputValue(nodes.strategyComponentMode, "family", { force: true });
+  renderCustomPanelStatus();
+  return true;
+};
+
+const loadCustomPanelMorphComponent = async (file) => {
+  if (!state.customPanel?.geometryData) return false;
+  const extracted = await extractPanelComponentFromFile(file);
+  if (!extracted) return false;
+  const { obj, size, stats, geometryData } = extracted;
+  if (state.customPanelMorphObject) disposeObject(state.customPanelMorphObject);
+  state.customPanelMorphObject = obj;
+  const compatibility = getCustomPanelMorphCompatibility(state.customPanel.geometryData, geometryData);
+  const compatible = compatibility.compatible;
+  state.customPanel.morph = {
+    name: file.name,
+    meshCount: stats.meshCount,
+    vertexCount: stats.vertexCount,
+    triangleCount: stats.triangleCount,
+    size: { x: size.x, y: size.y, z: size.z },
+    compatible,
+    compatibilityReason: compatibility.reason,
+    geometryData,
+    loadedAt: new Date().toISOString(),
+  };
+  renderCustomPanelStatus();
+  return true;
+};
+
+const resetCustomTiles = () => {
+  if (state.customPanelObject) disposeObject(state.customPanelObject);
+  if (state.customPanelMorphObject) disposeObject(state.customPanelMorphObject);
+  state.customPanel = null;
+  state.customPanelObject = null;
+  state.customPanelMorphObject = null;
+  state.customPanelVariantTransforms = {};
+  state.activePanelVariantRole = "base";
+  state.panelVariantAssignmentMode = "auto";
+  state.imported2DPolys = null;
+  state.importedTopologyPolys = null;
+  state.importedTissueCells = null;
+  state.importedTopologyMeshName = "";
+  state.importedTopologyMeshStats = null;
+  state.dualPreviewLoops = [];
+  state.blocks = [];
+  state.selectedBlockId = null;
+  state.patternAppliedToModel = false;
+  state.customPatternSource = state.importedSurface ? "Freeform Courses" : "UV Form Grid";
+  state.surfacePrinciple = vaultSurfacePrincipleDefault["Custom Imported Rhino Surface"] || state.surfacePrinciple;
+  syncCustomPatternSourceInputs();
+  ["importCustomPanel", "importCustomPanelMorph", "importTopologyMesh", "import2d"].forEach((id) => {
+    const el = byId(id);
+    if (el) el.value = "";
+  });
+  renderCustomPanelStatus();
+  setStrategyViewMode("uv-layout");
+  setPipelineStatus("Custom tiles reset. Load a new panel or topology mesh to test another tile.");
+  rebuild();
 };
 
 const on2dImport = async (file) => {
@@ -5604,14 +12713,915 @@ const on2dImport = async (file) => {
   if (lower.endsWith(".svg")) polys = parseSvgPolys(text);
   if (lower.endsWith(".dxf")) polys = parseDxfPolys(text);
   if (polys.length) state.imported2DPolys = normalizePolysToUv(polys);
+  return polys.length > 0;
+};
+
+const assetLibraryDbName = "lithic-lab-user-library";
+const assetLibraryStore = "assets";
+const assetKindLabels = {
+  "2d-layout": "2D tile layout",
+  "topology-mesh": "Topology tile mesh",
+  "custom-panel": "Custom tile panel",
+  "morph-panel": "Morph tile panel",
+  "edited-panel": "Edited panel variant",
+  "host-3d": "3D host",
+};
+
+const getFileExtension = (name = "") => {
+  const ext = String(name).split(".").pop();
+  return ext && ext !== name ? ext.toUpperCase() : "FILE";
+};
+
+const formatAssetDate = (dateValue) => {
+  if (!dateValue) return "n/a";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "n/a";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+
+const formatAssetCount = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString() : "n/a";
+
+const getActivePanelName = () => {
+  if (state.customPanel?.name) return state.customPanel.name;
+  if (state.importedTopologyMeshName) return state.importedTopologyMeshName.replace(/\s+Panel carrier faces$/i, "");
+  if (state.libraryCandidates.tile?.file?.name) return state.libraryCandidates.tile.file.name;
+  if (state.imported2DPolys?.length) return "Imported 2D layout";
+  return "Default blocks";
+};
+
+const renderActiveAssetStrip = () => {
+  if (nodes.activeHostName) nodes.activeHostName.textContent = state.importedModelName || "Generated vault";
+  if (nodes.activePanelName) nodes.activePanelName.textContent = getActivePanelName();
+  if (nodes.activeMappingName) {
+    const strategy = getActiveStrategy();
+    nodes.activeMappingName.textContent = `${labelStrategyValue(strategy.rotation)} / ${labelStrategyValue(strategy.scale)}`;
+  }
+  if (nodes.activeMorphName) {
+    const morph = state.customPanel?.morph;
+    const strength = Number(state.panelMorphStrength || 0);
+    nodes.activeMorphName.textContent = morph
+      ? `${morph.name}${morph.compatible === false ? " (fallback)" : ""}`
+      : strength > 0.001 ? `Blend ${Math.round(strength * 100)}%` : "None";
+  }
+  renderAssetLibraryPreview?.("host");
+  renderAssetLibraryPreview?.("panel");
+};
+
+const getCurrentAssetMetadata = (kind, file) => {
+  const ext = getFileExtension(file?.name);
+  if (kind === "host-3d") {
+    return {
+      ext,
+      meshCount: state.importedModelStats?.meshCount,
+      triangleCount: state.importedModelStats?.triangleCount,
+      vertexCount: state.importedModelStats?.vertexCount,
+      previewLabel: "3D",
+    };
+  }
+  if (kind === "custom-panel") {
+    return {
+      ext,
+      meshCount: state.customPanel?.meshCount,
+      triangleCount: state.customPanel?.triangleCount,
+      vertexCount: state.customPanel?.vertexCount,
+      previewLabel: "PNL",
+    };
+  }
+  if (kind === "morph-panel") {
+    return {
+      ext,
+      meshCount: state.customPanel?.morph?.meshCount,
+      triangleCount: state.customPanel?.morph?.triangleCount,
+      vertexCount: state.customPanel?.morph?.vertexCount,
+      previewLabel: "MRP",
+    };
+  }
+  if (kind === "edited-panel") {
+    return {
+      ext: "PANEL",
+      meshCount: state.customPanel?.meshCount,
+      triangleCount: state.customPanel?.triangleCount,
+      vertexCount: state.customPanel?.vertexCount,
+      previewLabel: "VAR",
+    };
+  }
+  if (kind === "topology-mesh") {
+    return {
+      ext,
+      faceCount: state.importedTopologyMeshStats?.faceCount,
+      vertexCount: state.importedTopologyMeshStats?.vertexCount,
+      previewLabel: "TOP",
+    };
+  }
+  return {
+    ext,
+    faceCount: state.imported2DPolys?.length,
+    previewLabel: "2D",
+  };
+};
+
+const serializeVector3 = (point) => [point.x, point.y, point.z];
+const deserializeVector3 = (point) => new THREE.Vector3(point?.[0] || 0, point?.[1] || 0, point?.[2] || 0);
+
+const serializePanelGeometryData = (data) => data ? ({
+  positions: (data.positions || []).map(serializeVector3),
+  indices: [...(data.indices || [])],
+  axes: data.axes ? {
+    u: { ...data.axes.u },
+    v: { ...data.axes.v },
+    n: { ...data.axes.n },
+  } : null,
+}) : null;
+
+const deserializePanelGeometryData = (data) => data ? ({
+  positions: (data.positions || []).map(deserializeVector3),
+  indices: [...(data.indices || [])],
+  axes: data.axes ? {
+    u: { ...data.axes.u },
+    v: { ...data.axes.v },
+    n: { ...data.axes.n },
+  } : null,
+}) : null;
+
+const makePanelVariantName = (mode = "edited") => {
+  const base = (state.customPanel?.name || "custom-panel")
+    .replace(/\.[^.]+$/, "")
+    .replace(/\s+\((edited|variant \d+)\)$/i, "");
+  if (mode === "duplicate") {
+    const variantCount = state.assetLibraryEntries.filter((entry) => entry.kind === "edited-panel" && entry.name.startsWith(`${base} Variant`)).length + 1;
+    return `${base} Variant ${variantCount}.panel.json`;
+  }
+  return `${base} Edited.panel.json`;
+};
+
+const buildCurrentPanelVariantPayload = (name) => {
+  const panel = state.customPanel;
+  if (!panel?.geometryData) return null;
+  return {
+    version: 1,
+    type: "lithic-lab-edited-panel",
+    name,
+    savedAt: new Date().toISOString(),
+    panel: {
+      name,
+      meshCount: panel.meshCount || 1,
+      vertexCount: panel.vertexCount || panel.geometryData.positions?.length || 0,
+      triangleCount: panel.triangleCount || Math.floor((panel.geometryData.indices?.length || 0) / 3),
+      size: panel.size || null,
+      geometryData: serializePanelGeometryData(panel.geometryData),
+      mappingMode: state.strategy.scale,
+      loadedAt: new Date().toISOString(),
+      sourceName: panel.name,
+      variantSettings: {
+        seamAllowance: state.customPanelSeamAllowance,
+        thicknessScale: state.customPanelThicknessScale,
+        thicknessOffset: state.customPanelThicknessOffset,
+        panelSubdivisionU: state.panelSubdivisionU,
+        panelSubdivisionV: state.panelSubdivisionV,
+        panelMorphStrength: state.panelMorphStrength,
+        panelWeightSubdivision: state.panelWeightSubdivision,
+        activePanelVariantRole: state.activePanelVariantRole,
+        panelVariantAssignmentMode: state.panelVariantAssignmentMode,
+        customPanelVariantTransforms: ensurePanelVariantTransforms(),
+        strategy: { ...state.strategy },
+      },
+      morph: panel.morph ? {
+        name: panel.morph.name,
+        meshCount: panel.morph.meshCount,
+        vertexCount: panel.morph.vertexCount,
+        triangleCount: panel.morph.triangleCount,
+        size: panel.morph.size || null,
+        compatible: !!panel.morph.compatible,
+        geometryData: serializePanelGeometryData(panel.morph.geometryData),
+        loadedAt: panel.morph.loadedAt,
+      } : null,
+    },
+  };
+};
+
+const applyPanelVariantPayload = (payload) => {
+  const panel = payload?.panel;
+  if (!panel?.geometryData) return false;
+  if (state.customPanelObject) disposeObject(state.customPanelObject);
+  if (state.customPanelMorphObject) disposeObject(state.customPanelMorphObject);
+  state.customPanelObject = null;
+  state.customPanelMorphObject = null;
+  state.customPanel = {
+    name: panel.name || payload.name || "Edited panel variant",
+    meshCount: panel.meshCount || 1,
+    vertexCount: panel.vertexCount || panel.geometryData.positions?.length || 0,
+    triangleCount: panel.triangleCount || Math.floor((panel.geometryData.indices?.length || 0) / 3),
+    size: panel.size || null,
+    geometryData: deserializePanelGeometryData(panel.geometryData),
+    mappingMode: panel.mappingMode || state.strategy.scale,
+    loadedAt: new Date().toISOString(),
+    sourceName: panel.sourceName || panel.name,
+    variantSettings: panel.variantSettings || null,
+  };
+  if (panel.morph?.geometryData) {
+    state.customPanel.morph = {
+      ...panel.morph,
+      geometryData: deserializePanelGeometryData(panel.morph.geometryData),
+    };
+  }
+  const settings = panel.variantSettings || {};
+  state.customPanelSeamAllowance = Number(settings.seamAllowance ?? state.customPanelSeamAllowance) || 0;
+  state.customPanelThicknessScale = Number(settings.thicknessScale ?? state.customPanelThicknessScale) || 1;
+  state.customPanelThicknessOffset = Number(settings.thicknessOffset ?? state.customPanelThicknessOffset) || 0;
+  state.panelSubdivisionU = clamp(Math.round(settings.panelSubdivisionU ?? state.panelSubdivisionU), 1, 8);
+  state.panelSubdivisionV = clamp(Math.round(settings.panelSubdivisionV ?? state.panelSubdivisionV), 1, 8);
+  state.panelMorphStrength = clamp(Number(settings.panelMorphStrength ?? state.panelMorphStrength) || 0, 0, 1);
+  state.panelWeightSubdivision = !!(settings.panelWeightSubdivision ?? state.panelWeightSubdivision);
+  state.activePanelVariantRole = settings.activePanelVariantRole || state.activePanelVariantRole || "base";
+  state.panelVariantAssignmentMode = settings.panelVariantAssignmentMode || state.panelVariantAssignmentMode || "auto";
+  state.customPanelVariantTransforms = settings.customPanelVariantTransforms || state.customPanelVariantTransforms || {};
+  ensurePanelVariantTransforms();
+  if (settings.strategy) state.strategy = { ...state.strategy, ...settings.strategy };
+  state.strategy.component = "custom";
+  state.strategy.componentMode = state.strategy.componentMode || "family";
+  setInputValue(nodes.strategyComponent, "custom", { force: true });
+  setInputValue(nodes.strategyComponentMode, state.strategy.componentMode, { force: true });
+  renderCustomPanelStatus();
+  return true;
+};
+
+const openAssetLibraryDb = () => new Promise((resolve, reject) => {
+  if (!("indexedDB" in window)) {
+    reject(new Error("IndexedDB is not available in this browser."));
+    return;
+  }
+  const request = indexedDB.open(assetLibraryDbName, 1);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    if (!db.objectStoreNames.contains(assetLibraryStore)) {
+      const store = db.createObjectStore(assetLibraryStore, { keyPath: "id" });
+      store.createIndex("kind", "kind", { unique: false });
+      store.createIndex("addedAt", "addedAt", { unique: false });
+    }
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error || new Error("Could not open the asset library."));
+});
+
+const runAssetLibraryStore = async (mode, action) => {
+  const db = await openAssetLibraryDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(assetLibraryStore, mode);
+      const store = tx.objectStore(assetLibraryStore);
+      const request = action(store);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || tx.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+};
+
+const assetLibraryViews = {
+  host: {
+    select: () => nodes.hostLibrarySelect,
+    status: () => nodes.hostLibraryStatus,
+    preview: () => nodes.hostLibraryPreview,
+    kinds: ["host-3d"],
+    emptyLabel: "No saved hosts",
+  },
+  panel: {
+    select: () => nodes.panelLibrarySelect,
+    status: () => nodes.panelLibraryStatus,
+    preview: () => nodes.panelLibraryPreview,
+    kinds: ["2d-layout", "topology-mesh", "custom-panel", "morph-panel", "edited-panel"],
+    emptyLabel: "No saved panels",
+  },
+  tile: { kinds: ["tile-system"] },
+};
+
+const getAssetLibraryViewForKind = (kind) => kind === "host-3d" ? "host" : "panel";
+
+const setAssetLibraryStatus = (viewKey, message) => {
+  const status = assetLibraryViews[viewKey]?.status?.();
+  if (status) status.textContent = message;
+};
+
+const populateAssetLibrarySelect = (viewKey) => {
+  const view = assetLibraryViews[viewKey];
+  const select = view?.select?.();
+  if (!view || !select) return;
+  const previousValue = select.value;
+  const entries = state.assetLibraryEntries.filter((entry) => view.kinds.includes(entry.kind));
+  select.innerHTML = "";
+  if (!entries.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = view.emptyLabel;
+    select.append(option);
+    renderAssetLibraryPreview(viewKey);
+    return;
+  }
+  entries.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.id;
+    option.textContent = `${assetKindLabels[entry.kind] || "Asset"} - ${entry.name}`;
+    select.append(option);
+  });
+  if (entries.some((entry) => entry.id === previousValue)) {
+    select.value = previousValue;
+  }
+  renderAssetLibraryPreview(viewKey);
+};
+
+const getSelectedAssetEntry = (viewKey) => {
+  const id = assetLibraryViews[viewKey]?.select?.()?.value;
+  if (!id) return null;
+  return state.assetLibraryEntries.find((entry) => entry.id === id) || null;
+};
+
+const isAssetEntryActive = (entry) => {
+  if (!entry) return false;
+  if (entry.id === state.activeLibraryAssetIds?.[getAssetLibraryViewForKind(entry.kind)]) return true;
+  if (entry.kind === "host-3d") return !!state.importedModelName && state.importedModelName === entry.name;
+  if (entry.kind === "custom-panel") return state.customPanel?.name === entry.name;
+  if (entry.kind === "morph-panel") return state.customPanel?.morph?.name === entry.name;
+  if (entry.kind === "edited-panel") return state.customPanel?.name === entry.name;
+  if (entry.kind === "topology-mesh") return !!state.importedTopologyMeshName && state.importedTopologyMeshName.includes(entry.name);
+  return state.libraryCandidates.tile?.file?.name === entry.name;
+};
+
+const renderAssetLibraryPreview = (viewKey) => {
+  const preview = assetLibraryViews[viewKey]?.preview?.();
+  if (!preview) return;
+  const entry = getSelectedAssetEntry(viewKey);
+  const thumb = preview.querySelector(".asset-thumb");
+  const title = preview.querySelector(".asset-preview-main b");
+  const description = preview.querySelector(".asset-preview-main > span");
+  const meta = preview.querySelector(".asset-meta");
+  const active = preview.querySelector("em");
+  if (!entry) {
+    if (thumb) thumb.textContent = viewKey === "host" ? "3D" : "PNL";
+    if (title) title.textContent = viewKey === "host" ? "No saved host selected" : "No saved panel selected";
+    if (description) description.textContent = viewKey === "host"
+      ? "Save or select a host surface to see file details."
+      : "Save or select a panel asset to see file details.";
+    if (meta) meta.innerHTML = viewKey === "host"
+      ? "<span>Type: n/a</span><span>Triangles: n/a</span><span>Last used: n/a</span>"
+      : "<span>Type: n/a</span><span>Faces: n/a</span><span>Last used: n/a</span>";
+    if (active) {
+      active.textContent = "Inactive";
+      active.classList.remove("active");
+    }
+    return;
+  }
+  const metadata = entry.metadata || {};
+  const ext = metadata.ext || getFileExtension(entry.name);
+  const primaryCount = entry.kind === "host-3d" || entry.kind === "custom-panel" || entry.kind === "morph-panel" || entry.kind === "edited-panel"
+    ? `Triangles: ${formatAssetCount(metadata.triangleCount)}`
+    : `Faces: ${formatAssetCount(metadata.faceCount)}`;
+  if (thumb) thumb.textContent = metadata.previewLabel || (viewKey === "host" ? "3D" : ext.slice(0, 3));
+  if (title) title.textContent = entry.name;
+  if (description) description.textContent = assetKindLabels[entry.kind] || "Saved asset";
+  if (meta) {
+    meta.innerHTML = [
+      `<span>Type: ${ext}</span>`,
+      `<span>${primaryCount}</span>`,
+      `<span>Last used: ${formatAssetDate(entry.lastUsedAt || entry.addedAt)}</span>`,
+    ].join("");
+  }
+  if (active) {
+    const isActive = isAssetEntryActive(entry);
+    active.textContent = isActive ? "Active" : "Inactive";
+    active.classList.toggle("active", isActive);
+  }
+};
+
+const renderAssetLibrary = async () => {
+  if (!nodes.hostLibrarySelect && !nodes.panelLibrarySelect && !byId("bdTileList")) return;
+  try {
+    const entries = await runAssetLibraryStore("readonly", (store) => store.getAll());
+    state.assetLibraryEntries = entries
+      .map(({ blob, ...entry }) => entry)
+      .sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
+    populateAssetLibrarySelect("host");
+    populateAssetLibrarySelect("panel");
+    renderBlockDesignerLibrary();
+    renderActiveAssetStrip();
+  } catch (err) {
+    console.error("renderAssetLibrary failed", err);
+    setAssetLibraryStatus("host", "The host library could not be opened in this browser.");
+    setAssetLibraryStatus("panel", "The panel library could not be opened in this browser.");
+  }
+};
+
+const getBlockDesignerData = () => state.blockDesigner;
+const bdPath = (w, h, d) => {
+  const b = getBlockDesignerData(); const waves = Math.max(1, b.frequency); const amp = Math.min(h * .3, b.amplitude / Math.max(1, b.height) * h); const phase = b.phase / 100 * Math.PI * 2;
+  let p = `M ${w / 2} 0`; for (let i = 0; i <= 48; i++) { const y = h * i / 48; const x = w / 2 + Math.sin((i / 48) * Math.PI * 2 * waves + phase) * amp * (0.35 + b.morph / 150); p += ` L ${x.toFixed(1)} ${y.toFixed(1)}`; } return p;
+};
+const renderBlockDesignerLegacy = () => {
+  const b = getBlockDesignerData(); const pair = byId("bdPairCanvas"), swatch = byId("bdSwatchCanvas"); if (!pair || !swatch) return;
+  const W = 800, H = 360, gap = b.view === "exploded" ? 70 : b.clearance * .8; const x = 400; const p = bdPath(W, H - 50, b.depth); const left = `M 80 25 H ${x} ${p.replace(/^M/, "L")} L ${x} ${H - 25} H 80 Z`; const rightPath = p.replace(/^M [^ ]+ 0/, `M ${x + gap} 0`).replace(/ L ([^ ]+) /g, (_, v) => ` L ${(Number(v) + gap).toFixed(1)} `); const right = `${rightPath} L ${W - 80} ${H - 25} H ${x + gap} Z`;
+  const profile = b.view === "profile"; const contact = b.view === "contact"; const tol = b.view === "tolerance";
+  pair.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="bdA" x1="0" x2="1"><stop stop-color="#d9c5a7"/><stop offset="1" stop-color="#9f8568"/></linearGradient><linearGradient id="bdB" x1="0" x2="1"><stop stop-color="#a9bdd0"/><stop offset="1" stop-color="#6f8499"/></linearGradient></defs><path d="${left}" fill="${profile ? "none" : "url(#bdA)"}" stroke="#f8ead7" stroke-width="2"/><path d="${right}" fill="${profile ? "none" : "url(#bdB)"}" stroke="#d9ecff" stroke-width="2"/>${contact ? `<path d="${p}" fill="none" stroke="#79e4a7" stroke-width="8" opacity=".75"/>` : ""}${tol ? `<path d="${p}" fill="none" stroke="#ffd26e" stroke-width="${Math.max(2, b.clearance * 2)}" stroke-dasharray="4 5"/>` : ""}<text x="80" y="18" fill="#9eb4ce" font-size="14">BLOCK A</text><text x="${W - 150}" y="18" fill="#9eb4ce" font-size="14">BLOCK B</text><text x="400" y="${H - 5}" text-anchor="middle" fill="#79b8ff" font-size="13">${b.jointType} · ${b.frequency} waves · ${b.clearance} mm clearance</text></svg>`;
+  const n = b.swatch, cols = Math.min(n, 10), rows = Math.min(n, 10), cells = []; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const cw = 100 / cols, ch = 100 / rows, offset = b.tileMode === "Running Bond" && r % 2 ? cw / 2 : 0; const hue = (r + c) % 2 ? "#7891a8" : "#b99c7c"; cells.push(`<path d="M ${c * cw + offset} ${r * ch} h ${cw} v ${ch} h -${cw}z" fill="${hue}" stroke="#dce8f4" stroke-opacity=".45"/><path d="M ${c * cw + offset + cw / 2} ${r * ch} q ${cw / 8} ${ch / 4} 0 ${ch / 2} q -${cw / 8} ${ch / 4} 0 ${ch / 2}" fill="none" stroke="#172435" stroke-width=".7"/>`); } swatch.innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${cells.join("")}</svg>`;
+  byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} • ${b.tileMode}`;
+  renderBlockDesignerAnalysis(); renderBlockDesignerLibrary();
+};
+const getBdJointOffset = (t) => {
+  const b = getBlockDesignerData(), a = b.amplitude / 100;
+  if (b.jointType === "Flat Joint") return 0;
+  if (b.jointType === "Zig Zag Joint") return (Math.abs(((t * b.frequency) % 1) - .5) * 4 - 1) * a;
+  if (b.jointType === "Topological Interlocking") return (Math.sin(t * Math.PI * b.frequency) >= 0 ? 1 : -1) * a * .82;
+  if (b.jointType === "Geological Joint") return (Math.sin(t * 18.7 + 1.1) * .6 + Math.sin(t * 43.1) * .28) * a;
+  if (b.jointType === "Field Driven Joint") return (Math.sin(t * 23 + b.phase / 6) + Math.sin(t * 57)) * a * .48;
+  if (b.jointType === "Custom Drawn Joint") return (t < .33 ? t * 2.8 : t < .66 ? 1 - (t - .33) * 4.6 : (t - .66) * 2.8 - .5) * a;
+  return Math.sin(t * Math.PI * 2 * b.frequency + b.phase / 100 * Math.PI * 2) * a;
+};
+const renderBlockDesignerModel = () => {
+  if (!bdModelRenderer) return; clearGroup(bdModelGroup);
+  const b = getBlockDesignerData(), L = b.length / 100, H = b.height / 100, T = Math.max(.08, b.thickness / 100), gap = b.view === "exploded" ? .48 : b.clearance / 1000;
+  // Bed joints run along the course (X), not vertically as head joints.
+  const joint = Array.from({ length: 49 }, (_, i) => new THREE.Vector2(-L / 2 + L * i / 48, getBdJointOffset(i / 48)));
+  const outer = b.baseGeometry === "Hexagonal" ? H * .18 : b.baseGeometry === "Polyhedral" ? H * .11 : ["Custom Mesh", "TPMS Block", "Wedge"].includes(b.baseGeometry) ? H * .15 : 0;
+  const left = new THREE.Shape(); left.moveTo(-L / 2 + outer, -H / 2); left.lineTo(L / 2 - outer, -H / 2); joint.slice().reverse().forEach(p => left.lineTo(p.x, p.y - gap * .5)); left.closePath();
+  const right = new THREE.Shape(); right.moveTo(joint[0].x, joint[0].y + gap * .5); right.lineTo(-L / 2 + outer, H / 2); right.lineTo(L / 2 - outer, H / 2); right.lineTo(joint[joint.length - 1].x, joint[joint.length - 1].y + gap * .5); joint.slice(0, -1).reverse().forEach(p => right.lineTo(p.x, p.y + gap * .5)); right.closePath();
+  const make = (shape, color) => { const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: b.fillet > 0, bevelSegments: 3, bevelSize: Math.min(.018, b.fillet / 1200), bevelThickness: Math.min(.012, b.fillet / 1600) }); geo.translate(0, 0, -T / 2); if (b.baseGeometry === "TPMS Block") geo.scale(1, 1, .74); const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0, transparent: true, opacity: .62, side: THREE.DoubleSide })); mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 16), new THREE.LineBasicMaterial({ color: 0x617266, transparent: true, opacity: .3 }))); return mesh; };
+  const templateA = make(left, 0xaeb9a8), templateB = make(right, 0xc5c9c0);
+  if (b.view === "tile3d") {
+    const cols = Math.min(5, b.swatch), rows = Math.min(5, b.swatch), pitchX = L + gap, pitchY = H;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const pair = new THREE.Group(), dx = (col - (cols - 1) * .5) * pitchX + (row % 2 && b.tileMode === "Running Bond" ? pitchX * .5 : 0), dy = (row - (rows - 1) * .5) * pitchY;
+      const a = templateA.clone(), bb = templateB.clone(); a.position.set(dx, dy, 0); bb.position.set(dx, dy, 0); pair.add(a, bb); bdModelGroup.add(pair);
+    }
+  } else { bdModelGroup.add(templateA, templateB); }
+  if (b.view === "contact" || b.view === "tolerance") bdModelGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(joint.map(p => new THREE.Vector3(p.x, p.y, T * .52))), new THREE.LineBasicMaterial({ color: b.view === "contact" ? 0x5de4a0 : 0xffd36b })));
+  const size = new THREE.Box3().setFromObject(bdModelGroup).getSize(new THREE.Vector3()), distance = Math.max(size.x, size.y, size.z) * 1.7; if (!b.userCamera) { bdModelCamera.position.set(distance, distance * .56, distance * .92); bdModelControls?.target.set(0, 0, 0); bdModelControls?.update(); } if (byId("bdModelCaption")) byId("bdModelCaption").textContent = `${b.baseGeometry} · ${b.jointType} · orbit / pan / zoom`;
+};
+const blockDesignerDraftJoint = (x, y, w, h) => {
+  const b = getBlockDesignerData(), cx = x + w * .5, a = Math.min(w * .2, (b.amplitude / 100) * w);
+  if (b.jointType === "Flat Joint") return `M ${cx} ${y} V ${y + h}`;
+  if (b.jointType === "Zig Zag Joint") return `M ${cx} ${y} L ${cx + a} ${y + h * .25} L ${cx - a} ${y + h * .5} L ${cx + a} ${y + h * .75} L ${cx} ${y + h}`;
+  if (b.jointType === "Topological Interlocking") return `M ${cx} ${y} H ${cx + a} V ${y + h * .25} H ${cx - a} V ${y + h * .5} H ${cx + a} V ${y + h * .75} H ${cx} V ${y + h}`;
+  if (b.jointType === "Geological Joint" || b.jointType === "Field Driven Joint") return `M ${cx} ${y} q ${a} ${h * .15} -${a * .3} ${h * .31} q -${a * 1.4} ${h * .17} ${a * .45} ${h * .32} q ${a} ${h * .13} -${a * .15} ${h * .37}`;
+  const pts = Array.from({ length: 25 }, (_, i) => { const t = i / 24; return [cx + Math.sin(t * Math.PI * 2 * b.frequency + b.phase / 100 * Math.PI * 2) * a, y + t * h]; });
+  return `M ${pts.map(([px, py]) => `${px.toFixed(3)} ${py.toFixed(3)}`).join(" L ")}`;
+};
+const blockDesignerDraftOutline = (x, y, w, h) => {
+  const b = getBlockDesignerData(), c = Math.min(w, h) * .12;
+  if (b.baseGeometry === "Wedge") return `M ${x + c} ${y} H ${x + w} L ${x + w - c} ${y + h} H ${x} Z`;
+  if (b.baseGeometry === "Hexagonal" || b.baseGeometry === "Polyhedral") return `M ${x + c} ${y} H ${x + w - c} L ${x + w} ${y + c} V ${y + h - c} L ${x + w - c} ${y + h} H ${x + c} L ${x} ${y + h - c} V ${y + c} Z`;
+  if (b.baseGeometry === "TPMS Block") return `M ${x} ${y + c} Q ${x + w * .25} ${y - c} ${x + w * .5} ${y + c} Q ${x + w * .75} ${y - c} ${x + w} ${y + c} V ${y + h - c} Q ${x + w * .75} ${y + h + c} ${x + w * .5} ${y + h - c} Q ${x + w * .25} ${y + h + c} ${x} ${y + h - c} Z`;
+  return `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+};
+const renderBlockDesignerCourseElevation = (b, swatch) => {
+  const W = 1200, H = 480, left = 88, right = 1132, top = 76, bottom = 412;
+  const cols = Math.min(Math.max(3, b.swatch), 7), rows = Math.min(Math.max(3, b.swatch), 5);
+  const usableW = right - left, usableH = bottom - top, cellW = usableW / cols, rowH = usableH / rows;
+  const phase = b.phase / 100 * Math.PI * 2;
+  const jointY = (row, x) => top + row * rowH + Math.sin(((x - left) / usableW) * Math.PI * 2 * b.frequency * cols + phase + row * .28) * Math.min(rowH * .105, b.amplitude / 100 * rowH);
+  const cells = [], joints = [], heads = [], ticks = [];
+  for (let i = 0; i <= 40; i++) { const x = left + usableW * i / 40; ticks.push(`<path d="M ${x.toFixed(1)} ${top - (i % 5 === 0 ? 13 : 7)} V ${top - 2}"/>`); }
+  for (let r = 0; r < rows; r++) {
+    const offset = b.tileMode === "Running Bond" && r % 2 ? cellW * .5 : 0;
+    for (let c = -1; c <= cols; c++) {
+      const x1 = left + c * cellW + offset, x2 = x1 + cellW;
+      if (x2 <= left || x1 >= right) continue;
+      const cx1 = Math.max(left, x1), cx2 = Math.min(right, x2);
+      const y1 = r === 0 ? top : jointY(r, (cx1 + cx2) * .5), y2 = r === rows - 1 ? bottom : jointY(r + 1, (cx1 + cx2) * .5);
+      cells.push(`<path d="M ${cx1.toFixed(1)} ${y1.toFixed(1)} L ${cx2.toFixed(1)} ${y1.toFixed(1)} L ${cx2.toFixed(1)} ${y2.toFixed(1)} L ${cx1.toFixed(1)} ${y2.toFixed(1)} Z"/>`);
+      if (r > 0) heads.push(`<path d="M ${cx1.toFixed(1)} ${jointY(r, cx1).toFixed(1)} L ${cx1.toFixed(1)} ${jointY(r + 1, cx1).toFixed(1)}"/>`);
+    }
+  }
+  for (let r = 1; r < rows; r++) {
+    const points = Array.from({ length: 241 }, (_, i) => { const x = left + usableW * i / 240; return `${x.toFixed(1)} ${jointY(r, x).toFixed(1)}`; });
+    joints.push(`<path d="M ${points.join(" L ")}"/>`);
+  }
+  const rowLabels = Array.from({ length: rows }, (_, r) => `<text x="${left - 19}" y="${(top + rowH * (r + .54)).toFixed(1)}">${String(r + 1).padStart(2, "0")}</text>`).join("");
+  swatch.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Course elevation drawing"><rect width="${W}" height="${H}" fill="#e8ebe5"/><g class="bd-drawing-grid">${ticks.join("")}</g><path class="bd-drawing-frame" d="M ${left} ${top} H ${right} V ${bottom} H ${left} Z"/><g class="bd-drawing-cells">${cells.join("")}</g><g class="bd-drawing-heads">${heads.join("")}</g><g class="bd-drawing-joints">${joints.join("")}</g><g class="bd-drawing-notations"><text x="${left}" y="31" class="bd-drawing-title">COURSE ELEVATION / ${b.baseGeometry.toUpperCase()}</text><text x="${right}" y="31" text-anchor="end">${b.tileMode.toUpperCase()} · ${b.jointType.toUpperCase()}</text><text x="${left}" y="${H - 23}">MODULE ${b.length} × ${b.height} MM</text><text x="${right}" y="${H - 23}" text-anchor="end">JOINT ${b.frequency.toString().padStart(2, "0")} · CLR ${b.clearance.toFixed(1)} MM</text>${rowLabels}</g></svg>`;
+};
+const renderBlockDesigner = () => {
+  const b = getBlockDesignerData(), swatch = byId("bdSwatchCanvas"); if (!swatch) return; renderBlockDesignerModel(); if (byId("bdJointSectionTitle")) byId("bdJointSectionTitle").textContent = b.jointType; renderBlockDesignerCourseElevation(b, swatch); byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} · ${b.tileMode} · module ${b.length} mm × ${b.height} mm · joint ${b.frequency} cycles`; renderBlockDesignerAnalysis(); renderBlockDesignerLibrary(); return;
+  const n = b.swatch, cols = Math.min(n, 10), rows = Math.min(n, 10), cells = []; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const cw = 100 / cols, ch = 100 / rows, offset = b.tileMode === "Running Bond" && r % 2 ? cw / 2 : 0, x = c * cw + offset, y = r * ch; cells.push(`<path d="${blockDesignerDraftOutline(x, y, cw, ch)}" fill="rgba(14,27,42,.2)" stroke="rgba(220,233,245,.72)" stroke-width=".14"/><path d="${blockDesignerDraftJoint(x, y, cw, ch)}" fill="none" stroke="rgba(127,214,255,.84)" stroke-width=".19"/>`); } swatch.innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="100" height="100" fill="#1d2a38"/>${cells.join("")}<text x="2" y="97" fill="#dce9f5" font-size="2.2">COURSE ELEVATION · ${b.baseGeometry.toUpperCase()} · ${b.jointType.toUpperCase()}</text></svg>`;
+  byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} · ${b.tileMode} · module ${b.length} mm × ${b.height} mm · joint ${b.frequency} cycles`; renderBlockDesignerAnalysis(); renderBlockDesignerLibrary();
+};
+const renderBlockDesignerAnalysis = () => { const b = getBlockDesignerData(), el = byId("bdAnalysis"); if (!el) return; const vol = b.length * b.width * b.height / 1e6, weight = vol * b.density; const neck = b.width / 2 - b.amplitude; const items = [["Block volume", `${vol.toFixed(3)} m³`, "ok"], ["Block weight", `${weight.toFixed(1)} kg`, weight > 520 ? "warn" : "ok"], ["Contact area", `${(b.height * b.thickness / 100).toFixed(0)} cm²`, "ok"], ["Min neck", `${neck.toFixed(1)} mm`, neck < 8 ? "bad" : neck < 18 ? "warn" : "ok"], ["Undercut", b.depth > b.thickness * .85 ? "Review" : "Clear", b.depth > b.thickness * .85 ? "warn" : "ok"], ["Tolerance", `${b.clearance} mm`, b.clearance < .4 ? "warn" : "ok"]]; el.innerHTML = items.map(([k,v,c]) => `<div class="${c}"><b>${k}</b>${v}</div>`).join(""); };
+const renderBlockDesignerLibrary = () => { const el = byId("bdTileList"); if (!el) return; const tiles = state.assetLibraryEntries.filter(e => e.kind === "tile-system"); el.innerHTML = tiles.length ? tiles.map(t => `<div class="bd-tile-card ${t.id === state.blockDesigner.activeTileId ? "active" : ""}" data-tile-id="${t.id}"><b>${t.name}</b><span>${t.metadata?.jointType || "Joint"} · ${t.metadata?.tags?.join(" · ") || "Experimental"}</span></div>`).join("") : `<div class="hint">No saved systems yet. Shape a pair, then save it here.</div>`; el.querySelectorAll("[data-tile-id]").forEach(card => card.addEventListener("click", () => { state.blockDesigner.activeTileId = card.dataset.tileId; renderBlockDesignerLibrary(); })); };
+const saveBlockDesignerTile = async () => { const b = getBlockDesignerData(), now = new Date().toISOString(), name = `${b.jointType.replace(" Joint", "")} ${b.baseGeometry} ${new Date().toLocaleDateString()}`; const payload = { name, previewImage: "procedural", baseGeometry: b.baseGeometry, jointType: b.jointType, jointParameters: b, tileRules: { mode: b.tileMode, swatch: b.swatch }, fabricationRules: { clearance: b.clearance, fillet: b.fillet, draft: b.draft }, material: { density: b.density }, tags: [b.jointType.replace(" Joint", ""), b.baseGeometry, "Experimental"], favorite: false, createdAt: now, updatedAt: now }; const blob = new Blob([JSON.stringify(payload)], { type: "application/json" }); const entry = { id: crypto.randomUUID?.() || `${Date.now()}-tile`, kind: "tile-system", name, mimeType: "application/json", size: blob.size, addedAt: now, lastUsedAt: now, metadata: { jointType: b.jointType, tags: payload.tags, previewLabel: "TILE" }, blob }; await runAssetLibraryStore("readwrite", store => store.put(entry)); state.blockDesigner.activeTileId = entry.id; await renderAssetLibrary(); };
+
+const rememberLibraryCandidate = (slot, kind, file) => {
+  state.libraryCandidates[slot] = { kind, file, capturedAt: new Date().toISOString() };
+};
+
+const saveLibraryCandidate = async (slot) => {
+  const candidate = state.libraryCandidates[slot];
+  const viewKey = slot === "host" ? "host" : "panel";
+  if (!candidate?.file) {
+    setAssetLibraryStatus(viewKey, slot === "host" ? "Import a 3D host before saving it." : "Import a panel or tile design before saving it.");
+    return;
+  }
+  const file = candidate.file;
+  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const entry = {
+    id,
+    kind: candidate.kind,
+    name: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.size,
+    addedAt: new Date().toISOString(),
+    lastUsedAt: new Date().toISOString(),
+    metadata: getCurrentAssetMetadata(candidate.kind, file),
+    blob: file,
+  };
+  try {
+    await runAssetLibraryStore("readwrite", (store) => store.put(entry));
+    await renderAssetLibrary();
+    const select = assetLibraryViews[viewKey]?.select?.();
+    if (select) select.value = id;
+    state.activeLibraryAssetIds[viewKey] = id;
+    renderAssetLibraryPreview(viewKey);
+    setAssetLibraryStatus(viewKey, `Saved ${assetKindLabels[candidate.kind] || "asset"}: ${file.name}.`);
+    renderActiveAssetStrip();
+  } catch (err) {
+    console.error("saveLibraryCandidate failed", err);
+    setAssetLibraryStatus(viewKey, "Could not save that file. Very large assets may exceed browser storage limits.");
+  }
+};
+
+const saveCurrentEditedPanelVariant = async ({ duplicate = false } = {}) => {
+  if (!state.customPanel?.geometryData) {
+    setAssetLibraryStatus("panel", "Load or create a custom panel before saving an edited variant.");
+    return;
+  }
+  const name = makePanelVariantName(duplicate ? "duplicate" : "edited");
+  const payload = buildCurrentPanelVariantPayload(name);
+  if (!payload) {
+    setAssetLibraryStatus("panel", "Could not capture the current panel variant.");
+    return;
+  }
+  const json = JSON.stringify(payload);
+  const blob = new Blob([json], { type: "application/json" });
+  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const entry = {
+    id,
+    kind: "edited-panel",
+    name,
+    mimeType: "application/json",
+    size: blob.size,
+    addedAt: new Date().toISOString(),
+    lastUsedAt: new Date().toISOString(),
+    metadata: getCurrentAssetMetadata("edited-panel", { name }),
+    blob,
+  };
+  try {
+    await runAssetLibraryStore("readwrite", (store) => store.put(entry));
+    state.customPanel.name = name;
+    state.customPanel.variantSettings = payload.panel.variantSettings;
+    state.activeLibraryAssetIds.panel = id;
+    await renderAssetLibrary();
+    const select = assetLibraryViews.panel?.select?.();
+    if (select) select.value = id;
+    renderAssetLibraryPreview("panel");
+    renderCustomPanelStatus();
+    renderActiveAssetStrip();
+    setAssetLibraryStatus("panel", duplicate ? `Duplicated current panel to variant: ${name}.` : `Saved current edited panel: ${name}.`);
+  } catch (err) {
+    console.error("saveCurrentEditedPanelVariant failed", err);
+    setAssetLibraryStatus("panel", "Could not save the edited panel variant.");
+  }
+};
+
+const apply2dImportFile = async (file, { remember = true } = {}) => {
+  const ok = await on2dImport(file);
+  if (!ok) {
+    setPipelineStatus(`Could not read 2D pattern layout from ${file.name}. Try SVG polygons/polylines or DXF polylines.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("tile", "2d-layout", file);
+  state.designMode = "Custom Import";
+  byId("designMode").value = "Custom Import";
+  state.vaultType = "Custom Imported Rhino Surface";
+  if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+  state.surfacePrinciple = vaultSurfacePrincipleDefault[state.vaultType] || state.surfacePrinciple;
+  state.customPatternSource = "Imported 2D Layout";
+  syncCustomPatternSourceInputs();
+  state.patternAppliedToModel = false;
+  state.pipelineStage = Math.max(state.pipelineStage, 3);
+  updateStereotomyProcess(state.pipelineStage);
+  setPipelineStatus(`2D pattern layout loaded from ${file.name}.`);
+  applyVaultParamRules();
+  applyRightPanelToolVisibility();
+  rebuild();
+  return true;
+};
+
+const applyTopologyMeshFile = async (file, { remember = true } = {}) => {
+  const ok = await loadTopologyMesh(file);
+  if (!ok) {
+    setPipelineStatus(`Could not read topology faces from ${file.name}. Try OBJ with polygon faces or a Rhino mesh in 3DM.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("tile", "topology-mesh", file);
+  const hasUploadedSurface = !!state.importedSurface;
+  if (hasUploadedSurface) {
+    state.designMode = "Custom Import";
+    byId("designMode").value = "Custom Import";
+    state.vaultType = "Custom Imported Rhino Surface";
+    if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+    state.surfacePrinciple = vaultSurfacePrincipleDefault[state.vaultType] || state.surfacePrinciple;
+  } else {
+    state.designMode = "Generated";
+    byId("designMode").value = "Generated";
+  }
+  state.customPatternSource = "Imported Topology Mesh";
+  syncCustomPatternSourceInputs();
+  state.patternAppliedToModel = true;
+  state.layers.blocks = true;
+  if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+  state.pipelineStage = Math.max(state.pipelineStage, 3);
+  updateStereotomyProcess(state.pipelineStage);
+  setPipelineStatus(hasUploadedSurface
+    ? `Flat topology mesh loaded: ${file.name}. It will drive the block layout over the uploaded vault surface.`
+    : `Flat topology mesh loaded: ${file.name}. It will drive blocks over the current generated vault surface; uploaded host geometry is optional for this workflow.`
+  );
+  applyVaultParamRules();
+  applyRightPanelToolVisibility();
+  rebuild();
+  return true;
+};
+
+const applyCustomPanelFile = async (file, { remember = true } = {}) => {
+  const ok = await loadCustomPanelComponent(file);
+  if (!ok) {
+    setPipelineStatus(`Could not load custom panel from ${file.name}. Try OBJ, STL, GLB, or a Rhino 3DM mesh/BREP.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("tile", "custom-panel", file);
+  if (nodes.strategyPreset) nodes.strategyPreset.value = "custom";
+  if (state.importedTissueCells?.length) {
+    state.customPatternSource = panelQuadSource;
+    syncCustomPatternSourceInputs();
+  }
+  // Loading a panel asset is an intent to map it onto the active host, not merely stage it in the library.
+  state.vaultDesignerPreview = false;
+  state.patternAppliedToModel = true;
+  state.layers.blocks = true;
+  state.view2dOptions.showBlocks = true;
+  setPipelineStatus(`Custom panel loaded and applied: ${file.name}. Component mapping mode is ${labelStrategyValue(state.strategy.scale)}.`);
+  setToolTab("strategy");
+  setStrategyViewMode("component-mapping");
+  renderCurrentTraitState();
+  rebuild();
+  return true;
+};
+
+const applyMorphPanelFile = async (file, { remember = true } = {}) => {
+  if (!state.customPanel?.geometryData) {
+    setPipelineStatus("Load a basis custom panel before loading a morph panel.");
+    return false;
+  }
+  const ok = await loadCustomPanelMorphComponent(file);
+  if (!ok) {
+    setPipelineStatus(`Could not load morph panel from ${file.name}. Use the same file type and topology as the basis panel.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("tile", "morph-panel", file);
+  const compatible = state.customPanel?.morph?.compatible;
+  setPipelineStatus(compatible
+    ? `Morph panel loaded: ${file.name}. Shape-key blending is active from basis to morph.`
+    : `Morph panel loaded: ${file.name}, but it is not a safe aperture morph (${state.customPanel?.morph?.compatibilityReason || "topology mismatch"}). No aperture blending will be applied.`
+  );
+  setStrategyViewMode("component-mapping");
+  rebuild();
+  return true;
+};
+
+const applyEditedPanelVariantFile = async (file, { remember = true } = {}) => {
+  let payload = null;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch (err) {
+    console.error("applyEditedPanelVariantFile/parse failed", err);
+    setPipelineStatus(`Could not read edited panel variant from ${file.name}.`);
+    return false;
+  }
+  const ok = applyPanelVariantPayload(payload);
+  if (!ok) {
+    setPipelineStatus(`Could not load edited panel variant from ${file.name}.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("tile", "edited-panel", file);
+  if (nodes.strategyPreset) nodes.strategyPreset.value = "custom";
+  state.customPatternSource = panelQuadSource;
+  syncCustomPatternSourceInputs();
+  setToolTab("panel-library");
+  setStrategyViewMode("component-mapping");
+  setPipelineStatus(`Edited panel variant loaded: ${state.customPanel.name}.`);
+  renderCurrentTraitState();
+  rebuild();
+  return true;
+};
+
+const applyHost3dFile = async (file, { remember = true } = {}) => {
+  const ok = await load3DObject(file);
+  if (!ok) {
+    setPipelineStatus(`Could not load host model from ${file.name}. Keep the generated vault active and load a flat topology OBJ to drive the block layout.`);
+    return false;
+  }
+  if (remember) rememberLibraryCandidate("host", "host-3d", file);
+  state.designMode = "Custom Import";
+  byId("designMode").value = "Custom Import";
+  state.vaultType = "Custom Imported Rhino Surface";
+  if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+  state.surfacePrinciple = vaultSurfacePrincipleDefault[state.vaultType] || state.surfacePrinciple;
+  state.customPatternSource = state.imported2DPolys?.length
+    ? "Imported 2D Layout"
+    : state.importedTissueCells?.length
+      ? panelQuadSource
+      : (state.importedBrepPatches?.length || state.importedTopologyPolys?.length)
+      ? "Imported Topology Mesh"
+      : "Freeform Courses";
+  syncCustomPatternSourceInputs();
+  if (["Freeform Courses", "NGon Cells", "NGon Adaptive"].includes(state.customPatternSource)) updateFreeformCountsFromBlockDimensions();
+  state.pattern = vaultPatternPreset[state.vaultType] || state.pattern;
+  if (byId("subdivision")) byId("subdivision").value = state.pattern;
+  state.patternAppliedToModel = false;
+  state.pipelineStage = 1;
+  updateStereotomyProcess(1);
+  const carrier = getTissueCarrierSummary();
+  setPipelineStatus(`Uploaded host geometry loaded: ${file.name}. ${carrier.title}. ${carrier.lines[0] || ""} Display triangles: ${state.importedModelStats?.triangleCount || 0}.`);
+  applyVaultParamRules();
+  applyRightPanelToolVisibility();
+  rebuild();
+  return true;
+};
+
+const loadSelectedLibraryAsset = async (viewKey) => {
+  const id = assetLibraryViews[viewKey]?.select?.()?.value;
+  if (!id) {
+    setAssetLibraryStatus(viewKey, viewKey === "host" ? "Choose a saved host to load." : "Choose a saved panel to load.");
+    return;
+  }
+  try {
+    const entry = await runAssetLibraryStore("readonly", (store) => store.get(id));
+    if (!entry?.blob) {
+      setAssetLibraryStatus(viewKey, "That library asset is no longer available.");
+      await renderAssetLibrary();
+      return;
+    }
+    if (!assetLibraryViews[viewKey]?.kinds.includes(entry.kind)) {
+      setAssetLibraryStatus(viewKey, "That asset belongs in the other library.");
+      await renderAssetLibrary();
+      return;
+    }
+    const file = new File([entry.blob], entry.name, { type: entry.mimeType || entry.blob.type || "", lastModified: Date.parse(entry.addedAt) || Date.now() });
+    const loaders = {
+      "2d-layout": apply2dImportFile,
+      "topology-mesh": applyTopologyMeshFile,
+      "custom-panel": applyCustomPanelFile,
+      "morph-panel": applyMorphPanelFile,
+      "edited-panel": applyEditedPanelVariantFile,
+      "host-3d": applyHost3dFile,
+    };
+    const ok = await loaders[entry.kind]?.(file, { remember: false });
+    if (ok) {
+      await runAssetLibraryStore("readwrite", (store) => store.put({ ...entry, lastUsedAt: new Date().toISOString(), blob: entry.blob }));
+      await renderAssetLibrary();
+      const select = assetLibraryViews[viewKey]?.select?.();
+      if (select) select.value = id;
+      state.activeLibraryAssetIds[viewKey] = id;
+      renderAssetLibraryPreview(viewKey);
+      setAssetLibraryStatus(viewKey, `Loaded ${assetKindLabels[entry.kind] || "asset"}: ${entry.name}.`);
+      renderActiveAssetStrip();
+    }
+  } catch (err) {
+    console.error("loadSelectedLibraryAsset failed", err);
+    setAssetLibraryStatus(viewKey, "Could not load that saved asset.");
+  }
+};
+
+const deleteSelectedLibraryAsset = async (viewKey) => {
+  const id = assetLibraryViews[viewKey]?.select?.()?.value;
+  if (!id) {
+    setAssetLibraryStatus(viewKey, viewKey === "host" ? "Choose a saved host to delete." : "Choose a saved panel to delete.");
+    return;
+  }
+  const entry = state.assetLibraryEntries.find((item) => item.id === id);
+  if (entry && !assetLibraryViews[viewKey]?.kinds.includes(entry.kind)) {
+    setAssetLibraryStatus(viewKey, "That asset belongs in the other library.");
+    await renderAssetLibrary();
+    return;
+  }
+  try {
+    await runAssetLibraryStore("readwrite", (store) => store.delete(id));
+    await renderAssetLibrary();
+    setAssetLibraryStatus(viewKey, entry ? `Deleted ${entry.name} from the ${viewKey === "host" ? "host" : "panel"} library.` : "Deleted saved asset.");
+  } catch (err) {
+    console.error("deleteSelectedLibraryAsset failed", err);
+    setAssetLibraryStatus(viewKey, "Could not delete that saved asset.");
+  }
 };
 
 const resize = () => {
   const box = byId("viewport").getBoundingClientRect();
+  if (box.width <= 0 || box.height <= 0) return;
   renderer.setSize(box.width, box.height, false);
   camera.aspect = box.width / box.height;
   camera.updateProjectionMatrix();
+  applyBlockPreviewWindowState();
+  if (blockPreviewRenderer && nodes.blockPreview) {
+    const previewBox = nodes.blockPreview.getBoundingClientRect();
+    if (previewBox.width > 0 && previewBox.height > 0) {
+      blockPreviewRenderer.setSize(previewBox.width, previewBox.height, false);
+      blockPreviewCamera.aspect = previewBox.width / previewBox.height;
+      blockPreviewCamera.updateProjectionMatrix();
+    }
+  }
+  if (bdModelRenderer && bdModelCanvas) {
+    const modelBox = bdModelCanvas.getBoundingClientRect();
+    if (modelBox.width > 0 && modelBox.height > 0) {
+      bdModelRenderer.setSize(modelBox.width, modelBox.height, false);
+      bdModelCamera.aspect = modelBox.width / modelBox.height;
+      bdModelCamera.updateProjectionMatrix();
+    }
+  }
 };
+
+const getBlockPreviewBounds = () => {
+  const panel = nodes.blockPreviewPanel;
+  const parent = panel?.parentElement;
+  if (!panel || !parent) return null;
+  const parentRect = parent.getBoundingClientRect();
+  return {
+    parent,
+    width: parentRect.width,
+    height: parentRect.height,
+  };
+};
+
+const applyBlockPreviewWindowState = () => {
+  const panel = nodes.blockPreviewPanel;
+  const bounds = getBlockPreviewBounds();
+  if (!panel || !bounds) return;
+  const minW = 260;
+  const minH = 210;
+  const maxW = Math.max(minW, bounds.width - 24);
+  const maxH = Math.max(minH, bounds.height - 24);
+  const w = clamp(state.blockPreviewWindow.w || 360, minW, maxW);
+  const h = clamp(state.blockPreviewWindow.h || 260, minH, maxH);
+  const defaultX = Math.max(12, bounds.width - w - 12);
+  const defaultY = Math.max(12, bounds.height - h - 12);
+  const x = clamp(state.blockPreviewWindow.x ?? defaultX, 12, Math.max(12, bounds.width - w - 12));
+  const y = clamp(state.blockPreviewWindow.y ?? defaultY, 12, Math.max(12, bounds.height - h - 12));
+  Object.assign(state.blockPreviewWindow, { x, y, w, h });
+  panel.style.left = `${x}px`;
+  panel.style.top = `${y}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  panel.style.width = `${w}px`;
+  panel.style.height = `${h}px`;
+};
+
+let blockPreviewDrag = null;
+const beginBlockPreviewWindowAction = (event, mode) => {
+  const panel = nodes.blockPreviewPanel;
+  const bounds = getBlockPreviewBounds();
+  if (!panel || !bounds) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+  const rect = panel.getBoundingClientRect();
+  const parentRect = bounds.parent.getBoundingClientRect();
+  blockPreviewDrag = {
+    mode,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    x: rect.left - parentRect.left,
+    y: rect.top - parentRect.top,
+    w: rect.width,
+    h: rect.height,
+  };
+  Object.assign(state.blockPreviewWindow, {
+    x: blockPreviewDrag.x,
+    y: blockPreviewDrag.y,
+    w: blockPreviewDrag.w,
+    h: blockPreviewDrag.h,
+  });
+  panel.classList.add("dragging");
+  panel.setPointerCapture?.(event.pointerId);
+  document.body.style.userSelect = "none";
+};
+
+nodes.blockPreviewPanel?.addEventListener("pointerdown", (event) => {
+  event.stopPropagation();
+});
+
+nodes.blockPreviewPanel?.querySelector(".block-preview-head")?.addEventListener("pointerdown", (event) => {
+  beginBlockPreviewWindowAction(event, "move");
+});
+
+nodes.blockPreviewResize?.addEventListener("pointerdown", (event) => {
+  beginBlockPreviewWindowAction(event, "resize");
+});
 
 const pick3d = (event) => {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -5643,6 +13653,270 @@ const pick3d = (event) => {
   state.selectedBlockId = hit.object.userData.blockId;
   applySelection();
 };
+
+const getSelectedBlockIndex = () => state.blocks.findIndex((b) => b.id === state.selectedBlockId);
+
+const copyEditableBlockMeta = (block) => ({
+  isKeystone: !!block.isKeystone,
+  componentVariant: block.componentVariant,
+  panelVariantRole: block.panelVariantRole,
+  manualPanelVariantRole: block.manualPanelVariantRole,
+  fillCellType: block.fillCellType || "quad",
+  parentCellId: block.parentCellId || block.id,
+  rotationShift: block.rotationShift || 0,
+  generatorStrategy: block.generatorStrategy || "manual-edit",
+  generatorStrategyLabel: block.generatorStrategyLabel || "2D strategy editor",
+  pinnedBoundary: !!block.pinnedBoundary,
+  supportMarked: !!block.supportMarked,
+  importedMaterialGroup: block.importedMaterialGroup || null,
+  importedFaceGroup: block.importedFaceGroup || null,
+  topologyGroup: block.topologyGroup || null,
+});
+
+const splitUvCell = (uv) => {
+  if (!uv?.length) return [];
+  if (uv.length === 3) {
+    const center = polygonCentroidUv(uv);
+    return uv.map((p, i) => [p, uv[(i + 1) % uv.length], center]);
+  }
+  const xs = uv.map((p) => p[0]);
+  const ys = uv.map((p) => p[1]);
+  const splitU = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+  const a = uv[0];
+  const b = uv[1];
+  const c = uv[2];
+  const d = uv[3] || uv[0];
+  if (splitU) {
+    const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const dc = [(d[0] + c[0]) / 2, (d[1] + c[1]) / 2];
+    return [[a, ab, dc, d], [ab, b, c, dc]];
+  }
+  const bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2];
+  const ad = [(a[0] + d[0]) / 2, (a[1] + d[1]) / 2];
+  return [[a, b, bc, ad], [ad, bc, c, d]];
+};
+
+const splitSelectedCell = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before splitting.");
+  const block = state.blocks[index];
+  const parts = splitUvCell(block.uv).map((uv, partIndex) => ({
+    id: `${block.id}-${partIndex + 1}`,
+    uv: uv.map((p) => [p[0], p[1]]),
+    ...copyEditableBlockMeta(block),
+    parentCellId: block.parentCellId || block.id,
+    editorOperation: "split",
+  }));
+  if (parts.length < 2) return setPipelineStatus("Selected cell could not be split.");
+  state.blocks.splice(index, 1, ...parts);
+  state.selectedBlockId = parts[0].id;
+  setPipelineStatus(`Split ${block.id} into ${parts.length} editable cells.`);
+  refreshEditedBlocks();
+};
+
+const mergeSelectedCellWithNext = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before merging.");
+  if (state.blocks.length < 2) return setPipelineStatus("Need at least two cells to merge.");
+  const a = state.blocks[index];
+  const b = state.blocks[(index + 1) % state.blocks.length];
+  const pts = [...a.uv, ...b.uv];
+  const minU = Math.min(...pts.map((p) => p[0]));
+  const maxU = Math.max(...pts.map((p) => p[0]));
+  const minV = Math.min(...pts.map((p) => p[1]));
+  const maxV = Math.max(...pts.map((p) => p[1]));
+  const merged = {
+    id: `${a.id}+${b.id}`,
+    uv: [[minU, minV], [maxU, minV], [maxU, maxV], [minU, maxV]],
+    ...copyEditableBlockMeta(a),
+    componentVariant: a.componentVariant || b.componentVariant,
+    pinnedBoundary: !!(a.pinnedBoundary || b.pinnedBoundary),
+    supportMarked: !!(a.supportMarked || b.supportMarked),
+    parentCellId: `${a.parentCellId || a.id}|${b.parentCellId || b.id}`,
+    editorOperation: "merge",
+  };
+  const removeIndex = (index + 1) % state.blocks.length;
+  state.blocks.splice(Math.max(index, removeIndex), 1);
+  state.blocks.splice(Math.min(index, removeIndex), 1, merged);
+  state.selectedBlockId = merged.id;
+  setPipelineStatus(`Merged ${a.id} with ${b.id}.`);
+  refreshEditedBlocks();
+};
+
+const rotateSelectedComponent = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before rotating.");
+  const block = state.blocks[index];
+  if (block.uv?.length > 2) block.uv = [...block.uv.slice(1), block.uv[0]];
+  block.rotationShift = ((block.rotationShift || 0) + 1) % Math.max(1, block.uv?.length || 1);
+  block.editorOperation = "rotate";
+  setPipelineStatus(`Rotated component frame for ${block.id}.`);
+  refreshEditedBlocks();
+};
+
+const pinSelectedBoundary = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before pinning.");
+  state.blocks[index].pinnedBoundary = !state.blocks[index].pinnedBoundary;
+  state.blocks[index].editorOperation = "pin-boundary";
+  setPipelineStatus(`${state.blocks[index].pinnedBoundary ? "Pinned" : "Unpinned"} boundary condition for ${state.blocks[index].id}.`);
+  refreshEditedBlocks();
+};
+
+const markSelectedSupport = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before marking support.");
+  state.blocks[index].supportMarked = !state.blocks[index].supportMarked;
+  state.blocks[index].editorOperation = "mark-support";
+  setPipelineStatus(`${state.blocks[index].supportMarked ? "Marked" : "Cleared"} support zone for ${state.blocks[index].id}.`);
+  refreshEditedBlocks();
+};
+
+const assignSelectedComponentVariant = () => {
+  const index = getSelectedBlockIndex();
+  if (index < 0) return setPipelineStatus("Select a 2D block before assigning a component.");
+  const variant = nodes.editComponentVariant?.value || state.strategy.component;
+  if (panelVariantRoles.some((role) => role.id === variant)) {
+    if (!state.customPanel?.geometryData) {
+      return setPipelineStatus("Load a custom panel before assigning panel variants.");
+    }
+    state.blocks[index].manualPanelVariantRole = variant;
+    state.blocks[index].panelVariantRole = variant;
+    state.blocks[index].componentVariant = "custom";
+    state.blocks[index].componentType = "custom";
+    state.blocks[index].editorOperation = `assign-panel-variant-${variant}`;
+    setPipelineStatus(`Assigned panel variant ${getPanelVariantLabel(variant)} to ${state.blocks[index].id}.`);
+  } else {
+    state.blocks[index].componentVariant = variant;
+    state.blocks[index].componentType = variant;
+    state.blocks[index].editorOperation = "assign-component";
+    setPipelineStatus(`Assigned ${labelStrategyValue(variant)} to ${state.blocks[index].id}.`);
+  }
+  refreshEditedBlocks();
+};
+
+nodes.editSplitCell?.addEventListener("click", splitSelectedCell);
+nodes.editMergeCell?.addEventListener("click", mergeSelectedCellWithNext);
+nodes.editRotateComponent?.addEventListener("click", rotateSelectedComponent);
+nodes.editPinBoundary?.addEventListener("click", pinSelectedBoundary);
+nodes.editMarkSupport?.addEventListener("click", markSelectedSupport);
+nodes.editAssignVariant?.addEventListener("click", assignSelectedComponentVariant);
+
+const getLayoutPointerUv = (event) => {
+  const rect = nodes.layout2d.getBoundingClientRect();
+  const sx = ((event.clientX - rect.left) / rect.width) * state.view2d.w + state.view2d.x;
+  const sy = ((event.clientY - rect.top) / rect.height) * state.view2d.h + state.view2d.y;
+  return layoutPointToUv(sx, sy, get2dFrames().layout);
+};
+const setAttractorMode = (mode) => {
+  const field = getAttractorField();
+  if (mode !== "curve") field.pendingCurve = [];
+  field.mode = mode;
+  syncAttractorControls();
+  draw2d();
+};
+const deleteSelectedAttractor = () => {
+  const field = getAttractorField();
+  if (!field.selectedId) return;
+  field.elements = field.elements.filter((element) => element.id !== field.selectedId);
+  field.selectedId = null;
+  refreshAttractorField();
+};
+nodes.attractorSelect?.addEventListener("click", () => setAttractorMode("select"));
+nodes.attractorAddPoint?.addEventListener("click", () => setAttractorMode("point"));
+nodes.attractorDrawCurve?.addEventListener("click", () => setAttractorMode("curve"));
+nodes.attractorFinishCurve?.addEventListener("click", () => {
+  if (!finishPendingAttractorCurve()) setPipelineStatus("A curve needs at least two points.");
+});
+nodes.attractorDelete?.addEventListener("click", deleteSelectedAttractor);
+nodes.attractorClear?.addEventListener("click", () => {
+  const field = getAttractorField();
+  if (!field.elements.length && !field.pendingCurve.length) return;
+  field.elements = [];
+  field.pendingCurve = [];
+  field.selectedId = null;
+  field.mode = "select";
+  refreshAttractorField();
+});
+nodes.attractorApplyDensity?.addEventListener("click", () => {
+  const field = getAttractorField();
+  if (!field.elements.length) {
+    setPipelineStatus("Add at least one attractor point or curve before applying panel density.");
+    return;
+  }
+  state.fieldWeights.source = "attractor";
+  state.fieldWeights.driveDensity = true;
+  state.vaultDesignerPreview = false;
+  state.patternAppliedToModel = true;
+  state.layers.blocks = true;
+  state.view2dOptions.showBlocks = true;
+  setInputValue(nodes.fieldWeightSource, "attractor", { force: true });
+  setInputValue(nodes.panelMorphWeightSource, "attractor", { force: true });
+  if (nodes.fieldWeightDriveDensity) nodes.fieldWeightDriveDensity.checked = true;
+  syncFieldWeightControls();
+  setPipelineStatus(`Attractor field applied: ${labelStrategyValue(state.panelAttractorResponse.mode)} response is mapped across the active panel family.`);
+  rebuild();
+});
+[nodes.attractorRadius, nodes.attractorStrength, nodes.attractorCurvatureMix].forEach((node) => node?.addEventListener("input", () => {
+  updateSelectedAttractorParameters();
+  refreshAttractorField();
+}));
+
+nodes.layout2d.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  const field = getAttractorField();
+  const handle = event.target.closest("[data-attractor-id]");
+  if (handle) {
+    event.preventDefault();
+    const id = handle.dataset.attractorId;
+    field.selectedId = id;
+    if (field.mode === "select" && handle.dataset.attractorVertex != null) {
+      state.draggingAttractor = { id, vertex: Number(handle.dataset.attractorVertex) };
+      nodes.layout2d.setPointerCapture?.(event.pointerId);
+    }
+    syncAttractorControls();
+    draw2d();
+    return;
+  }
+  const uv = getLayoutPointerUv(event);
+  if (field.mode === "point") {
+    event.preventDefault();
+    const element = { id: attractorId(), type: "point", points: [uv], radius: field.radius, strength: field.strength };
+    field.elements.push(element);
+    field.selectedId = element.id;
+    field.mode = "select";
+    refreshAttractorField();
+  } else if (field.mode === "curve") {
+    event.preventDefault();
+    field.pendingCurve.push(uv);
+    syncAttractorControls();
+    draw2d();
+  }
+});
+window.addEventListener("pointermove", (event) => {
+  if (!state.draggingAttractor) return;
+  const element = getAttractorField().elements.find((item) => item.id === state.draggingAttractor.id);
+  if (!element?.points?.[state.draggingAttractor.vertex]) return;
+  element.points[state.draggingAttractor.vertex] = getLayoutPointerUv(event);
+  draw2d();
+});
+window.addEventListener("pointerup", () => {
+  if (!state.draggingAttractor) return;
+  state.draggingAttractor = null;
+  refreshAttractorField();
+});
+window.addEventListener("keydown", (event) => {
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (event.key === "Enter" && getAttractorField().mode === "curve") {
+    event.preventDefault();
+    finishPendingAttractorCurve();
+  }
+  if ((event.key === "Delete" || event.key === "Backspace") && getAttractorField().selectedId) {
+    event.preventDefault();
+    deleteSelectedAttractor();
+  }
+});
 
 nodes.layout2d.addEventListener("click", (e) => {
   const poly = e.target.closest(".block2d");
@@ -5708,11 +13982,11 @@ window.addEventListener("pointermove", (e) => {
   const sx = ((e.clientX - rect.left) / rect.width) * state.view2d.w + state.view2d.x;
   const sy = ((e.clientY - rect.top) / rect.height) * state.view2d.h + state.view2d.y;
   const frame = get2dFrames().layout;
-  const u = clamp((sx - frame.x) / frame.w, 0, 1);
-  const v = clamp((sy - frame.y) / frame.h, 0, 1);
+  const [u, v] = layoutPointToUv(sx, sy, frame);
   const b = state.blocks.find((x) => x.id === state.dragging.id);
   if (!b) return;
   b.uv[state.dragging.vertex] = [u, v];
+  annotateBlockForStrategy(b);
   build3d();
   draw2d();
   renderFormForceDiagrams();
@@ -5766,11 +14040,22 @@ window.addEventListener("pointermove", (e) => {
 window.addEventListener("pointerup", () => { state.pan2d = null; });
 nodes.layout2d.addEventListener("contextmenu", (e) => e.preventDefault());
 
-["span", "rise", "length", "thickness", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
+["span", "rise", "length", "courseCount", "blockCount", "subdivisionDensity", "keystoneSize"].forEach((id) => {
   linkRangeAndNumber(id, `${id}Num`, (value) => {
     state.params[id] = value;
+    if (["courseCount", "blockCount", "subdivisionDensity"].includes(id)) ensureImportedFreeformApplied();
     rebuild();
   });
+});
+linkCmRangeAndNumber("thickness", "thicknessNum", (value) => {
+  state.params.thickness = clamp(value, 0.2, 4);
+  state.wallThickness = clamp(state.params.thickness, 0.1, 4);
+  ensureImportedFreeformApplied();
+  syncCmInputPair("thickness", state.params.thickness);
+  syncCmInput("blockHeight", state.params.thickness);
+  setInputValue(nodes.blockPreviewHeight, metersToCmInput(state.params.thickness));
+  syncCmInputPair("wallThickness", state.wallThickness);
+  rebuild();
 });
 linkRangeAndNumber("springingAngle", "springingAngleNum", (value) => { state.springingAngle = value; rebuild(); });
 linkRangeAndNumber("taperScale", "taperScaleNum", (value) => {
@@ -5778,15 +14063,23 @@ linkRangeAndNumber("taperScale", "taperScaleNum", (value) => {
   syncInputPair("taperScale", state.taperScale);
   rebuild();
 });
-linkRangeAndNumber("targetBlockWidth", "targetBlockWidthNum", (value) => {
-  state.targetBlockWidth = Math.max(0.1, value);
-  if (isBarrelLikeVault()) fitStartupParamsToConstraints(state.vaultType);
+linkCmRangeAndNumber("targetBlockWidth", "targetBlockWidthNum", (value) => {
+  applyBlockLengthCm(value * 100);
+});
+if (byId("blockDimensionMode")) byId("blockDimensionMode").addEventListener("change", (e) => {
+  state.blockDimensionMode = e.target.value === "fit" ? "fit" : "applied";
+  if (state.blockDimensionMode !== "fit") updateFreeformCountsFromBlockDimensions();
   syncInputsFromState();
   rebuild();
 });
-linkRangeAndNumber("wallThickness", "wallThicknessNum", (value) => {
+if (byId("blockPreviewCount")) byId("blockPreviewCount").addEventListener("input", (e) => {
+  state.blockPreviewCount = clamp(Math.round(Number(e.target.value) || 1), 1, 6);
+  syncInputsFromState();
+  renderBlockPreview();
+});
+linkCmRangeAndNumber("wallThickness", "wallThicknessNum", (value) => {
   state.wallThickness = clamp(value, 0.1, 4);
-  syncInputPair("wallThickness", state.wallThickness);
+  syncCmInputPair("wallThickness", state.wallThickness);
   rebuild();
 });
 linkRangeAndNumber("wallHeightOffset", "wallHeightOffsetNum", (value) => {
@@ -5799,6 +14092,7 @@ linkRangeAndNumber("netFrequency", "netFrequencyNum", (value) => { state.netFreq
 linkRangeAndNumber("tileLayers", "tileLayersNum", (value) => {
   state.tileLayers = Math.max(1, value);
   state.params.thickness = Math.max(0.15, 0.18 * state.tileLayers);
+  state.wallThickness = clamp(state.params.thickness, 0.1, 4);
   syncInputsFromState();
   rebuild();
 });
@@ -5806,24 +14100,395 @@ linkRangeAndNumber("extradosOffset", "extradosOffsetNum", (value) => { state.ext
 linkRangeAndNumber("groinMorph", "groinMorphNum", (value) => { state.groinMorph = clamp(value, 0, 1); syncInputPair("groinMorph", state.groinMorph); rebuild(); });
 linkRangeAndNumber("lInterlockBias", "lInterlockBiasNum", (value) => { state.lInterlockBias = clamp(value, 0, 1); syncInputPair("lInterlockBias", state.lInterlockBias); rebuild(); });
 linkRangeAndNumber("cubeScale", "cubeScaleNum", (value) => { state.cubeScale = Math.max(0.1, value); syncInputPair("cubeScale", state.cubeScale); rebuild(); });
-["maxLength", "maxWidth", "minThickness", "maxWeight", "jointGap", "bedDepth", "courseHeight", "taperAngle", "maxTaper", "minEdgeLength", "fabTolerance"].forEach((id) => {
-  byId(id).addEventListener("input", (e) => { state.constraints[id] = Number(e.target.value); rebuild(); });
+["maxWeight", "taperAngle", "maxTaper"].forEach((id) => {
+  const el = byId(id);
+  if (el) el.addEventListener("input", (e) => { state.constraints[id] = Number(e.target.value); rebuild(); });
+});
+["jointGap", "bedDepth"].forEach((id) => {
+  linkCmNumber(id, (value) => {
+    state.constraints[id] = value;
+    rebuild();
+  });
+});
+nodes.customPanelSeamAllowance?.addEventListener("input", (e) => {
+  const value = cmInputToMeters(e.target.value);
+  if (!Number.isFinite(value)) return;
+  state.customPanelSeamAllowance = clamp(value, -0.1, 0.2);
+  rebuild();
+});
+nodes.customPanelThicknessScale?.addEventListener("input", (e) => {
+  const value = Number(e.target.value);
+  if (!Number.isFinite(value)) return;
+  state.customPanelThicknessScale = clamp(value, 0.05, 20);
+  rebuild();
+});
+nodes.customPanelThicknessOffset?.addEventListener("input", (e) => {
+  const value = cmInputToMeters(e.target.value);
+  if (!Number.isFinite(value)) return;
+  state.customPanelThicknessOffset = clamp(value, -2, 2);
+  rebuild();
+});
+linkRangeAndNumber("panelSubdivisionU", "panelSubdivisionUNum", (value) => {
+  state.panelSubdivisionU = clamp(Math.round(value), 1, 8);
+  syncInputPair("panelSubdivisionU", state.panelSubdivisionU);
+  rebuild();
+});
+linkRangeAndNumber("panelSubdivisionV", "panelSubdivisionVNum", (value) => {
+  state.panelSubdivisionV = clamp(Math.round(value), 1, 8);
+  syncInputPair("panelSubdivisionV", state.panelSubdivisionV);
+  rebuild();
+});
+linkRangeAndNumber("panelMorphStrength", "panelMorphStrengthNum", (value) => {
+  state.panelMorphStrength = clamp(value, 0, 1);
+  syncInputPair("panelMorphStrength", state.panelMorphStrength);
+  rebuild();
+});
+nodes.panelWeightSubdivision?.addEventListener("change", (e) => {
+  state.panelWeightSubdivision = !!e.target.checked;
+  rebuild();
+});
+nodes.panelVariantRole?.addEventListener("change", (e) => {
+  state.activePanelVariantRole = e.target.value || "base";
+  renderPanelVariantControls();
+  rebuild();
+});
+nodes.panelVariantAssignmentMode?.addEventListener("change", (e) => {
+  state.panelVariantAssignmentMode = e.target.value === "single" ? "single" : "auto";
+  renderPanelVariantControls();
+  rebuild();
+});
+nodes.panelAttractorResponseMode?.addEventListener("change", (e) => {
+  state.panelAttractorResponse.mode = e.target.value || "none";
+  renderPanelAttractorResponseControls();
+  rebuild();
+});
+nodes.panelAttractorResponseAmount?.addEventListener("input", (e) => {
+  const value = Number(e.target.value);
+  state.panelAttractorResponse.amount = clamp(Number.isFinite(value) ? value : 0, 0, 1);
+  renderPanelAttractorResponseControls();
+  rebuild();
+});
+const syncSupportScaffoldControls = () => {
+  const scaffold = state.supportScaffold || {};
+  if (nodes.supportScaffoldEnabled) nodes.supportScaffoldEnabled.checked = !!scaffold.enabled;
+  setInputValue(nodes.supportScaffoldXCount, scaffold.xCount ?? 8, { force: true });
+  setInputValue(nodes.supportScaffoldYCount, scaffold.yCount ?? 10, { force: true });
+  setInputValue(nodes.supportScaffoldDepth, metersToCmInput(scaffold.ribDepth ?? 1.8), { force: true });
+  setInputValue(nodes.supportScaffoldThickness, metersToCmInput(scaffold.ribThickness ?? 0.08), { force: true });
+};
+const updateSupportScaffoldFromControls = () => {
+  state.supportScaffold = {
+    ...state.supportScaffold,
+    enabled: !!nodes.supportScaffoldEnabled?.checked,
+    xCount: clamp(Math.round(Number(nodes.supportScaffoldXCount?.value || 8)), 2, 40),
+    yCount: clamp(Math.round(Number(nodes.supportScaffoldYCount?.value || 10)), 2, 40),
+    ribDepth: state.supportScaffold.ribDepth || 1.8,
+    ribThickness: clamp(cmInputToMeters(nodes.supportScaffoldThickness?.value || 8), 0.01, 1),
+  };
+  syncSupportScaffoldControls();
+};
+[nodes.supportScaffoldEnabled, nodes.supportScaffoldXCount, nodes.supportScaffoldYCount, nodes.supportScaffoldDepth, nodes.supportScaffoldThickness].forEach((node) => {
+  const event = node?.type === "checkbox" ? "change" : "input";
+  node?.addEventListener(event, () => {
+    updateSupportScaffoldFromControls();
+    state.vaultDesignerPreview = true;
+    rebuild();
+  });
+});
+const syncTopologyLatticeControls = () => {
+  const lattice = state.topologyLattice;
+  if (nodes.topologyLatticeEnabled) nodes.topologyLatticeEnabled.checked = !!lattice.enabled;
+  if (nodes.topologyLatticeShowU) nodes.topologyLatticeShowU.checked = lattice.showU !== false;
+  if (nodes.topologyLatticeShowV) nodes.topologyLatticeShowV.checked = lattice.showV !== false;
+  setInputValue(nodes.topologyLatticeRailWidth, metersToCmInput(lattice.railWidth), { force: true });
+  setInputValue(nodes.topologyLatticeRailDepth, metersToCmInput(lattice.railDepth), { force: true });
+  setInputValue(nodes.topologyLatticeFillet, metersToCmInput(lattice.fillet ?? 0), { force: true });
+  setInputValue(nodes.topologyLatticeLayerGap, metersToCmInput(lattice.layerGap ?? 0), { force: true });
+  setInputValue(nodes.topologyLatticeOpening, lattice.opening, { force: true });
+  setInputValue(nodes.topologyLatticeDensity, lattice.density, { force: true });
+  setInputValue(nodes.topologyLatticeBottomWidth, metersToCmInput(lattice.bottomWidth ?? lattice.railWidth), { force: true });
+  setInputValue(nodes.topologyLatticeBottomDepth, metersToCmInput(lattice.bottomDepth ?? lattice.railDepth), { force: true });
+  setInputValue(nodes.topologyLatticeBottomFillet, metersToCmInput(lattice.bottomFillet ?? lattice.fillet ?? 0), { force: true });
+  setInputValue(nodes.topologyLatticeBottomOpening, lattice.bottomOpening ?? lattice.opening, { force: true });
+  setInputValue(nodes.topologyLatticeBottomDensity, lattice.bottomDensity ?? lattice.density, { force: true });
+  const bindings = lattice.loopBindings || {};
+  if (nodes.topologyLoopBindingsEnabled) nodes.topologyLoopBindingsEnabled.checked = !!bindings.enabled;
+  if (nodes.topologyLoopBindingsFamily) nodes.topologyLoopBindingsFamily.value = bindings.family || "both";
+  setInputValue(nodes.topologyLoopBindingsEvery, bindings.every ?? 4, { force: true });
+  setInputValue(nodes.topologyLoopBindingsWidth, metersToCmInput(bindings.width ?? 0.08), { force: true });
+  setInputValue(nodes.topologyLoopBindingsDepth, metersToCmInput(bindings.depth ?? 0.08), { force: true });
+  setInputValue(nodes.topologyLoopBindingsOffset, metersToCmInput(bindings.offset ?? 0), { force: true });
+  setInputValue(nodes.topologyLoopBindingsFillet, metersToCmInput(bindings.fillet ?? 0.12), { force: true });
+};
+const updateTopologyLatticeFromControls = () => {
+  state.topologyLattice = {
+    ...state.topologyLattice,
+    enabled: !!nodes.topologyLatticeEnabled?.checked,
+    showU: nodes.topologyLatticeShowU ? !!nodes.topologyLatticeShowU.checked : state.topologyLattice.showU !== false,
+    showV: nodes.topologyLatticeShowV ? !!nodes.topologyLatticeShowV.checked : state.topologyLattice.showV !== false,
+    railWidth: clamp(cmInputToMeters(nodes.topologyLatticeRailWidth?.value || 12), 0.01, 2),
+    railDepth: clamp(cmInputToMeters(nodes.topologyLatticeRailDepth?.value || 6), 0.005, 2),
+    fillet: clamp(cmInputToMeters(nodes.topologyLatticeFillet?.value || 0), 0, 2),
+    layerGap: clamp(cmInputToMeters(nodes.topologyLatticeLayerGap?.value || 0), 0, 2),
+    opening: clamp(Number(nodes.topologyLatticeOpening?.value || 0.55), 0, 0.85),
+    density: clamp(Math.round(Number(nodes.topologyLatticeDensity?.value || 3)), 0, 8),
+    bottomWidth: clamp(cmInputToMeters(nodes.topologyLatticeBottomWidth?.value || 12), 0.01, 2),
+    bottomDepth: clamp(cmInputToMeters(nodes.topologyLatticeBottomDepth?.value || 6), 0.005, 2),
+    bottomFillet: clamp(cmInputToMeters(nodes.topologyLatticeBottomFillet?.value || 0), 0, 2),
+    bottomOpening: clamp(Number(nodes.topologyLatticeBottomOpening?.value || 0.55), 0, 0.85),
+    bottomDensity: clamp(Math.round(Number(nodes.topologyLatticeBottomDensity?.value || 3)), 0, 8),
+    loopBindings: {
+      enabled: !!nodes.topologyLoopBindingsEnabled?.checked,
+      family: ["both", "u", "v"].includes(nodes.topologyLoopBindingsFamily?.value) ? nodes.topologyLoopBindingsFamily.value : "both",
+      every: clamp(Math.round(Number(nodes.topologyLoopBindingsEvery?.value || 4)), 1, 20),
+      width: clamp(cmInputToMeters(nodes.topologyLoopBindingsWidth?.value || 8), 0.01, 2),
+      depth: clamp(cmInputToMeters(nodes.topologyLoopBindingsDepth?.value || 8), 0.005, 2),
+      offset: clamp(cmInputToMeters(nodes.topologyLoopBindingsOffset?.value || 0), 0, 2),
+      fillet: clamp(cmInputToMeters(nodes.topologyLoopBindingsFillet?.value || 12), 0, 2),
+    },
+  };
+  syncTopologyLatticeControls();
+};
+[nodes.topologyLatticeEnabled, nodes.topologyLatticeShowU, nodes.topologyLatticeShowV, nodes.topologyLatticeRailWidth, nodes.topologyLatticeRailDepth, nodes.topologyLatticeFillet, nodes.topologyLatticeLayerGap, nodes.topologyLatticeOpening, nodes.topologyLatticeDensity, nodes.topologyLatticeBottomWidth, nodes.topologyLatticeBottomDepth, nodes.topologyLatticeBottomFillet, nodes.topologyLatticeBottomOpening, nodes.topologyLatticeBottomDensity, nodes.topologyLoopBindingsEnabled, nodes.topologyLoopBindingsFamily, nodes.topologyLoopBindingsEvery, nodes.topologyLoopBindingsWidth, nodes.topologyLoopBindingsDepth, nodes.topologyLoopBindingsOffset, nodes.topologyLoopBindingsFillet].forEach((node) => {
+  const event = node?.type === "checkbox" || node?.tagName === "SELECT" ? "change" : "input";
+  node?.addEventListener(event, () => { updateTopologyLatticeFromControls(); rebuild(); });
+});
+nodes.topologyLatticeGenerate?.addEventListener("click", () => {
+  if (!state.blocks.length) {
+    setPipelineStatus("Generate or apply the mesh topology before building a topology lattice.");
+    return;
+  }
+  if (!state.importedTissueCells?.length && !state.blocks.some((block) => block.targetPoints?.length)) {
+    setPipelineStatus("Topology Lattice needs an active quad carrier with mapped surface points.");
+    return;
+  }
+  if (nodes.topologyLatticeEnabled) nodes.topologyLatticeEnabled.checked = true;
+  updateTopologyLatticeFromControls();
+  state.patternAppliedToModel = true;
+  setPipelineStatus("Topology Lattice generated from shared quad-carrier edges.");
+  rebuild();
 });
 [
-  ["maxLengthSlider", "maxLength"],
-  ["maxWidthSlider", "maxWidth"],
-  ["minThicknessSlider", "minThickness"],
+  ["panelScaleX", "scaleX", (value) => clamp(Number(value) || 1, 0.05, 8)],
+  ["panelScaleY", "scaleY", (value) => clamp(Number(value) || 1, 0.05, 8)],
+  ["panelScaleZ", "scaleZ", (value) => clamp(Number(value) || 1, 0.05, 8)],
+  ["panelRotateDeg", "rotateDeg", (value) => clamp(Number(value) || 0, -180, 180)],
+].forEach(([nodeKey, transformKey, parse]) => {
+  nodes[nodeKey]?.addEventListener("input", (e) => {
+    setActivePanelVariantTransformValue(transformKey, parse(e.target.value));
+    renderPanelVariantControls();
+    rebuild();
+  });
+});
+nodes.panelSurfaceOffset?.addEventListener("input", (e) => {
+  setActivePanelVariantTransformValue("surfaceOffset", clamp(cmInputToMeters(e.target.value), -2, 2));
+  renderPanelVariantControls();
+  rebuild();
+});
+nodes.panelLongAxisAlign?.addEventListener("change", (e) => {
+  const value = e.target.value || "strategy";
+  setActivePanelVariantTransformValue("align", value);
+  if (value !== "strategy") {
+    state.strategy.rotation = value;
+    setInputValue(nodes.strategyRotation, value, { force: true });
+  }
+  renderPanelVariantControls();
+  rebuild();
+});
+[
+  ["panelMirrorU", "mirrorU"],
+  ["panelMirrorV", "mirrorV"],
+  ["panelFlipNormal", "flipNormal"],
+].forEach(([nodeKey, transformKey]) => {
+  nodes[nodeKey]?.addEventListener("change", (e) => {
+    setActivePanelVariantTransformValue(transformKey, !!e.target.checked);
+    renderPanelVariantControls();
+    rebuild();
+  });
+});
+
+const ensureImportedFreeformApplied = () => {
+  if (
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    state.importedSurface &&
+    ["Freeform Courses", "NGon Cells", "NGon Adaptive"].includes(state.customPatternSource)
+  ) {
+    state.patternAppliedToModel = true;
+    state.layers.blocks = true;
+    if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+  }
+};
+
+const updateFreeformCountsFromBlockDimensions = () => {
+  const bbox = state.importedSurfaceBbox;
+  if (
+    state.designMode !== "Custom Import" ||
+    state.vaultType !== "Custom Imported Rhino Surface" ||
+    !state.importedSurface ||
+    !bbox ||
+    bbox.isEmpty()
+  ) return;
+  const size = bbox.getSize(new THREE.Vector3());
+  const targetCourseHeight = clamp(state.constraints.courseHeight || 0.65, 0.15, 8);
+  const targetBlockLength = clamp(state.targetBlockWidth || 1.2, 0.15, 10);
+  const uExtent = Math.max(0.15, size.x);
+  const vExtent = Math.max(0.15, Math.max(size.z, size.y * 0.35));
+  state.params.courseCount = Math.max(2, Math.min(240, Math.ceil(uExtent / targetCourseHeight)));
+  state.params.blockCount = Math.max(2, Math.min(240, Math.ceil(vExtent / targetBlockLength)));
+};
+
+const applyBlockLengthCm = (valueCm) => {
+  if (String(valueCm).trim() === "") return;
+  const value = cmInputToMeters(valueCm);
+  if (!Number.isFinite(value)) return;
+  state.targetBlockWidth = Math.max(0.1, value);
+  if (isBarrelLikeVault()) fitStartupParamsToConstraints(state.vaultType);
+  ensureImportedFreeformApplied();
+  updateFreeformCountsFromBlockDimensions();
+  syncInputsFromState();
+  rebuild();
+};
+
+const applyBlockWidthCm = (valueCm) => {
+  if (String(valueCm).trim() === "") return;
+  const value = cmInputToMeters(valueCm);
+  if (!Number.isFinite(value)) return;
+  state.constraints.courseHeight = clamp(value, 0.1, 5);
+  if (isBarrelLikeVault()) fitStartupParamsToConstraints(state.vaultType);
+  ensureImportedFreeformApplied();
+  updateFreeformCountsFromBlockDimensions();
+  syncInputsFromState();
+  rebuild();
+};
+
+const applyBlockHeightCm = (valueCm) => {
+  if (String(valueCm).trim() === "") return;
+  const value = cmInputToMeters(valueCm);
+  if (!Number.isFinite(value)) return;
+  state.params.thickness = clamp(value, 0.2, 4);
+  state.wallThickness = clamp(state.params.thickness, 0.1, 4);
+  ensureImportedFreeformApplied();
+  syncInputsFromState();
+  rebuild();
+};
+[
   ["maxWeightSlider", "maxWeight"],
   ["maxTaperSlider", "maxTaper"],
-  ["minEdgeLengthSlider", "minEdgeLength"],
-  ["fabToleranceSlider", "fabTolerance"],
 ].forEach(([sliderId, numberId]) => linkRangeAndNumber(sliderId, numberId));
+[
+  ["maxLengthSlider", "maxLength", "maxLength"],
+  ["maxWidthSlider", "maxWidth", "maxWidth"],
+  ["minThicknessSlider", "minThickness", "minThickness"],
+  ["minEdgeLengthSlider", "minEdgeLength", "minEdgeLength"],
+  ["fabToleranceSlider", "fabTolerance", "fabTolerance"],
+].forEach(([sliderId, numberId, key]) => linkCmRangeAndNumber(sliderId, numberId, (value) => {
+  state.constraints[key] = value;
+  rebuild();
+}));
 if (byId("courseHeight")) byId("courseHeight").addEventListener("input", () => {
-  if (isBarrelLikeVault()) {
-    fitStartupParamsToConstraints(state.vaultType);
-    syncInputsFromState();
+  applyBlockWidthCm(byId("courseHeight").value);
+});
+if (byId("blockHeight")) byId("blockHeight").addEventListener("input", () => {
+  applyBlockHeightCm(byId("blockHeight").value);
+});
+nodes.blockPreviewLength?.addEventListener("input", (e) => applyBlockLengthCm(e.target.value));
+nodes.blockPreviewWidth?.addEventListener("input", (e) => applyBlockWidthCm(e.target.value));
+nodes.blockPreviewHeight?.addEventListener("input", (e) => applyBlockHeightCm(e.target.value));
+nodes.ngonCellType?.addEventListener("change", (e) => {
+  state.ngonCellType = ["Hex", "Diamond", "Quad", "Chebychev", "Triangle"].includes(e.target.value) ? e.target.value : "Hex";
+  activateNgonPatternSource();
+  rebuild();
+});
+linkRangeAndNumber("ngonShape", "ngonShapeNum", (value) => {
+  state.ngonShape = clamp(value, 0, 1);
+  activateNgonPatternSource();
+  rebuild();
+});
+[
+  nodes.strategyComponent,
+  nodes.strategyComponentMode,
+  nodes.strategyFill,
+  nodes.strategyRotation,
+  nodes.strategyRotationVariation,
+  nodes.strategyComponentMapping,
+  nodes.strategyThickness,
+  nodes.strategyTopology,
+  nodes.strategyDualBoundaryCleanup,
+  nodes.strategyMerge,
+].forEach((el) => {
+  el?.addEventListener("change", () => {
+    if (nodes.strategyPreset) nodes.strategyPreset.value = "custom";
+    updateStrategyFromControls();
+    setPipelineStatus(`Strategy updated: ${labelStrategyValue(state.strategy.field)} mapped as ${labelStrategyValue(state.strategy.component)}.`);
     rebuild();
-  }
+  });
+});
+linkRangeAndNumber("strategyPatchSubdivision", "strategyPatchSubdivisionNum", (value) => {
+  if (nodes.strategyPreset) nodes.strategyPreset.value = "custom";
+  state.strategy.patchSubdivision = clamp(Math.round(value), 2, 12);
+  syncInputPair("strategyPatchSubdivision", state.strategy.patchSubdivision);
+  rebuild();
+});
+linkRangeAndNumber("strategyPatchSmoothing", "strategyPatchSmoothingNum", (value) => {
+  if (nodes.strategyPreset) nodes.strategyPreset.value = "custom";
+  state.strategy.patchSmoothing = clamp(Math.round(value), 0, 4);
+  syncInputPair("strategyPatchSmoothing", state.strategy.patchSmoothing);
+  rebuild();
+});
+nodes.strategyPreset?.addEventListener("change", (e) => {
+  applyStrategyPreset(e.target.value);
+});
+[
+  nodes.fieldWeightSource,
+  nodes.fieldWeightFormula,
+  nodes.fieldWeightSmoothing,
+  nodes.fieldWeightSmoothingIterations,
+  nodes.fieldWeightRandomSeed,
+  nodes.fieldWeightMaterialStrategy,
+  nodes.fieldWeightDriveDensity,
+  nodes.fieldWeightDriveComponent,
+  nodes.fieldWeightDriveThickness,
+  nodes.fieldWeightDriveRotation,
+  nodes.fieldWeightDriveTaper,
+  nodes.fieldWeightDriveZones,
+].forEach((el) => {
+  const eventName = el?.type === "checkbox" || el?.tagName === "SELECT" ? "change" : "input";
+  el?.addEventListener(eventName, () => {
+    updateFieldWeightsFromControls();
+    setInputValue(nodes.panelMorphWeightSource, state.fieldWeights.source, { force: true });
+    setPipelineStatus(`Field weights updated: ${labelStrategyValue(state.fieldWeights.source)} driving strategy outputs.`);
+    rebuild();
+  });
+});
+nodes.panelMorphWeightSource?.addEventListener("change", (e) => {
+  state.fieldWeights.source = e.target.value || state.fieldWeights.source;
+  setInputValue(nodes.fieldWeightSource, state.fieldWeights.source, { force: true });
+  setPipelineStatus(`Morph weight source: ${labelStrategyValue(state.fieldWeights.source)}.`);
+  rebuild();
+});
+[
+  nodes.contourFieldEnabled,
+  nodes.contourFieldSource,
+  nodes.contourFieldBands,
+  nodes.contourMaskMode,
+  nodes.showContourField,
+  nodes.showContourMasks,
+  nodes.showStreamlines,
+  nodes.streamlineSource,
+  nodes.streamlineCount,
+  nodes.guideDirectionDeg,
+  nodes.reactionDiffusion,
+  nodes.reactionScale,
+].forEach((el) => {
+  const eventName = el?.type === "checkbox" || el?.tagName === "SELECT" ? "change" : "input";
+  el?.addEventListener(eventName, () => {
+    updateContourFieldFromControls();
+    state.view2dOptions.showContourField = state.contourField.showContours;
+    state.view2dOptions.showStreamlines = state.contourField.streamlines;
+    setPipelineStatus(`Contour field updated: ${state.contourField.source}; mask ${state.contourField.maskMode}.`);
+    rebuild();
+  });
 });
 ["alignScale", "alignOffsetU", "alignOffsetV", "alignRotation"].forEach((id) => {
   byId(id).addEventListener("input", (e) => {
@@ -5844,10 +14509,28 @@ if (byId("courseHeight")) byId("courseHeight").addEventListener("input", () => {
   const el = byId(id);
   if (!el) return;
   el.addEventListener("input", (e) => {
+    if (String(e.target.value).trim() === "") return;
     const value = Number(e.target.value);
     if (!Number.isFinite(value)) return;
-    state.sourceTransform[key] = key === "scale" ? Math.max(0.001, value) : value;
+    if (usesSourceSizeInputs() && ["tx", "ty", "tz"].includes(key)) {
+      const scale = Math.max(0.001, Number(state.sourceTransform.scale) || 1);
+      const localValue = value / scale;
+      if (key === "tx") {
+        state.params.span = clamp(localValue - (state.params.thickness || 0) * 2, 4, 80);
+      } else if (key === "ty") {
+        state.params.length = clamp(localValue, 4, 120);
+      } else if (key === "tz") {
+        state.params.rise = clamp((localValue - (state.wallHeightOffset || 0) - (state.params.thickness || 0)) * 0.5, 2, 40);
+      }
+      fitStartupParamsToConstraints(state.vaultType);
+      syncInputsFromState();
+      rebuild();
+      return;
+    }
+    const transformKey = key === "ty" ? "tz" : key === "tz" ? "ty" : key;
+    state.sourceTransform[transformKey] = key === "scale" ? Math.max(0.001, value) : value;
     applySourceTransform();
+    if (key === "scale" && usesSourceSizeInputs()) syncInputsFromState();
     if (state.patternAppliedToModel) rebuild();
   });
 });
@@ -5885,7 +14568,6 @@ byId("bayRatio").addEventListener("input", (e) => {
 });
 if (byId("supportTopology")) byId("supportTopology").addEventListener("change", (e) => { state.supportTopology = e.target.value; rebuild(); });
 byId("designMode").addEventListener("change", (e) => { state.designMode = e.target.value; applyRightPanelToolVisibility(); rebuild(); });
-if (byId("customPatternSource")) byId("customPatternSource").addEventListener("change", (e) => { state.customPatternSource = e.target.value; rebuild(); });
 if (byId("supportCount")) byId("supportCount").addEventListener("input", (e) => { state.supportCount = Math.max(3, Number(e.target.value)); rebuild(); });
 if (byId("forceLmin")) byId("forceLmin").addEventListener("input", (e) => { state.forceLmin = Math.max(0.01, Number(e.target.value)); rebuild(); });
 if (byId("forceLmax")) byId("forceLmax").addEventListener("input", (e) => { state.forceLmax = Math.max(state.forceLmin + 0.01, Number(e.target.value)); rebuild(); });
@@ -5897,10 +14579,73 @@ byId("vaultType").addEventListener("change", (e) => {
   if (byId("referencePreset")) byId("referencePreset").value = "Custom";
   runVaultSelectionPipeline(e.target.value);
 });
+const blockDesignerInputs = { bdBaseGeometry: "baseGeometry", bdJointPreset: "jointType", bdLength: "length", bdWidth: "width", bdHeight: "height", bdThickness: "thickness", bdDraft: "draft", bdFillet: "fillet", bdClearance: "clearance", bdDensity: "density", bdFrequency: "frequency", bdAmplitude: "amplitude", bdDepth: "depth", bdPhase: "phase", bdMorph: "morph", bdTileMode: "tileMode", bdSwatch: "swatch" };
+Object.entries(blockDesignerInputs).forEach(([id, key]) => {
+  const update = (e) => { const el = e.target; state.blockDesigner[key] = el.tagName === "SELECT" ? el.value : Number(el.value); renderBlockDesigner(); };
+  byId(id)?.addEventListener("input", update);
+  byId(id)?.addEventListener("change", update);
+});
+byId("bdSaveTile")?.addEventListener("click", () => saveBlockDesignerTile());
+byId("bdApplyTile")?.addEventListener("click", () => { const tile = state.assetLibraryEntries.find(e => e.id === state.blockDesigner.activeTileId); if (!tile) return; state.vaultDesignerPreview = true; setToolTab("vault-designer"); setPipelineStatus(`Tile system “${tile.name}” is selected for downstream adaptation to the vault surface.`); });
+byId("bdViews")?.addEventListener("click", (e) => { const btn = e.target.closest("button[data-bd-view]"); if (!btn) return; state.blockDesigner.view = btn.dataset.bdView; state.blockDesigner.userCamera = false; byId("bdViews").querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn)); renderBlockDesigner(); });
+let blockDesignerSplitter = null;
+byId("bdRowSplitter")?.addEventListener("pointerdown", (e) => { blockDesignerSplitter = "row"; e.currentTarget.setPointerCapture(e.pointerId); document.body.style.userSelect = "none"; });
+byId("bdColumnSplitter")?.addEventListener("pointerdown", (e) => { blockDesignerSplitter = "column"; e.currentTarget.setPointerCapture(e.pointerId); document.body.style.userSelect = "none"; });
+window.addEventListener("pointermove", (e) => {
+  if (!blockDesignerSplitter) return;
+  const workbench = byId("blockDesignerWorkbench"), center = workbench?.querySelector(".bd-center");
+  if (!workbench || !center) return;
+  if (blockDesignerSplitter === "row") {
+    const rect = center.getBoundingClientRect();
+    workbench.style.setProperty("--bd-pair-pane", `${clamp(e.clientY - rect.top - 38, 170, rect.height - 180)}px`);
+  } else {
+    const rect = workbench.getBoundingClientRect();
+    workbench.style.setProperty("--bd-library-width", `${clamp(rect.right - e.clientX, 220, Math.max(220, rect.width * .45))}px`);
+  }
+  resize();
+});
+window.addEventListener("pointerup", () => { if (blockDesignerSplitter) { blockDesignerSplitter = null; document.body.style.userSelect = ""; } });
+byId("vaultDesignerType")?.addEventListener("change", (e) => {
+  state.imported2DPolys = null;
+  vaultStartupSeen.add(e.target.value);
+  if (byId("referencePreset")) byId("referencePreset").value = "Custom";
+  runVaultSelectionPipeline(e.target.value);
+});
+byId("regenerateVaultDesign")?.addEventListener("click", () => {
+  runVaultSelectionPipeline(state.vaultType);
+});
+byId("exportSurfaceToBlocks")?.addEventListener("click", () => {
+  state.vaultDesignerPreview = true;
+  state.blocksGeneratedFromTrait = false;
+  state.view2dOptions.showBlocks = false;
+  setPipelineStatus("Vault surface exported to Block Designer. Choose and apply a block strategy when ready.");
+  renderVaultDesigner();
+  setToolTab("block-designer");
+  rebuild();
+});
+byId("openCustomImportTools")?.addEventListener("click", () => {
+  state.designMode = "Custom Import";
+  state.vaultType = "Custom Imported Rhino Surface";
+  if (byId("designMode")) byId("designMode").value = "Custom Import";
+  if (byId("vaultType")) byId("vaultType").value = state.vaultType;
+  if (byId("vaultDesignerType")) byId("vaultDesignerType").value = state.vaultType;
+  state.vaultDesignerPreview = true;
+  renderVaultDesigner();
+  syncInputsFromState();
+  setToolTab("source");
+  setPipelineStatus("Custom host tools are open. Import a 3DM, OBJ, STL, GLB, or saved host surface here.");
+  rebuild();
+});
 if (byId("constructionTemplate")) byId("constructionTemplate").addEventListener("change", (e) => {
   applyConstructionTemplate(e.target.value);
 });
 byId("subdivision").addEventListener("change", (e) => { state.pattern = e.target.value; rebuild(); });
+nodes.customPatternSource?.addEventListener("change", (e) => {
+  setCustomPatternSource(e.target.value);
+});
+nodes.workflowPatternSource?.addEventListener("change", (e) => {
+  setCustomPatternSource(e.target.value);
+});
 if (byId("surfacePrinciple")) byId("surfacePrinciple").addEventListener("change", (e) => {
   state.surfacePrinciple = e.target.value;
   state.activeTraitConstructionStep = null;
@@ -6008,9 +14753,17 @@ if (byId("drawingMode2d")) byId("drawingMode2d").addEventListener("change", (e) 
   });
 });
 if (byId("generateBlocksFromTrait")) byId("generateBlocksFromTrait").addEventListener("click", () => {
+  state.vaultDesignerPreview = false;
   state.blockStep = "Generated Voussoirs";
   state.blocksGeneratedFromTrait = true;
   state.pipelineStage = Math.max(state.pipelineStage || 0, 5);
+  if (
+    state.designMode === "Custom Import" &&
+    state.vaultType === "Custom Imported Rhino Surface" &&
+    ["NGon Cells", "NGon Adaptive"].includes(state.customPatternSource)
+  ) {
+    activateNgonPatternSource();
+  }
   updateStereotomyProcess(5);
   state.view2dOptions.showBlocks = true;
   state.view2dOptions.showVertices = false;
@@ -6128,6 +14881,14 @@ if (byId("toggleSeamDebug")) byId("toggleSeamDebug").addEventListener("change", 
     if (key === "guides") draw2d();
   });
 });
+if (byId("toggleImportedSurface")) {
+  byId("toggleImportedSurface").addEventListener("click", () => {
+    const nextVisible = !getOriginalVaultSurfaceVisibility();
+    setOriginalVaultSurfaceVisibility(nextVisible);
+    applyLayerVisibility();
+    setPipelineStatus(nextVisible ? "Original vault/source surface visible." : "Original vault/source surface hidden; block panels remain visible.");
+  });
+}
 document.querySelectorAll("[data-transform-tool]").forEach((button) => {
   button.addEventListener("click", () => {
     state.transformTool = button.dataset.transformTool || "select";
@@ -6207,11 +14968,20 @@ if (byId("resetRecommended")) byId("resetRecommended").addEventListener("click",
   rebuild();
 });
 if (byId("applyPatternToModel")) byId("applyPatternToModel").addEventListener("click", () => {
+  state.vaultDesignerPreview = false;
   state.patternAppliedToModel = true;
+  state.layers.blocks = true;
+  state.layers.supports = true;
+  if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+  if (byId("layerSupports")) byId("layerSupports").checked = true;
+  state.view2dOptions.showReferenceGeometry = true;
+  state.view2dOptions.showGuides = true;
+  state.view2dOptions.mode = "Trait / Epure";
   setPipelineStatus("Blocks applied to vault model.");
   rebuild();
 });
 if (byId("showSolidOnly")) byId("showSolidOnly").addEventListener("click", () => {
+  state.vaultDesignerPreview = true;
   state.patternAppliedToModel = false;
   state.selectedBlockId = null;
   setPipelineStatus("Solid model preview active.");
@@ -6239,55 +15009,402 @@ byId("runChecks").addEventListener("click", () => {
   setPipelineStatus("Fabrication checks active: highlighting blocks against the selected tolerance and constraint criteria.");
   rebuild();
 });
+byId("resetCustomTiles")?.addEventListener("click", resetCustomTiles);
+nodes.saveTileAsset?.addEventListener("click", () => saveLibraryCandidate("tile"));
+nodes.saveHostAsset?.addEventListener("click", () => saveLibraryCandidate("host"));
+nodes.saveEditedPanelAsset?.addEventListener("click", () => saveCurrentEditedPanelVariant({ duplicate: false }));
+nodes.duplicatePanelVariant?.addEventListener("click", () => saveCurrentEditedPanelVariant({ duplicate: true }));
+nodes.hostLibrarySelect?.addEventListener("change", () => renderAssetLibraryPreview("host"));
+nodes.panelLibrarySelect?.addEventListener("change", () => renderAssetLibraryPreview("panel"));
+nodes.loadHostAsset?.addEventListener("click", () => loadSelectedLibraryAsset("host"));
+nodes.deleteHostAsset?.addEventListener("click", () => deleteSelectedLibraryAsset("host"));
+nodes.loadPanelAsset?.addEventListener("click", () => loadSelectedLibraryAsset("panel"));
+nodes.deletePanelAsset?.addEventListener("click", () => deleteSelectedLibraryAsset("panel"));
 byId("import2d").addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   if (!f) return;
-  await on2dImport(f);
-  state.designMode = "Custom Import";
-  byId("designMode").value = "Custom Import";
-  state.vaultType = "Custom Imported Rhino Surface";
-  if (byId("vaultType")) byId("vaultType").value = state.vaultType;
-  state.customPatternSource = "Imported 2D Layout";
-  if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
-  state.patternAppliedToModel = false;
-  state.pipelineStage = Math.max(state.pipelineStage, 3);
-  updateStereotomyProcess(state.pipelineStage);
-  setPipelineStatus(`2D pattern layout loaded from ${f.name}.`);
-  applyVaultParamRules();
-  applyRightPanelToolVisibility();
-  rebuild();
+  await apply2dImportFile(f);
+});
+byId("importTopologyMesh")?.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  await applyTopologyMeshFile(f);
+});
+nodes.importCustomPanel?.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  await applyCustomPanelFile(f);
+});
+nodes.importCustomPanelMorph?.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  const ok = await applyMorphPanelFile(f);
+  if (!ok) e.target.value = "";
 });
 byId("import3d").addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   if (!f) return;
-  await load3DObject(f);
-  state.designMode = "Custom Import";
-  byId("designMode").value = "Custom Import";
-  state.vaultType = "Custom Imported Rhino Surface";
-  if (byId("vaultType")) byId("vaultType").value = state.vaultType;
-  state.customPatternSource = state.imported2DPolys?.length ? "Imported 2D Layout" : "UV Form Grid";
-  if (byId("customPatternSource")) byId("customPatternSource").value = state.customPatternSource;
-  state.pattern = vaultPatternPreset[state.vaultType] || state.pattern;
-  if (byId("subdivision")) byId("subdivision").value = state.pattern;
-  state.patternAppliedToModel = false;
-  state.pipelineStage = 1;
-  updateStereotomyProcess(1);
-  setPipelineStatus(`Uploaded model source loaded: ${f.name}.`);
-  applyVaultParamRules();
-  applyRightPanelToolVisibility();
-  rebuild();
+  await applyHost3dFile(f);
 });
+
+const buildMergedFabricationMeshPayload = () => {
+  const vertices = [];
+  const faces = [];
+  const blockRanges = [];
+  state.blocks.forEach((block) => {
+    try {
+      const metrics = buildBlockMesh(block);
+      const position = metrics.geometry.getAttribute("position");
+      if (!position?.count) return;
+      const startVertex = vertices.length;
+      for (let i = 0; i < position.count; i++) {
+        vertices.push([
+          Number(position.getX(i).toFixed(6)),
+          Number(position.getY(i).toFixed(6)),
+          Number(position.getZ(i).toFixed(6)),
+        ]);
+      }
+      const index = metrics.geometry.getIndex();
+      const startFace = faces.length;
+      if (index) {
+        for (let i = 0; i < index.count; i += 3) {
+          faces.push([
+            startVertex + index.getX(i),
+            startVertex + index.getX(i + 1),
+            startVertex + index.getX(i + 2),
+          ]);
+        }
+      } else {
+        for (let i = 0; i < position.count; i += 3) {
+          faces.push([startVertex + i, startVertex + i + 1, startVertex + i + 2]);
+        }
+      }
+      blockRanges.push({
+        id: block.id,
+        component: block.componentVariant || block.componentType,
+        panelVariantRole: block.panelVariantRole || null,
+        startVertex,
+        vertexCount: position.count,
+        startFace,
+        faceCount: faces.length - startFace,
+      });
+      metrics.geometry.dispose();
+    } catch (err) {
+      console.warn("merged fabrication export skipped block", block.id, err);
+    }
+  });
+  return {
+    type: "merged-fabrication-mesh",
+    mergeMode: state.strategy.merge,
+    vertices,
+    faces,
+    blockRanges,
+  };
+};
+
+const downloadTextFile = (filename, content, type = "text/plain") => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const sanitizeExportName = (value) => String(value || "block").replace(/[^a-z0-9_-]+/gi, "_");
+
+const collectBlockExportTriangles = () => {
+  const out = [];
+  state.blocks.forEach((block) => {
+    let metrics = null;
+    try {
+      metrics = buildBlockMesh(block);
+      const geometry = metrics.geometry;
+      const position = geometry?.getAttribute("position");
+      if (!position?.count) return;
+      const vertices = [];
+      for (let i = 0; i < position.count; i++) {
+        vertices.push(new THREE.Vector3(position.getX(i), position.getY(i), position.getZ(i)));
+      }
+      const index = geometry.getIndex();
+      const triangles = [];
+      if (index?.count) {
+        for (let i = 0; i < index.count; i += 3) triangles.push([index.getX(i), index.getX(i + 1), index.getX(i + 2)]);
+      } else {
+        for (let i = 0; i < vertices.length - 2; i += 3) triangles.push([i, i + 1, i + 2]);
+      }
+      if (triangles.length) out.push({ id: block.id, vertices, triangles });
+    } catch (err) {
+      console.warn("Block export skipped", block.id, err);
+    } finally {
+      metrics?.geometry?.dispose?.();
+    }
+  });
+  return out;
+};
+
+const serializeBlocksObj = (parts) => {
+  const lines = ["# Lithic Lab block export", `# blocks ${parts.length}`];
+  let vertexOffset = 1;
+  parts.forEach((part) => {
+    lines.push(`o ${sanitizeExportName(part.id)}`);
+    part.vertices.forEach((v) => lines.push(`v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}`));
+    part.triangles.forEach(([a, b, c]) => lines.push(`f ${a + vertexOffset} ${b + vertexOffset} ${c + vertexOffset}`));
+    vertexOffset += part.vertices.length;
+  });
+  return `${lines.join("\n")}\n`;
+};
+
+const serializeBlocksStl = (parts) => {
+  const lines = ["solid lithic_lab_blocks"];
+  parts.forEach((part) => {
+    lines.push(`  solid ${sanitizeExportName(part.id)}`);
+    part.triangles.forEach(([a, b, c]) => {
+      const va = part.vertices[a];
+      const vb = part.vertices[b];
+      const vc = part.vertices[c];
+      const normal = new THREE.Vector3().crossVectors(vb.clone().sub(va), vc.clone().sub(va)).normalize();
+      lines.push(`    facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}`);
+      lines.push("      outer loop");
+      [va, vb, vc].forEach((v) => lines.push(`        vertex ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}`));
+      lines.push("      endloop");
+      lines.push("    endfacet");
+    });
+    lines.push(`  endsolid ${sanitizeExportName(part.id)}`);
+  });
+  lines.push("endsolid lithic_lab_blocks");
+  return `${lines.join("\n")}\n`;
+};
+
+const exportBlocksMesh = (format) => {
+  if (!state.blocks.length) {
+    setPipelineStatus("No blocks to export. Generate or apply blocks first.");
+    return;
+  }
+  const parts = collectBlockExportTriangles();
+  if (!parts.length) {
+    setPipelineStatus("No block mesh geometry could be exported.");
+    return;
+  }
+  if (format === "stl") downloadTextFile("lithic-lab-blocks.stl", serializeBlocksStl(parts), "model/stl");
+  else downloadTextFile("lithic-lab-blocks.obj", serializeBlocksObj(parts), "text/plain");
+  setPipelineStatus(`Exported ${parts.length} block solids as ${format.toUpperCase()}.`);
+};
+
+const buildTopologyGraphPayload = () => {
+  const nodesPayload = state.blocks.map((block) => ({
+    id: block.id,
+    component: block.componentVariant || block.componentType || state.strategy.component,
+    panelVariantRole: block.panelVariantRole || null,
+    zone: block.zone || "field",
+    anchorUv: block.fieldWeights?.anchorUv || block.anchorUv || polygonCentroidUv(block.uv),
+    failed: block.failed || [],
+  }));
+  const edgeMap = new Map();
+  state.blocks.forEach((block) => {
+    (block.uv || []).forEach((point, i) => {
+      const next = block.uv[(i + 1) % block.uv.length];
+      if (!next) return;
+      const key = topologyEdgeKey(point, next);
+      if (!edgeMap.has(key)) edgeMap.set(key, []);
+      edgeMap.get(key).push(block.id);
+    });
+  });
+  const edges = [];
+  edgeMap.forEach((owners, edgeKey) => {
+    if (owners.length < 2) return;
+    for (let i = 0; i < owners.length - 1; i++) {
+      for (let j = i + 1; j < owners.length; j++) {
+        edges.push({
+          source: owners[i],
+          target: owners[j],
+          seam: edgeKey,
+          type: owners.length > 2 ? "non-manifold-adjacency" : "shared-edge",
+        });
+      }
+    }
+  });
+  return {
+    nodeCount: nodesPayload.length,
+    edgeCount: edges.length,
+    nodes: nodesPayload,
+    edges,
+  };
+};
+
+const buildPerFaceLabelsPayload = () => state.blocks.map((block) => ({
+  blockId: block.id,
+  component: block.componentVariant || block.componentType || state.strategy.component,
+  panelVariantRole: block.panelVariantRole || null,
+  materialTag: block.materialTag || null,
+  faces: [
+    { label: "intrados-bed", role: "bed", side: state.barrelOffsetSide === "Outside" ? "inner" : "source" },
+    { label: "extrados-bed", role: "extrados", side: state.barrelOffsetSide === "Outside" ? "source" : "outer" },
+    ...(block.uv || []).map((_, index) => ({
+      label: `joint-${index + 1}`,
+      role: "joint",
+      edgeIndex: index,
+      seamPolicy: state.strategy.merge,
+    })),
+  ],
+}));
+
+const buildAssemblyOrderPayload = () => state.blocks
+  .map((block) => ({
+    id: block.id,
+    zone: block.zone || "field",
+    component: block.componentVariant || block.componentType || state.strategy.component,
+    panelVariantRole: block.panelVariantRole || null,
+    anchorUv: block.fieldWeights?.anchorUv || block.anchorUv || polygonCentroidUv(block.uv),
+    supportWeight: block.fieldWeights?.supportZone || 0,
+    compressionWeight: block.fieldWeights?.compressionIntensity || 0,
+    boundaryWeight: block.fieldWeights?.boundaryZone || 0,
+  }))
+  .sort((a, b) => (
+    b.supportWeight - a.supportWeight ||
+    b.boundaryWeight - a.boundaryWeight ||
+    b.compressionWeight - a.compressionWeight ||
+    a.anchorUv[1] - b.anchorUv[1] ||
+    a.anchorUv[0] - b.anchorUv[0]
+  ))
+  .map((item, index) => ({ ...item, step: index + 1 }));
+
+const buildBlockSolidIndexPayload = () => state.blocks.map((block) => ({
+  id: block.id,
+  component: block.componentVariant || block.componentType || state.strategy.component,
+  panelVariantRole: block.panelVariantRole || null,
+  materialTag: block.materialTag || null,
+  weightBand: block.weightBand || null,
+  fillCellType: block.fillCellType || state.strategy.fill,
+  contourBand: block.contourBand ?? null,
+  contourValue: block.contourValue ?? null,
+  reactionValue: block.reactionValue ?? null,
+  editorOperation: block.editorOperation || null,
+  manualPanelVariantRole: block.manualPanelVariantRole || null,
+  orientationShift: block.orientationShift || 0,
+  orientationReversed: !!block.orientationReversed,
+  geometryType: block.metrics?.geometryType || "offset-prism",
+  uv: block.uv,
+  topFace: block.metrics?.q?.map((p) => [Number(p.x.toFixed(6)), Number(p.y.toFixed(6)), Number(p.z.toFixed(6))]) || [],
+  metrics: block.metrics ? {
+    length: block.metrics.avgLength,
+    width: block.metrics.avgWidth,
+    volume: block.metrics.volume,
+    weight: block.metrics.weight,
+    minEdge: block.metrics.minEdge,
+    uvArea: block.metrics.uvArea,
+    jointFaceType: block.metrics.jointFaceType,
+    deformation: block.metrics.deformation || null,
+  } : null,
+}));
+
+const buildFabricationPackagePayload = (mergedMesh = null) => {
+  const hostField = getHostField();
+  const carrierSummary = getTissueCarrierSummary();
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    strategySettings: getActiveStrategy(),
+    customPanelComponent: state.customPanel,
+    customPanelMapping: {
+      seamAllowance: state.customPanelSeamAllowance,
+      thicknessMode: state.strategy.thickness,
+      thicknessScale: state.customPanelThicknessScale,
+      thicknessOffset: state.customPanelThicknessOffset,
+      panelSubdivisionU: state.panelSubdivisionU,
+      panelSubdivisionV: state.panelSubdivisionV,
+      fieldWeightedMorph: state.panelWeightSubdivision,
+      morphStrength: state.panelMorphStrength,
+      activePanelVariantRole: state.activePanelVariantRole,
+      panelVariantAssignmentMode: state.panelVariantAssignmentMode,
+      panelVariantTransforms: ensurePanelVariantTransforms(),
+    },
+    fieldWeightSettings: state.fieldWeights,
+    contourFieldSettings: state.contourField,
+    streamlines: {
+      source: state.contourField.streamlineSource,
+      count: state.contourField.streamlineCount,
+      guideDirectionDeg: state.contourField.guideDirectionDeg,
+    },
+    materialStrategy: {
+      mode: state.fieldWeights.materialStrategy,
+      bands: [
+        { id: "low", range: [0, 0.34], materialTag: "ashlar-light", component: "ashlar" },
+        { id: "middle", range: [0.34, 0.56], materialTag: "voussoir-standard", component: "voussoir" },
+        { id: "upper", range: [0.56, 0.78], materialTag: "interlock-transition", component: "interlock" },
+        { id: "high", range: [0.78, 1], materialTag: "compression-heavy", component: "keyedVoussoir" },
+      ],
+    },
+    hostDimensions: {
+      ...getBaseSourceDimensions(),
+      fieldType: hostField.type,
+      boundary: hostField.boundaryAt(0.5, 0.5),
+      centerCurvature: hostField.curvatureAt(0.5, 0.5),
+    },
+    panelCarrier: {
+      status: carrierSummary.title,
+      lines: carrierSummary.lines,
+      faceCount: state.importedTissueCells?.length || 0,
+      stats: state.importedTopologyMeshStats,
+    },
+    fieldWeights: state.blocks.map((block) => ({
+      blockId: block.id,
+      zone: block.zone || "field",
+      panelVariantRole: block.panelVariantRole || null,
+      pinnedBoundary: !!block.pinnedBoundary,
+      supportMarked: !!block.supportMarked,
+      weights: block.fieldWeights || computeBlockFieldWeights(block),
+    })),
+    topologyGraph: buildTopologyGraphPayload(),
+    blockSolids: buildBlockSolidIndexPayload(),
+    perFaceLabels: buildPerFaceLabelsPayload(),
+    assemblyOrder: buildAssemblyOrderPayload(),
+    tolerances: {
+      fabrication: state.constraints.fabTolerance,
+      jointGap: state.constraints.jointGap,
+      minEdgeLength: state.constraints.minEdgeLength,
+      maxTaper: state.constraints.maxTaper,
+      maxWeight: state.constraints.maxWeight,
+    },
+    outputs: {
+      jsonPerBlock: true,
+      mergedFabricationMesh: !!mergedMesh,
+      objPerBlock: false,
+      glbPerBlock: false,
+    },
+    mergedFabricationMesh: mergedMesh,
+  };
+};
 
 byId("exportJson").addEventListener("click", () => {
   state.historicalValidationResults = evaluateHistoricalFamilyValidation();
+  const blockNgonTopology = analyzeBlockNgonTopology();
+  const blockPlanarity = analyzeBlockPlanarity();
+  const hostField = getHostField();
+  const mergedFabricationMesh = state.strategy.merge === "merge-fabrication" ? buildMergedFabricationMeshPayload() : null;
+  const fabricationPackage = buildFabricationPackagePayload(mergedFabricationMesh);
   const payload = {
     designMode: state.designMode,
     vaultType: state.vaultType,
     sourceModel: {
       name: state.importedModelName,
       stats: state.importedModelStats,
+      topology: state.importedTopology ? {
+        edgeCount: state.importedTopology.edgeCount,
+        boundaryEdgeCount: state.importedTopology.boundaryEdgeCount,
+        featureEdgeCount: state.importedTopology.featureEdgeCount,
+        nonManifoldEdgeCount: state.importedTopology.nonManifoldEdgeCount,
+        courseHintCount: state.importedTopology.courseHints?.length || 0,
+        spanHintCount: state.importedTopology.spanHints?.length || 0,
+      } : null,
       transform: state.sourceTransform,
     },
+    topologyMesh: state.importedTopologyMeshStats ? {
+      name: state.importedTopologyMeshName,
+      stats: state.importedTopologyMeshStats,
+      faceCount: state.importedTopologyPolys?.length || 0,
+    } : null,
     surfacePrinciple: state.surfacePrinciple,
     constructionTemplate: state.constructionTemplate,
     constructionTemplateMeta: constructionTemplateCatalog[state.constructionTemplate] || null,
@@ -6302,17 +15419,61 @@ byId("exportJson").addEventListener("click", () => {
     blockStep: state.blockStep,
     fabricationCheck: state.fabricationCheck,
     historicalValidationResults: state.historicalValidationResults,
+    ngonDiagnostics: {
+      blockTopology: blockNgonTopology,
+      blockPlanarity: {
+        ...blockPlanarity,
+        tolerance: state.constraints.fabTolerance,
+      },
+      sourceTopology: state.importedTopology ? {
+        meshCount: state.importedTopology.meshCount,
+        triangleCount: state.importedTopology.triangleCount,
+        vertexCount: state.importedTopology.vertexCount,
+        edgeCount: state.importedTopology.edgeCount,
+        boundaryEdgeCount: state.importedTopology.boundaryEdgeCount,
+        boundaryVertexCount: state.importedTopology.boundaryVertexCount,
+        featureEdgeCount: state.importedTopology.featureEdgeCount,
+        nonManifoldEdgeCount: state.importedTopology.nonManifoldEdgeCount,
+        averageValence: state.importedTopology.averageValence,
+        maxValence: state.importedTopology.maxValence,
+      } : null,
+    },
     traitConstructionSteps: traitConstructionTemplates[state.vaultType] || defaultTraitConstructionSteps,
     activeTraitConstructionStep: state.activeTraitConstructionStep,
     blocksGeneratedFromTrait: state.blocksGeneratedFromTrait,
     constructionEntities: state.constructionEntities,
     layers: state.layers,
+    strategyViewMode: state.strategyViewMode,
     view2dOptions: state.view2dOptions,
     transformTool: state.transformTool,
     snaps: state.snaps,
     copiedGeometryCount: state.copiedGeometryCount,
     registrationMode: state.registrationMode,
     structuralDirection: state.structuralDirection,
+    strategy: getActiveStrategy(),
+    customPanelComponent: state.customPanel,
+    customPanelMapping: {
+      seamAllowance: state.customPanelSeamAllowance,
+      thicknessMode: state.strategy.thickness,
+      thicknessScale: state.customPanelThicknessScale,
+      thicknessOffset: state.customPanelThicknessOffset,
+      panelSubdivisionU: state.panelSubdivisionU,
+      panelSubdivisionV: state.panelSubdivisionV,
+      fieldWeightedMorph: state.panelWeightSubdivision,
+      morphStrength: state.panelMorphStrength,
+      activePanelVariantRole: state.activePanelVariantRole,
+      panelVariantAssignmentMode: state.panelVariantAssignmentMode,
+      panelVariantTransforms: ensurePanelVariantTransforms(),
+    },
+    fieldWeightSettings: state.fieldWeights,
+    contourFieldSettings: state.contourField,
+    hostField: {
+      type: hostField.type,
+      boundary: hostField.boundaryAt(0.5, 0.5),
+      centerCurvature: hostField.curvatureAt(0.5, 0.5),
+    },
+    mergedFabricationMesh,
+    fabricationPackage,
     customPatternSource: state.customPatternSource,
     supportCount: state.supportCount,
     forceLmin: state.forceLmin,
@@ -6326,6 +15487,31 @@ byId("exportJson").addEventListener("click", () => {
     constraints: state.constraints,
     blocks: state.blocks.map((b) => ({
       id: b.id,
+      isKeystone: !!b.isKeystone,
+      strategy: b.strategy || getActiveStrategy(),
+      componentType: b.componentType || state.strategy.component,
+      componentVariant: b.componentVariant || b.componentType || state.strategy.component,
+      panelVariantRole: b.panelVariantRole || null,
+      manualPanelVariantRole: b.manualPanelVariantRole || null,
+      mapping: b.mapping || null,
+      zone: b.zone || null,
+      fieldWeights: b.fieldWeights || null,
+      weightBand: b.weightBand || null,
+      materialTag: b.materialTag || null,
+      densityDriven: !!b.densityDriven,
+      taperBias: b.taperBias || 0,
+      contourBand: b.contourBand ?? null,
+      contourValue: b.contourValue ?? null,
+      reactionValue: b.reactionValue ?? null,
+      maskedByContour: !!b.maskedByContour,
+      pinnedBoundary: !!b.pinnedBoundary,
+      supportMarked: !!b.supportMarked,
+      editorOperation: b.editorOperation || null,
+      fillCellType: b.fillCellType || null,
+      parentCellId: b.parentCellId || null,
+      rotationShift: b.rotationShift || 0,
+      generatorStrategy: b.generatorStrategy || null,
+      generatorStrategyLabel: b.generatorStrategyLabel || null,
       uv: b.uv,
       failed: b.failed,
       metrics: {
@@ -6337,6 +15523,7 @@ byId("exportJson").addEventListener("click", () => {
         uvArea: b.metrics.uvArea,
         isConvex: b.metrics.isConvex,
         jointFaceType: b.metrics.jointFaceType,
+        deformation: b.metrics.deformation || null,
       },
       topFace: b.metrics.q.map((p) => [p.x, p.y, p.z]),
     })),
@@ -6351,9 +15538,42 @@ byId("exportJson").addEventListener("click", () => {
 });
 
 byId("exportBlocks").addEventListener("click", () => {
+  if (state.strategy.merge === "merge-fabrication") {
+    const merged = buildMergedFabricationMeshPayload();
+    const blob = new Blob([JSON.stringify(merged, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "lithic-lab-merged-fabrication-mesh.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   state.blocks.forEach((b) => {
     const payload = {
       id: b.id,
+      isKeystone: !!b.isKeystone,
+      strategy: b.strategy || getActiveStrategy(),
+      componentType: b.componentType || state.strategy.component,
+      componentVariant: b.componentVariant || b.componentType || state.strategy.component,
+      mapping: b.mapping || null,
+      zone: b.zone || null,
+      fieldWeights: b.fieldWeights || null,
+      weightBand: b.weightBand || null,
+      materialTag: b.materialTag || null,
+      densityDriven: !!b.densityDriven,
+      taperBias: b.taperBias || 0,
+      contourBand: b.contourBand ?? null,
+      contourValue: b.contourValue ?? null,
+      reactionValue: b.reactionValue ?? null,
+      maskedByContour: !!b.maskedByContour,
+      pinnedBoundary: !!b.pinnedBoundary,
+      supportMarked: !!b.supportMarked,
+      editorOperation: b.editorOperation || null,
+      fillCellType: b.fillCellType || null,
+      parentCellId: b.parentCellId || null,
+      rotationShift: b.rotationShift || 0,
+      generatorStrategy: b.generatorStrategy || null,
+      generatorStrategyLabel: b.generatorStrategyLabel || null,
       uv: b.uv,
       failed: b.failed,
       metrics: {
@@ -6365,6 +15585,7 @@ byId("exportBlocks").addEventListener("click", () => {
         uvArea: b.metrics.uvArea,
         isConvex: b.metrics.isConvex,
         jointFaceType: b.metrics.jointFaceType,
+        deformation: b.metrics.deformation || null,
       },
       vertices: b.metrics.q.map((p) => [p.x, p.y, p.z]),
     };
@@ -6377,6 +15598,8 @@ byId("exportBlocks").addEventListener("click", () => {
     URL.revokeObjectURL(url);
   });
 });
+byId("exportBlocksObj")?.addEventListener("click", () => exportBlocksMesh("obj"));
+byId("exportBlocksStl")?.addEventListener("click", () => exportBlocksMesh("stl"));
 
 if (nodes.toolTabs) {
   nodes.toolTabs.addEventListener("click", (e) => {
@@ -6388,6 +15611,12 @@ if (nodes.toolTabs) {
 document.querySelectorAll("[data-drawing-preset]").forEach((button) => {
   button.addEventListener("click", () => applyDrawingPreset(button.dataset.drawingPreset));
 });
+document.querySelectorAll("[data-view-layout]").forEach((button) => {
+  button.addEventListener("click", () => applyViewportLayout(button.dataset.viewLayout));
+});
+document.querySelectorAll("[data-strategy-view]").forEach((button) => {
+  button.addEventListener("click", () => setStrategyViewMode(button.dataset.strategyView));
+});
 document.querySelectorAll("[data-dock-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     const dock = button.dataset.dockToggle;
@@ -6395,6 +15624,61 @@ document.querySelectorAll("[data-dock-toggle]").forEach((button) => {
     requestAnimationFrame(resize);
   });
 });
+
+// The tools palette is intentionally an overlay. Give it direct-manipulation
+// behavior instead of pretending it is a dock with a different coat of paint.
+const floatingToolsPalette = document.querySelector(".controls.dock-panel");
+let floatingToolsAction = null;
+if (floatingToolsPalette) {
+  const resizeHandle = document.createElement("div");
+  resizeHandle.className = "floating-palette-resize";
+  resizeHandle.title = "Resize tools palette";
+  floatingToolsPalette.append(resizeHandle);
+  const beginFloatingToolsAction = (event, mode) => {
+    if (!window.matchMedia("(min-width: 901px)").matches) return;
+    if (mode === "move" && event.target.closest("button, input, select, textarea, label, summary")) return;
+    const rect = floatingToolsPalette.getBoundingClientRect();
+    floatingToolsAction = { mode, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    floatingToolsPalette.classList.add("is-dragging");
+    event.preventDefault();
+  };
+  floatingToolsPalette.querySelector(".dock-head")?.addEventListener("pointerdown", event => beginFloatingToolsAction(event, "move"));
+  resizeHandle.addEventListener("pointerdown", event => beginFloatingToolsAction(event, "resize"));
+  window.addEventListener("pointermove", event => {
+    if (!floatingToolsAction) return;
+    const dx = event.clientX - floatingToolsAction.startX, dy = event.clientY - floatingToolsAction.startY;
+    if (floatingToolsAction.mode === "move") {
+      floatingToolsPalette.style.left = `${Math.max(12, Math.min(window.innerWidth - 170, floatingToolsAction.left + dx))}px`;
+      floatingToolsPalette.style.top = `${Math.max(72, Math.min(window.innerHeight - 120, floatingToolsAction.top + dy))}px`;
+    } else {
+      floatingToolsPalette.style.width = `${Math.max(196, Math.min(420, floatingToolsAction.width + dx))}px`;
+      floatingToolsPalette.style.height = `${Math.max(300, Math.min(window.innerHeight - floatingToolsAction.top - 24, floatingToolsAction.height + dy))}px`;
+    }
+  });
+  window.addEventListener("pointerup", () => { if (floatingToolsAction) floatingToolsPalette.classList.remove("is-dragging"); floatingToolsAction = null; });
+}
+
+const transformToolbarElement = byId("transformToolbar");
+let transformToolbarDrag = null;
+if (transformToolbarElement) {
+  const dragHandle = document.createElement("div");
+  dragHandle.className = "transform-drag-handle";
+  dragHandle.title = "Drag toolbar";
+  transformToolbarElement.prepend(dragHandle);
+  dragHandle.addEventListener("pointerdown", event => {
+    const rect = transformToolbarElement.getBoundingClientRect();
+    transformToolbarDrag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    event.preventDefault();
+  });
+  window.addEventListener("pointermove", event => {
+    if (!transformToolbarDrag) return;
+    transformToolbarElement.style.left = `${Math.max(12, Math.min(window.innerWidth - 58, transformToolbarDrag.left + event.clientX - transformToolbarDrag.x))}px`;
+    transformToolbarElement.style.top = `${Math.max(64, Math.min(window.innerHeight - 58, transformToolbarDrag.top + event.clientY - transformToolbarDrag.y))}px`;
+    transformToolbarElement.style.right = "auto";
+    transformToolbarElement.style.transform = "none";
+  });
+  window.addEventListener("pointerup", () => { transformToolbarDrag = null; });
+}
 
 let activeSplitter = null;
 let activeViewportSplitter = false;
@@ -6413,6 +15697,22 @@ document.querySelectorAll("[data-viewport-splitter]").forEach((splitter) => {
   });
 });
 window.addEventListener("pointermove", (e) => {
+  if (blockPreviewDrag) {
+    const bounds = getBlockPreviewBounds();
+    if (!bounds) return;
+    const dx = e.clientX - blockPreviewDrag.startX;
+    const dy = e.clientY - blockPreviewDrag.startY;
+    if (blockPreviewDrag.mode === "move") {
+      state.blockPreviewWindow.x = blockPreviewDrag.x + dx;
+      state.blockPreviewWindow.y = blockPreviewDrag.y + dy;
+    } else if (blockPreviewDrag.mode === "resize") {
+      state.blockPreviewWindow.w = blockPreviewDrag.w + dx;
+      state.blockPreviewWindow.h = blockPreviewDrag.h + dy;
+    }
+    applyBlockPreviewWindowState();
+    resize();
+    return;
+  }
   if (activeSplitter) {
     const bounds = document.querySelector(".workspace")?.getBoundingClientRect();
     if (!bounds) return;
@@ -6438,6 +15738,11 @@ window.addEventListener("pointermove", (e) => {
   }
 });
 window.addEventListener("pointerup", () => {
+  if (blockPreviewDrag) {
+    try { nodes.blockPreviewPanel?.releasePointerCapture?.(blockPreviewDrag.pointerId); } catch {}
+    nodes.blockPreviewPanel?.classList.remove("dragging");
+    blockPreviewDrag = null;
+  }
   activeSplitter = null;
   activeViewportSplitter = false;
   document.body.style.userSelect = "";
@@ -6454,6 +15759,7 @@ window.addEventListener("resize", resize);
 renderer.domElement.addEventListener("wheel", (e) => {
   e.preventDefault();
   e.stopPropagation();
+  state.userDefinedCamera = true;
   const zoomFactor = Math.exp(e.deltaY * 0.0015);
   const toCam = camera.position.clone().sub(controls.target);
   const current = toCam.length();
@@ -6467,15 +15773,26 @@ renderer.domElement.addEventListener("wheel", (e) => {
 const tick = () => {
   controls.update();
   renderer.render(scene, camera);
+  if (blockPreviewRenderer) {
+    if (blockPreviewControls) blockPreviewControls.update();
+    blockPreviewRenderer.render(blockPreviewScene, blockPreviewCamera);
+  }
+  if (bdModelRenderer) {
+    bdModelControls?.update();
+    bdModelRenderer.render(bdModelScene, bdModelCamera);
+  }
   requestAnimationFrame(tick);
 };
 
 applyWorkflowStep(1);
-setToolTab("catalog");
+setToolTab("vault-designer");
 syncInputsFromState();
+renderAssetLibrary();
 applyLayoutStyle();
+applyViewportLayout(state.viewportLayout);
+setStrategyViewMode(state.strategyViewMode);
 applyLightingPreset(state.lightingPreset);
 buildOriginAxes3d();
-runVaultSelectionPipeline(state.vaultType);
 resize();
 tick();
+runVaultSelectionPipeline(state.vaultType);

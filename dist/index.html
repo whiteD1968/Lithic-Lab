@@ -7,17 +7,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-D6immTP9.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-cvaiuk0D.css">
+  <script type="module" crossorigin src="/assets/index-BPRZhQIs.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-C4AxIgPG.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="modeling-chrome">
       <div class="menu-bar">
-        <div class="brand"><span class="dot"></span><h1>Lithic Lab</h1></div>
+        <div class="brand"><span class="dot"></span><h1>Lithic Lab</h1><span class="brand-mode">Stereotomy / active session</span></div>
         <div class="chrome-actions">
-          <button class="ghost-btn" id="exportJson">Export JSON</button>
-          <button class="ghost-btn" id="exportBlocks">Export Blocks</button>
+          <span class="chrome-status">Stereotomic strategy workspace</span>
         </div>
       </div>
       <div class="tool-ribbon" aria-label="Modeling toolbar">
@@ -33,22 +32,92 @@
           <button class="dock-toggle" data-dock-toggle="left" title="Collapse tools">×</button>
         </div>
         <div class="tool-tabs" id="toolTabs">
-          <button class="ghost-btn active" data-tab="catalog">Catalog</button>
-          <button class="ghost-btn" data-tab="import">Import</button>
-          <button class="ghost-btn" data-tab="workflow">Workflow</button>
-          <button class="ghost-btn" data-tab="params">Params</button>
-          <button class="ghost-btn" data-tab="pattern">Pattern</button>
-          <button class="ghost-btn" data-tab="layers">Layers</button>
+          <button class="ghost-btn active" data-tab="vault-designer">Vault Designer</button>
+          <button class="ghost-btn" data-tab="form">Vault Form</button>
+          <button class="ghost-btn" data-tab="block-designer">Block Designer</button>
+          <button class="ghost-btn" data-tab="source">Import</button>
+          <button class="ghost-btn" data-tab="panel-library">Panel Library</button>
+          <button class="ghost-btn" data-tab="strategy">Mapping Strategy</button>
+          <button class="ghost-btn" data-tab="fields">Fields</button>
+          <button class="ghost-btn" data-tab="topology-lattice">Topology Lattice</button>
+          <button class="ghost-btn" data-tab="edit-panels">Edit Panels</button>
+          <button class="ghost-btn" data-tab="fabrication">Checks</button>
+          <button class="ghost-btn" data-tab="export">Export</button>
+        </div>
+        <div class="active-asset-strip" id="activeAssetStrip" aria-label="Active assets">
+          <div><span>Host</span><b id="activeHostName">Generated vault</b></div>
+          <div><span>Panel</span><b id="activePanelName">Default blocks</b></div>
+          <div><span>Mapping</span><b id="activeMappingName">Course Tangent / Fit To Cell</b></div>
+          <div><span>Morph</span><b id="activeMorphName">None</b></div>
         </div>
         <div class="tool-scroll">
-        <div class="section" data-tool-group="catalog">
-          <h3>Source Library</h3>
+        <div class="section block-designer-controls" data-tool-group="block-designer">
+          <div class="vault-designer-heading"><div><span class="eyebrow">REUSABLE STEREOTOMY</span><h3>Block Definition</h3></div><span class="status-pill">Live</span></div>
+          <label>Base Block <select id="bdBaseGeometry"><option>Cuboid</option><option>Hexagonal</option><option>Wedge</option><option>Polyhedral</option><option>Custom Mesh</option><option>TPMS Block</option></select></label>
+          <label>Joint Strategy <select id="bdJointPreset"><option>Flat Joint</option><option selected>Sine Wave Joint</option><option>Zig Zag Joint</option><option>Topological Interlocking</option><option>Geological Joint</option><option>Field Driven Joint</option><option>Custom Drawn Joint</option></select></label>
+          <div class="grid-2">
+            <label>Length <input id="bdLength" type="number" min="10" max="500" value="120" /></label><label>Width <input id="bdWidth" type="number" min="10" max="500" value="65" /></label>
+            <label>Height <input id="bdHeight" type="number" min="10" max="500" value="90" /></label><label>Thickness <input id="bdThickness" type="number" min="10" max="300" value="30" /></label>
+            <label>Draft ° <input id="bdDraft" type="number" min="0" max="30" value="2" /></label><label>Fillet mm <input id="bdFillet" type="number" min="0" max="40" value="3" /></label>
+            <label>Clearance mm <input id="bdClearance" type="number" min="0" max="20" step="0.1" value="1" /></label><label>Density kg/m³ <input id="bdDensity" type="number" min="100" max="8000" value="2600" /></label>
+          </div>
+          <h3 class="subhead" id="bdJointSectionTitle">Sine Wave Joint</h3>
+          <label>Frequency <input id="bdFrequency" type="range" min="1" max="8" step="1" value="3" /></label>
+          <label>Amplitude <input id="bdAmplitude" type="range" min="2" max="30" step="1" value="12" /></label>
+          <label>Joint Depth <input id="bdDepth" type="range" min="5" max="80" step="1" value="35" /></label>
+          <label>Phase Offset <input id="bdPhase" type="range" min="0" max="100" step="1" value="0" /></label>
+          <label>Joint Morpher <input id="bdMorph" type="range" min="0" max="100" value="20" /></label>
+          <label>Tile Mode <select id="bdTileMode"><option>Stacked Bond</option><option>Running Bond</option><option>Mirrored Bond</option><option>Alternating Mirrored Blocks</option><option>Radial Array</option><option>Circular Array</option><option>Vault Strip Preview</option><option>Curved Surface Preview</option></select></label>
+          <label>Swatch <select id="bdSwatch"><option value="2">2 × 2</option><option value="5" selected>5 × 5</option><option value="10">10 × 10</option><option value="20">20 × 20</option></select></label>
+          <button class="primary-btn" id="bdSaveTile" type="button">Save to Tile Library</button>
+        </div>
+        <div class="section vault-designer-panel" data-tool-group="vault-designer">
+          <div class="vault-designer-heading">
+            <div>
+              <span class="eyebrow">GEOMETRY WORKSPACE</span>
+              <h3>Vault Designer</h3>
+            </div>
+            <span class="status-pill" id="vaultDesignerStatus">Surface ready</span>
+          </div>
+          <p class="hint">Set the vault family, then resolve its construction logic, solid form, force-flow field, and default course layout. This workspace deliberately stops before block generation.</p>
+          <label>Vault Type
+            <select id="vaultDesignerType" aria-label="Vault Designer vault type"></select>
+          </label>
+          <div class="vault-definition-card" id="vaultDesignerDefinition"></div>
+          <div class="vault-flow" aria-label="Vault Designer generation workflow">
+            <div class="vault-flow-step" data-vault-stage="1"><b>01</b><span>2D Construction<br />Logic</span></div>
+            <div class="vault-flow-arrow">↓</div>
+            <div class="vault-flow-step" data-vault-stage="2"><b>02</b><span>3D Solid<br />Geometry</span></div>
+            <div class="vault-flow-arrow">↓</div>
+            <div class="vault-flow-step" data-vault-stage="3"><b>03</b><span>Force-Flow<br />Field</span></div>
+            <div class="vault-flow-arrow">↓</div>
+            <div class="vault-flow-step" data-vault-stage="4"><b>04</b><span>Default Course<br />Layout</span></div>
+          </div>
+          <div class="topology-lattice-panel scaffold-panel">
+            <label class="toggle-row"><span>Show Assembly Waffle Scaffold</span><input id="supportScaffoldEnabled" type="checkbox" /></label>
+            <div class="two-col">
+              <label>X Subdivisions <input id="supportScaffoldXCount" type="number" min="2" max="40" step="1" value="8" /></label>
+              <label>Y Subdivisions <input id="supportScaffoldYCount" type="number" min="2" max="40" step="1" value="10" /></label>
+              <label>Auto Depth (cm) <input id="supportScaffoldDepth" type="number" min="10" max="1200" step="5" value="180" readonly /></label>
+              <label>Rib Thickness (cm) <input id="supportScaffoldThickness" type="number" min="1" max="100" step="1" value="8" /></label>
+            </div>
+            <div class="hint" id="supportScaffoldStatus">Scaffold hidden.</div>
+          </div>
+          <div class="vault-designer-actions">
+            <button class="ghost-btn" id="regenerateVaultDesign" type="button">Regenerate Vault Geometry</button>
+            <button class="primary-btn" id="exportSurfaceToBlocks" type="button">Export Surface to Block Designer →</button>
+            <button class="ghost-btn" id="openCustomImportTools" type="button">Open Custom Host Tools</button>
+          </div>
+          <div class="hint" id="vaultDesignerHandoff">No blocks generated. The active vault surface is ready for downstream block design.</div>
+        </div>
+        <div class="section" data-tool-group="source">
+          <h3>Project / Source</h3>
           <select id="vaultType">
             <option value="Barrel Vault">Built-in: Barrel Vault</option>
             <option value="Groin Vault">Built-in: Groin Vault</option>
-            <option value="Custom Imported Rhino Surface">Uploaded Model Source</option>
+            <option value="Custom Imported Rhino Surface">Uploaded Host Geometry</option>
           </select>
-          <div class="hint">Barrel and Groin remain built-in test sources. Uploaded models become the source geometry for additional vaults, walls, columns, and assemblies.</div>
+          <div class="hint">Barrel and Groin remain built-in host geometries. Uploaded models are optional hosts or references for strategy development.</div>
           <label>2D Construction Template
             <select id="constructionTemplate"></select>
           </label>
@@ -62,13 +131,9 @@
             </select>
           </label>
           <button class="ghost-btn" id="resetRecommended">Reset To Recommended</button>
-          <div class="grid-1">
-            <button class="ghost-btn" id="applyPatternToModel">Apply To Model</button>
-            <button class="ghost-btn" id="showSolidOnly">Show Solid Only</button>
-          </div>
         </div>
-        <div class="section" data-tool-group="import">
-          <h3>Uploaded Model Source</h3>
+        <div class="section" data-tool-group="source">
+          <h3>Uploaded Host Geometry</h3>
           <label>Mode
             <select id="designMode">
               <option>Generated</option>
@@ -76,37 +141,73 @@
             </select>
           </label>
           <div class="source-card">
-            <b>Source Model Workflow</b>
-            <span>Import a mesh, project block strategies onto its surface, then use optional 2D layouts or UV grids to control the stereotomy.</span>
+            <b>Optional Host Workflow</b>
+            <span>Import reference or host geometry when needed. Strategies can still be authored from built-in vault fields without uploaded files.</span>
           </div>
           <div class="grid-1">
-            <label>3D Source Model (OBJ / STL / GLB)
-              <input id="import3d" type="file" accept=".obj,.stl,.glb,.gltf" />
+            <label>3D Host / Reference Model (3DM / OBJ / STL / GLB)
+              <input id="import3d" type="file" accept=".3dm,.obj,.stl,.glb,.gltf" />
+            </label>
+            <label>Flat Strategy Topology Mesh (3DM / OBJ)
+              <input id="importTopologyMesh" type="file" accept=".3dm,.obj" />
             </label>
             <label>Optional 2D Pattern Layout (SVG / DXF)
               <input id="import2d" type="file" accept=".svg,.dxf" />
             </label>
-            <div class="hint">For best results, provide named/separate meshes such as intrados, extrados, ribs, columns, walls, springing guides, and support zones. Rhino 3DM remains planned for future support.</div>
+            <div class="source-card asset-library-card">
+              <b>Host Surface Library</b>
+              <span>Save imported host geometry here so it can be reused without browsing for the original file.</span>
+              <label>Saved Host Surfaces
+                <select id="hostLibrarySelect">
+                  <option value="">No saved hosts</option>
+                </select>
+              </label>
+              <div class="asset-preview" id="hostLibraryPreview">
+                <div class="asset-thumb" data-kind="host">3D</div>
+                <div class="asset-preview-main">
+                  <b>No saved host selected</b>
+                  <span>Save or select a host surface to see file details.</span>
+                  <div class="asset-meta">
+                    <span>Type: n/a</span>
+                    <span>Triangles: n/a</span>
+                    <span>Last used: n/a</span>
+                  </div>
+                </div>
+                <em>Inactive</em>
+              </div>
+              <div class="library-actions">
+                <button class="ghost-btn" id="saveHostAsset" type="button">Save Imported Host</button>
+                <button class="ghost-btn" id="loadHostAsset" type="button">Load</button>
+                <button class="ghost-btn" id="deleteHostAsset" type="button">Delete</button>
+              </div>
+              <div class="component-panel-status" id="hostLibraryStatus">Import a host file to save it.</div>
+            </div>
+            <div class="hint">Use uploads for host geometry, reference dimensions, or explicit topology. The core strategy can remain procedural: host field, topology field, block component, and mapping controls.</div>
             <label>Stereotomy Strategy Source
               <select id="customPatternSource">
+                <option>Freeform Courses</option>
+                <option>Panel Quad Mesh</option>
+                <option value="NGon Cells">Dual / Polygon Cells</option>
                 <option>UV Form Grid</option>
                 <option>Imported 2D Layout</option>
-                <option>NGon Adaptive</option>
+                <option>Imported Topology Mesh</option>
+                <option value="NGon Adaptive">Adaptive Polygon Cells</option>
               </select>
             </label>
             <details class="param-section" open>
               <summary>Source Transform</summary>
               <div class="grid-1">
                 <div class="grid-2">
-                  <label>X <input id="sourceTx" type="number" step="0.1" value="0" /></label>
-                  <label>Y <input id="sourceTy" type="number" step="0.1" value="0" /></label>
-                  <label>Z <input id="sourceTz" type="number" step="0.1" value="0" /></label>
+                  <label><span id="sourceXLabel">X Size</span> <input id="sourceTx" type="number" step="0.1" value="0" /></label>
+                  <label><span id="sourceYLabel">Y Size</span> <input id="sourceTy" type="number" step="0.1" value="0" /></label>
+                  <label><span id="sourceZLabel">Z Size</span> <input id="sourceTz" type="number" step="0.1" value="0" /></label>
                   <label>Scale <input id="sourceScale" type="number" min="0.001" step="0.01" value="1" /></label>
                   <label>Rot X <input id="sourceRx" type="number" step="1" value="0" /></label>
                   <label>Rot Y <input id="sourceRy" type="number" step="1" value="0" /></label>
                   <label>Rot Z <input id="sourceRz" type="number" step="1" value="0" /></label>
                 </div>
                 <button class="ghost-btn" id="resetSourceTransform">Reset Source Transform</button>
+                <div class="source-dimensions" id="sourceGeometryDimensions"></div>
               </div>
             </details>
             <label>Support Vertex Count <input id="supportCount" type="number" min="3" max="24" step="1" value="4" /></label>
@@ -125,8 +226,19 @@
           </div>
         </div>
 
-        <div class="section" data-tool-group="workflow">
+        <div class="section" data-tool-group="source">
           <h3>Workflow</h3>
+          <label>Stereotomy Strategy
+            <select id="workflowPatternSource">
+              <option>Freeform Courses</option>
+              <option>Panel Quad Mesh</option>
+              <option value="NGon Cells">Dual / Polygon Cells</option>
+              <option>UV Form Grid</option>
+              <option>Imported 2D Layout</option>
+              <option>Imported Topology Mesh</option>
+              <option value="NGon Adaptive">Adaptive Polygon Cells</option>
+            </select>
+          </label>
           <div class="grid-1" id="workflowSteps">
             <button class="ghost-btn" data-step="1">1 Pattern Topology</button>
             <button class="ghost-btn" data-step="2">2 Supports</button>
@@ -137,8 +249,8 @@
           </div>
           <div class="trait-steps-panel" id="traitConstructionSteps"></div>
         </div>
-        <div class="section" data-tool-group="params">
-          <h3>Vault Parameters</h3>
+        <div class="section" data-tool-group="form">
+          <h3>Vault Form</h3>
           <div class="param-sections">
             <details class="param-section" open>
               <summary>Geometry</summary>
@@ -188,22 +300,16 @@
             <details class="param-section" open>
               <summary>Structure</summary>
               <div class="grid-1">
-                <label data-param-control="thickness">Thickness
+                <label data-param-control="thickness">Masonry Thickness (cm)
                   <div class="dual-input-row">
-                    <input type="range" id="thickness" min="0.2" max="4" step="0.05" value="1.1" />
-                    <input type="number" id="thicknessNum" min="0.2" max="4" step="0.05" value="1.1" />
+                    <input type="range" id="thickness" min="20" max="400" step="5" value="20" />
+                    <input type="number" id="thicknessNum" min="20" max="400" step="5" value="20" />
                   </div>
                 </label>
-                <label data-param-control="keystoneSize">Keystone Size
+                <label data-param-control="wallThickness">Wall Thickness (cm)
                   <div class="dual-input-row">
-                    <input type="range" id="keystoneSize" min="0" max="1" step="0.05" value="0.45" />
-                    <input type="number" id="keystoneSizeNum" min="0" max="1" step="0.05" value="0.45" />
-                  </div>
-                </label>
-                <label data-param-control="wallThickness">Wall Thickness (m)
-                  <div class="dual-input-row">
-                    <input type="range" id="wallThickness" min="0.1" max="4" step="0.05" value="0.45" />
-                    <input type="number" id="wallThicknessNum" min="0.1" max="4" step="0.05" value="0.45" />
+                    <input type="range" id="wallThickness" min="10" max="400" step="5" value="45" />
+                    <input type="number" id="wallThicknessNum" min="10" max="400" step="5" value="45" />
                   </div>
                 </label>
                 <label data-param-control="wallHeightOffset">Wall Height Offset (m)
@@ -247,63 +353,7 @@
             </details>
 
             <details class="param-section" open>
-              <summary>Fabrication</summary>
-              <div class="grid-1">
-                <label data-param-control="courseCount">Courses
-                  <div class="dual-input-row">
-                    <input type="range" id="courseCount" min="4" max="48" step="1" value="16" />
-                    <input type="number" id="courseCountNum" min="4" max="48" step="1" value="16" />
-                  </div>
-                </label>
-                <label data-param-control="blockCount">Blocks/Course
-                  <div class="dual-input-row">
-                    <input type="range" id="blockCount" min="6" max="40" step="1" value="18" />
-                    <input type="number" id="blockCountNum" min="6" max="40" step="1" value="18" />
-                  </div>
-                </label>
-                <label data-param-control="subdivisionDensity">Subdivision Density
-                  <div class="dual-input-row">
-                    <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" />
-                    <input type="number" id="subdivisionDensityNum" min="0.5" max="2.5" step="0.1" value="1" />
-                  </div>
-                </label>
-                <label data-param-control="targetBlockWidth">Target Block Width (m)
-                  <div class="dual-input-row">
-                    <input type="range" id="targetBlockWidth" min="0.1" max="5" step="0.05" value="1.2" />
-                    <input type="number" id="targetBlockWidthNum" min="0.1" max="5" step="0.05" value="1.2" />
-                  </div>
-                </label>
-                <label data-param-control="tileLayers">Tile Layers
-                  <div class="dual-input-row">
-                    <input type="range" id="tileLayers" min="1" max="6" step="1" value="3" />
-                    <input type="number" id="tileLayersNum" min="1" max="6" step="1" value="3" />
-                  </div>
-                </label>
-                <label data-param-control="extradosOffset">Extrados Offset (m)
-                  <div class="dual-input-row">
-                    <input type="range" id="extradosOffset" min="0" max="4" step="0.01" value="0.15" />
-                    <input type="number" id="extradosOffsetNum" min="0" max="4" step="0.01" value="0.15" />
-                  </div>
-                </label>
-                <label data-param-control="barrelBondMode">Barrel Pattern Option
-                  <select id="barrelBondMode">
-                    <option value="1">1 - Orthogonal Ring Courses</option>
-                    <option value="2">2 - Staggered Ring Courses</option>
-                    <option value="3">3 - Progressive Drift Courses</option>
-                    <option value="4">4 - Crown-Fan Courses</option>
-                  </select>
-                </label>
-                <label data-param-control="barrelOffsetSide">Thickness Side
-                  <select id="barrelOffsetSide">
-                    <option>Inside</option>
-                    <option>Outside</option>
-                  </select>
-                </label>
-              </div>
-            </details>
-
-            <details class="param-section" open>
-              <summary>Display</summary>
+              <summary>Form Display</summary>
               <div class="grid-1">
                 <label>Bounding Cube Scale
                   <div class="dual-input-row">
@@ -324,20 +374,568 @@
           </div>
         </div>
 
-        <div class="section" data-tool-group="pattern">
-          <h3>2D Subdivision Pattern</h3>
-          <select id="subdivision">
-            <option>Courses</option>
-            <option>Groin-line courses</option>
-            <option>Radial joints</option>
-            <option>Running bond</option>
-            <option>Diagonal joints</option>
-            <option>Hex / NGon</option>
-            <option>Rib-aligned</option>
-            <option>Keystone zones</option>
-          </select>
-          <details class="param-section" open>
-            <summary>2D Construction View</summary>
+        <div class="section" data-tool-group="strategy panel-library blocks fields topology-lattice editor fabrication export">
+          <h3 id="strategyToolTitle">Stereotomy Strategy</h3>
+          <details class="param-section" data-tool-group="strategy panel-library" open>
+            <summary>Strategy Presets + Topology</summary>
+            <div class="grid-1">
+              <label>Strategy Preset
+                <select id="strategyPreset">
+                  <option value="custom">Custom</option>
+                  <option value="romanBarrel">Roman Barrel Voussoirs</option>
+                  <option value="keystoneCourse">Keystone Course</option>
+                  <option value="herringboneDiagonal">Herringbone / Diagonal Bond</option>
+                  <option value="fanVoussoirs">Fan Voussoirs</option>
+                  <option value="tissueCustomComponent">Panel Quad Component</option>
+                  <option value="ngonDual">Dual / Polygon Blocks</option>
+                  <option value="interlockingGroin">Interlocking Groin Blocks</option>
+                </select>
+              </label>
+              <label>2D Subdivision Pattern
+                <select id="subdivision">
+                  <option>Courses</option>
+                  <option>Groin-line courses</option>
+                  <option>Radial joints</option>
+                  <option>Running bond</option>
+                  <option>Diagonal joints</option>
+                  <option>Dual / Polygon Cells</option>
+                  <option>Rib-aligned</option>
+                  <option>Keystone zones</option>
+                </select>
+              </label>
+              <label data-param-control="barrelBondMode">Voussoir Layout
+                <select id="barrelBondMode">
+                  <option value="1">1 - Orthogonal Ring Courses</option>
+                  <option value="2">2 - Staggered Ring Courses</option>
+                  <option value="3">3 - Progressive Drift Courses</option>
+                  <option value="4">4 - Crown-Fan Courses</option>
+                  <option value="5" selected>5 - Stone Keystone Course</option>
+                </select>
+              </label>
+              <label>Component Family
+                <select id="strategyComponent">
+                  <option value="voussoir">Tapered Voussoir</option>
+                  <option value="ashlar">Ashlar Block</option>
+                  <option value="keyedVoussoir">Keyed Voussoir</option>
+                  <option value="interlock">Interlocking Block</option>
+                  <option value="custom">Custom Component</option>
+                  <option value="base">Panel: Base</option>
+                  <option value="left-edge">Panel: Left Edge</option>
+                  <option value="right-edge">Panel: Right Edge</option>
+                  <option value="corner">Panel: Corner</option>
+                  <option value="keystone">Panel: Keystone</option>
+                  <option value="support-adjacent">Panel: Support-Adjacent</option>
+                  <option value="high-curvature">Panel: High-Curvature</option>
+                </select>
+              </label>
+              <div class="source-card component-upload-card" data-tool-group="panel-library">
+                <b>Custom Panel Component</b>
+                <span>Upload a panel or block module to map across the active host surface using the selected component mapping mode.</span>
+                <label>Upload Custom Panel
+                  <input id="importCustomPanel" type="file" accept=".3dm,.obj,.stl,.glb,.gltf" />
+                </label>
+                <label>Upload Morph Panel
+                  <input id="importCustomPanelMorph" type="file" accept=".3dm,.obj,.stl,.glb,.gltf" />
+                </label>
+                <label>Panel Seam Allowance (cm)
+                  <input id="customPanelSeamAllowance" type="number" min="-10" max="20" step="0.5" value="0" />
+                </label>
+                <button class="ghost-btn" id="resetCustomTiles" type="button">Reset Custom Tiles</button>
+                <div class="component-panel-status" id="customPanelStatus">No custom panel loaded.</div>
+              </div>
+              <div class="source-card asset-library-card" data-tool-group="panel-library">
+                <b>Panel Library</b>
+                <span>Save imported panel, morph, topology, or 2D tile designs here for reuse on host surfaces.</span>
+                <label>Saved Panels
+                  <select id="panelLibrarySelect">
+                    <option value="">No saved panels</option>
+                  </select>
+                </label>
+                <div class="asset-preview" id="panelLibraryPreview">
+                  <div class="asset-thumb" data-kind="panel">PNL</div>
+                  <div class="asset-preview-main">
+                    <b>No saved panel selected</b>
+                    <span>Save or select a panel asset to see file details.</span>
+                    <div class="asset-meta">
+                      <span>Type: n/a</span>
+                      <span>Faces: n/a</span>
+                      <span>Last used: n/a</span>
+                    </div>
+                  </div>
+                  <em>Inactive</em>
+                </div>
+                <div class="library-actions">
+                  <button class="ghost-btn" id="saveTileAsset" type="button">Save Imported Panel</button>
+                  <button class="ghost-btn" id="saveEditedPanelAsset" type="button">Save Current Edited Panel</button>
+                  <button class="ghost-btn" id="duplicatePanelVariant" type="button">Duplicate To Variant</button>
+                  <button class="ghost-btn" id="loadPanelAsset" type="button">Load</button>
+                  <button class="ghost-btn" id="deletePanelAsset" type="button">Delete</button>
+                </div>
+                <div class="component-panel-status" id="panelLibraryStatus">Import a panel or tile design to save it.</div>
+              </div>
+              <label>Component Mode
+                <select id="strategyComponentMode">
+                  <option value="single">Single Component</option>
+                  <option value="family">Component Family</option>
+                  <option value="zone">Zone / Material Driven</option>
+                </select>
+              </label>
+              <label>Cell Fill Mode
+                <select id="strategyFill">
+                  <option value="quad">Quad Cells</option>
+                  <option value="fan">Fan Cells</option>
+                  <option value="frame">Frame Cells</option>
+                  <option value="patch">Patch Cells</option>
+                </select>
+              </label>
+              <label>Orientation Mapping
+                <select id="strategyRotation">
+                  <option value="course-tangent">Course Tangent</option>
+                  <option value="compression-flow">Compression Flow</option>
+                  <option value="surface-uv">Surface UV</option>
+                  <option value="principal-curvature">Principal Curvature</option>
+                  <option value="cell-normal">Cell Normal</option>
+                </select>
+              </label>
+              <label>Rotation Variation
+                <select id="strategyRotationVariation">
+                  <option value="none">None</option>
+                  <option value="random">Random</option>
+                  <option value="field">Field Driven</option>
+                  <option value="alternating">Alternating</option>
+                </select>
+              </label>
+              <label>Component Mapping
+                <select id="strategyComponentMapping">
+                  <option value="fit-to-cell">Fit To Cell</option>
+                  <option value="local-frame">Local Frame</option>
+                  <option value="global-orientation">Global Orientation</option>
+                  <option value="preserve-component-scale">Preserve Component Scale</option>
+                </select>
+              </label>
+              <label>Thickness Mapping
+                <select id="strategyThickness">
+                  <option value="constant">Constant</option>
+                  <option value="relative">Relative</option>
+                  <option value="scale">Scale</option>
+                  <option value="offset">Offset</option>
+                </select>
+              </label>
+              <label>Thickness Scale
+                <input id="customPanelThicknessScale" type="number" min="0.05" max="20" step="0.05" value="1" />
+              </label>
+              <label>Thickness Offset (cm)
+                <input id="customPanelThicknessOffset" type="number" min="-200" max="200" step="0.5" value="0" />
+              </label>
+              <div class="source-card panel-variant-card" data-tool-group="panel-library strategy edit-panels">
+                <b>Panel Variants + Transforms</b>
+                <span>Build a reusable panel family and let mapping assign variants by boundary, support, keystone, or curvature conditions.</span>
+                <label>Variant Role
+                  <select id="panelVariantRole">
+                    <option value="base">Base</option>
+                    <option value="left-edge">Left Edge</option>
+                    <option value="right-edge">Right Edge</option>
+                    <option value="corner">Corner</option>
+                    <option value="keystone">Keystone</option>
+                    <option value="support-adjacent">Support-Adjacent</option>
+                    <option value="high-curvature">High-Curvature</option>
+                  </select>
+                </label>
+                <label>Variant Assignment
+                  <select id="panelVariantAssignmentMode">
+                    <option value="auto">Auto By Zone / Boundary</option>
+                    <option value="single">Use Selected Variant</option>
+                  </select>
+                </label>
+                <div class="grid-3">
+                  <label>Scale X <input id="panelScaleX" type="number" min="0.05" max="8" step="0.05" value="1" /></label>
+                  <label>Scale Y <input id="panelScaleY" type="number" min="0.05" max="8" step="0.05" value="1" /></label>
+                  <label>Scale Z <input id="panelScaleZ" type="number" min="0.05" max="8" step="0.05" value="1" /></label>
+                </div>
+                <div class="grid-2">
+                  <label>Rotate <input id="panelRotateDeg" type="number" min="-180" max="180" step="5" value="0" /></label>
+                  <label>Surface Offset (cm) <input id="panelSurfaceOffset" type="number" min="-200" max="200" step="0.5" value="0" /></label>
+                </div>
+                <label>Long Axis Alignment
+                  <select id="panelLongAxisAlign">
+                    <option value="strategy">Use Mapping Strategy</option>
+                    <option value="course-tangent">Course Tangent</option>
+                    <option value="surface-uv">Surface UV</option>
+                    <option value="compression-flow">Compression Flow</option>
+                  </select>
+                </label>
+                <div class="display-toggles">
+                  <label class="toggle-row"><span>Mirror X</span><input id="panelMirrorU" type="checkbox" /></label>
+                  <label class="toggle-row"><span>Mirror Y</span><input id="panelMirrorV" type="checkbox" /></label>
+                  <label class="toggle-row"><span>Flip Normal</span><input id="panelFlipNormal" type="checkbox" /></label>
+                </div>
+                <div class="component-panel-status" id="panelVariantStatus">Base variant active.</div>
+              </div>
+              <div class="source-card" data-tool-group="panel-library strategy fields">
+                <b>Attractor Capability</b>
+                <span>Declare the safe parameter this panel family exposes to the attractor field. The carrier-cell boundary always stays fixed.</span>
+                <label>Field Response
+                  <select id="panelAttractorResponseMode">
+                    <option value="apertureMorph">Aperture Morph (Matched Panel)</option>
+                    <option value="thickness">Thickness</option>
+                    <option value="offset">Surface Offset</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+                <label>Response Amount <input id="panelAttractorResponseAmount" type="number" min="0" max="1" step="0.02" value="0.18" /></label>
+                <div class="component-panel-status" id="panelAttractorResponseStatus">Perforation response is boundary-locked.</div>
+              </div>
+              <label>Block Height / Thickness (cm) <input id="blockHeight" type="number" min="2" max="600" step="1" value="20" /></label>
+              <label>Patch Subdivision
+                <div class="dual-input-row">
+                  <input type="range" id="strategyPatchSubdivision" min="2" max="12" step="1" value="4" />
+                  <input type="number" id="strategyPatchSubdivisionNum" min="2" max="12" step="1" value="4" />
+                </div>
+              </label>
+              <label>Patch Smoothing
+                <div class="dual-input-row">
+                  <input type="range" id="strategyPatchSmoothing" min="0" max="4" step="1" value="0" />
+                  <input type="number" id="strategyPatchSmoothingNum" min="0" max="4" step="1" value="0" />
+                </div>
+              </label>
+              <label>Topology Mode
+                <select id="strategyTopology">
+                  <option value="primal">Primal Cells</option>
+                  <option value="dual">Dual Cells</option>
+                </select>
+              </label>
+              <label class="toggle-row"><span>Dual Boundary Cleanup</span><input id="strategyDualBoundaryCleanup" type="checkbox" checked /></label>
+              <label>Seams / Merge
+                <select id="strategyMerge">
+                  <option value="separate-blocks">Separate Blocks</option>
+                  <option value="merge-visual">Merged Visual Seams</option>
+                  <option value="merge-fabrication">Merge Fabrication Mesh</option>
+                </select>
+              </label>
+              <label data-param-control="keystoneSize">Keystone Width
+                <div class="dual-input-row">
+                  <input type="range" id="keystoneSize" min="0" max="1" step="0.05" value="0.45" />
+                  <input type="number" id="keystoneSizeNum" min="0" max="1" step="0.05" value="0.45" />
+                </div>
+              </label>
+              <label data-param-control="barrelOffsetSide">Thickness Side
+                <select id="barrelOffsetSide">
+                  <option>Inside</option>
+                  <option>Outside</option>
+                </select>
+              </label>
+              <label title="Joint normals describe the geometric direction of each joint: radial, normal to a curve, skewed, generatrix-based, or otherwise controlled by the trait.">Joint Principle
+                <select id="jointPrinciple"></select>
+              </label>
+              <button class="ghost-btn" id="applyJointPrinciple">Apply Joint Principle</button>
+              <div class="joint-card" id="jointPrincipleDetails"></div>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="fields" open>
+            <summary>Fields + Zones</summary>
+            <div class="grid-1">
+              <label>Weight Source
+                <select id="fieldWeightSource">
+                  <option value="area">Area</option>
+                  <option value="curvature" selected>Curvature</option>
+                  <option value="attractor">Attractor Field</option>
+                  <option value="attractorCurvature">Attractor + Curvature</option>
+                  <option value="distance">Distance</option>
+                  <option value="formula">Formula</option>
+                  <option value="harmonic">Harmonic</option>
+                  <option value="edgeBending">Edges Bending</option>
+                  <option value="edgeDeformation">Edges Deformation</option>
+                  <option value="random">Random Field</option>
+                  <option value="material">Imported Material / Face Group</option>
+                </select>
+              </label>
+              <label>Formula
+                <input id="fieldWeightFormula" type="text" value="0.45 * curvature + 0.25 * crown + 0.2 * support + 0.1 * boundary" />
+              </label>
+              <div class="grid-2">
+                <label>Smoothing
+                  <select id="fieldWeightSmoothing">
+                    <option value="none">None</option>
+                    <option value="laplacian">Laplacian</option>
+                    <option value="harmonic">Harmonic</option>
+                  </select>
+                </label>
+                <label>Iterations <input id="fieldWeightSmoothingIterations" type="number" min="0" max="8" step="1" value="1" /></label>
+                <label>Random Seed <input id="fieldWeightRandomSeed" type="number" step="1" value="17" /></label>
+                <label>Material Strategy
+                  <select id="fieldWeightMaterialStrategy">
+                    <option value="weight-bands">Weight Bands</option>
+                    <option value="imported-groups">Imported Groups</option>
+                    <option value="zones">Zones</option>
+                  </select>
+                </label>
+              </div>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Enable Attractor Response</span><input id="fieldWeightDriveDensity" type="checkbox" /></label>
+                <label class="toggle-row"><span>Drive Component Type</span><input id="fieldWeightDriveComponent" type="checkbox" /></label>
+                <label class="toggle-row"><span>Drive Thickness</span><input id="fieldWeightDriveThickness" type="checkbox" /></label>
+                <label class="toggle-row"><span>Drive Rotation</span><input id="fieldWeightDriveRotation" type="checkbox" /></label>
+                <label class="toggle-row"><span>Drive Taper</span><input id="fieldWeightDriveTaper" type="checkbox" /></label>
+                <label class="toggle-row"><span>Drive Support / Crown / Boundary Zones</span><input id="fieldWeightDriveZones" type="checkbox" checked /></label>
+              </div>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="fields strategy" open>
+            <summary>Top-View Attractor Editor</summary>
+            <div class="grid-1 attractor-editor">
+              <div class="source-card">
+                <b>Place controls in the UV / top-view diagram</b>
+                <span>Add a point, or draw a curve with successive clicks. Select and drag any visible control handle to reposition it. Press Enter or Finish Curve to complete a curve.</span>
+              </div>
+              <div class="grid-2 attractor-actions">
+                <button class="ghost-btn" id="attractorSelect" type="button">Select / Move</button>
+                <button class="ghost-btn" id="attractorAddPoint" type="button">Add Point</button>
+                <button class="ghost-btn" id="attractorDrawCurve" type="button">Draw Curve</button>
+                <button class="ghost-btn" id="attractorFinishCurve" type="button">Finish Curve</button>
+                <button class="ghost-btn" id="attractorDelete" type="button">Delete Selected</button>
+                <button class="ghost-btn" id="attractorClear" type="button">Clear All</button>
+              </div>
+              <button class="primary-btn" id="attractorApplyDensity" type="button">Apply Attractor Response</button>
+              <div class="grid-2">
+                <label>Influence Radius <input id="attractorRadius" type="number" min="0.02" max="1" step="0.01" value="0.18" /></label>
+                <label title="0 = no field effect; 1 = full perforation response.">Strength <input id="attractorStrength" type="number" min="0" max="1" step="0.05" value="1" /></label>
+                <label>Curvature Blend <input id="attractorCurvatureMix" type="number" min="0" max="1" step="0.05" value="0.25" /></label>
+              </div>
+              <div class="component-panel-status" id="attractorStatus">Select Add Point or Draw Curve, then click in the top-view diagram.</div>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="topology-lattice" open>
+            <summary>Topology Lattice</summary>
+            <div class="grid-1">
+              <div class="source-card">
+                <b>Shared-edge lattice</b>
+                <span>Generates continuous U/V rails from the active quad carrier. Attractors reduce rail width locally to open the lattice without shifting cell boundaries.</span>
+              </div>
+              <label class="toggle-row"><span>Show Topology Lattice</span><input id="topologyLatticeEnabled" type="checkbox" /></label>
+              <div class="topology-lattice-layers">
+                <div class="topology-lattice-layer">
+                  <b>Top / U Layer</b>
+                  <label class="toggle-row"><span>Show U Layer</span><input id="topologyLatticeShowU" type="checkbox" checked /></label>
+                  <label>Rail Width (cm)<input id="topologyLatticeRailWidth" type="number" min="1" max="200" step="1" value="12" /></label>
+                  <label>Rail Depth (cm)<input id="topologyLatticeRailDepth" type="number" min="1" max="200" step="1" value="6" /></label>
+                  <label>Path Fillet Radius (cm)<input id="topologyLatticeFillet" type="number" min="0" max="200" step="1" value="12" /></label>
+                  <label>Opening Response<input id="topologyLatticeOpening" type="number" min="0" max="0.85" step="0.05" value="0.55" /></label>
+                  <label>Added Rails / Cell<input id="topologyLatticeDensity" type="number" min="0" max="8" step="1" value="3" /></label>
+                </div>
+                <div class="topology-lattice-layer">
+                  <b>Bottom / V Layer</b>
+                  <label class="toggle-row"><span>Show V Layer</span><input id="topologyLatticeShowV" type="checkbox" checked /></label>
+                  <label>Rail Width (cm)<input id="topologyLatticeBottomWidth" type="number" min="1" max="200" step="1" value="12" /></label>
+                  <label>Rail Depth (cm)<input id="topologyLatticeBottomDepth" type="number" min="1" max="200" step="1" value="6" /></label>
+                  <label>Path Fillet Radius (cm)<input id="topologyLatticeBottomFillet" type="number" min="0" max="200" step="1" value="12" /></label>
+                  <label>Opening Response<input id="topologyLatticeBottomOpening" type="number" min="0" max="0.85" step="0.05" value="0.55" /></label>
+                  <label>Added Rails / Cell<input id="topologyLatticeBottomDensity" type="number" min="0" max="8" step="1" value="3" /></label>
+                </div>
+              </div>
+              <div class="topology-loop-bindings">
+                <b>Structural Strip Bindings</b>
+                <span>Duplicate selected continuous topology loops using the same face-anchor rule as the U/V rails.</span>
+                <label class="toggle-row"><span>Show Structural Strip Bindings</span><input id="topologyLoopBindingsEnabled" type="checkbox" /></label>
+                <div class="grid-2">
+                  <label>Loop Family<select id="topologyLoopBindingsFamily"><option value="both">U + V Loops</option><option value="u">Top / U Loops</option><option value="v">Bottom / V Loops</option></select></label>
+                  <label>Use Every Nth Loop<input id="topologyLoopBindingsEvery" type="number" min="1" max="20" step="1" value="4" /></label>
+                  <label>Binding Width (cm)<input id="topologyLoopBindingsWidth" type="number" min="1" max="200" step="1" value="8" /></label>
+                  <label>Binding Depth (cm)<input id="topologyLoopBindingsDepth" type="number" min="1" max="200" step="1" value="8" /></label>
+                  <label>Path Fillet Radius (cm)<input id="topologyLoopBindingsFillet" type="number" min="0" max="200" step="1" value="12" /></label>
+                </div>
+              </div>
+              <button class="primary-btn" id="topologyLatticeGenerate" type="button">Generate From Mesh Topology</button>
+              <div class="component-panel-status" id="topologyLatticeStatus">Uses shared carrier edges; no imported panel mesh is required.</div>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="fields">
+            <summary>Contours, Masks + Streamlines</summary>
+            <div class="grid-1">
+              <label class="toggle-row"><span>Enable Contour Field</span><input id="contourFieldEnabled" type="checkbox" checked /></label>
+              <div class="grid-2">
+                <label>Contour Source
+                  <select id="contourFieldSource">
+                    <option value="height">Height</option>
+                    <option value="curvature">Curvature</option>
+                    <option value="compression">Compression</option>
+                    <option value="weight">Field Weight</option>
+                    <option value="reaction">Reaction Pattern</option>
+                  </select>
+                </label>
+                <label>Bands <input id="contourFieldBands" type="number" min="2" max="24" step="1" value="8" /></label>
+                <label>Mask Mode
+                  <select id="contourMaskMode">
+                    <option value="none">No Mask</option>
+                    <option value="boundary">Boundary Zone</option>
+                    <option value="support">Support Zone</option>
+                    <option value="crown">Crown / Oculus Zone</option>
+                    <option value="opening">Opening Mask</option>
+                    <option value="low-weight">Low Weight</option>
+                  </select>
+                </label>
+                <label>Streamline Source
+                  <select id="streamlineSource">
+                    <option value="compression">Compression Field</option>
+                    <option value="principal-curvature">Principal Curvature</option>
+                    <option value="guide">Guide Direction</option>
+                  </select>
+                </label>
+                <label>Streamlines <input id="streamlineCount" type="number" min="2" max="24" step="1" value="9" /></label>
+                <label>Guide Direction (deg) <input id="guideDirectionDeg" type="number" step="1" value="35" /></label>
+              </div>
+              <div class="display-toggles">
+                <label class="toggle-row"><span>Show Contours</span><input id="showContourField" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Show Masks</span><input id="showContourMasks" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Show Streamlines</span><input id="showStreamlines" type="checkbox" checked /></label>
+                <label class="toggle-row"><span>Reaction-Diffusion Field</span><input id="reactionDiffusion" type="checkbox" /></label>
+              </div>
+              <label>Reaction Scale
+                <input id="reactionScale" type="number" min="0" max="1" step="0.05" value="0.45" />
+              </label>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="blocks" open>
+            <summary>Block Size</summary>
+            <div class="grid-1">
+              <label>Block Dimension Mode
+                <select id="blockDimensionMode">
+                  <option value="applied" selected>Applied Dimensions</option>
+                  <option value="fit">Fit Field Evenly</option>
+                </select>
+              </label>
+              <label data-param-control="targetBlockWidth">Block Length (cm)
+                <div class="dual-input-row">
+                  <input type="range" id="targetBlockWidth" min="10" max="500" step="5" value="120" />
+                  <input type="number" id="targetBlockWidthNum" min="10" max="500" step="5" value="120" />
+                </div>
+              </label>
+              <label>Block Width (cm) <input id="courseHeight" type="number" min="10" max="500" step="1" value="65" /></label>
+              <label data-param-control="courseCount">Field U Divisions
+                <div class="dual-input-row">
+                  <input type="range" id="courseCount" min="4" max="48" step="1" value="16" />
+                  <input type="number" id="courseCountNum" min="4" max="48" step="1" value="16" />
+                </div>
+              </label>
+              <label data-param-control="blockCount">Field V Divisions
+                <div class="dual-input-row">
+                  <input type="range" id="blockCount" min="6" max="40" step="1" value="18" />
+                  <input type="number" id="blockCountNum" min="6" max="40" step="1" value="18" />
+                </div>
+              </label>
+              <label data-param-control="subdivisionDensity">Block Density
+                <div class="dual-input-row">
+                  <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" />
+                  <input type="number" id="subdivisionDensityNum" min="0.5" max="2.5" step="0.1" value="1" />
+                </div>
+              </label>
+              <label>Panel Subdivision U
+                <div class="dual-input-row">
+                  <input type="range" id="panelSubdivisionU" min="1" max="8" step="1" value="1" />
+                  <input type="number" id="panelSubdivisionUNum" min="1" max="8" step="1" value="1" />
+                </div>
+              </label>
+              <label>Panel Subdivision V
+                <div class="dual-input-row">
+                  <input type="range" id="panelSubdivisionV" min="1" max="8" step="1" value="1" />
+                  <input type="number" id="panelSubdivisionVNum" min="1" max="8" step="1" value="1" />
+                </div>
+              </label>
+              <label class="toggle-row"><span>Use Field Weight For Morph</span><input id="panelWeightSubdivision" type="checkbox" /></label>
+              <label>Morph Weight Source
+                <select id="panelMorphWeightSource">
+                  <option value="curvature">Curvature</option>
+                  <option value="attractor">Attractor Field</option>
+                  <option value="attractorCurvature">Attractor + Curvature</option>
+                  <option value="area">Area</option>
+                  <option value="distance">Distance</option>
+                  <option value="formula">Formula</option>
+                  <option value="harmonic">Harmonic</option>
+                  <option value="edgeBending">Edges Bending</option>
+                  <option value="edgeDeformation">Edges Deformation</option>
+                  <option value="material">Imported Material / Face Group</option>
+                </select>
+              </label>
+              <label>Curvature Morph Strength
+                <div class="dual-input-row">
+                  <input type="range" id="panelMorphStrength" min="0" max="1" step="0.05" value="0" />
+                  <input type="number" id="panelMorphStrengthNum" min="0" max="1" step="0.05" value="0" />
+                </div>
+              </label>
+              <label>Advanced Cell Topology
+                <select id="ngonCellType">
+                  <option>Hex</option>
+                  <option>Diamond</option>
+                  <option>Quad</option>
+                  <option>Chebychev</option>
+                  <option>Triangle</option>
+                </select>
+              </label>
+              <label>Topology Shape Bias
+                <div class="dual-input-row">
+                  <input type="range" id="ngonShape" min="0" max="1" step="0.05" value="0.5" />
+                  <input type="number" id="ngonShapeNum" min="0" max="1" step="0.05" value="0.5" />
+                </div>
+              </label>
+              <label>Minimum Bed Depth (cm) <input id="bedDepth" type="number" min="5" max="300" step="1" value="24" /></label>
+              <label data-param-control="tileLayers">Tile Layers
+                <div class="dual-input-row">
+                  <input type="range" id="tileLayers" min="1" max="6" step="1" value="3" />
+                  <input type="number" id="tileLayersNum" min="1" max="6" step="1" value="3" />
+                </div>
+              </label>
+              <label data-param-control="extradosOffset">Extrados Offset (m)
+                <div class="dual-input-row">
+                  <input type="range" id="extradosOffset" min="0" max="4" step="0.01" value="0.15" />
+                  <input type="number" id="extradosOffsetNum" min="0" max="4" step="0.01" value="0.15" />
+                </div>
+              </label>
+              <label>Block Preview Count
+                <input id="blockPreviewCount" type="number" min="1" max="6" step="1" value="1" />
+              </label>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="fabrication" open>
+            <summary>Joints + Fabrication Rules</summary>
+            <div class="grid-1">
+              <label>Joint Thickness (cm) <input id="jointGap" type="number" min="0" max="20" step="0.5" value="2" /></label>
+              <label>Joint Mode
+                <select id="jointMode">
+                  <option>Visual seams</option>
+                  <option>Physical cut</option>
+                </select>
+              </label>
+              <label>Taper (deg) <input id="taperAngle" type="number" step="0.1" value="4" /></label>
+              <label>Fabrication Check
+                <select id="fabricationCheck">
+                  <option>All Checks</option>
+                  <option>Length</option>
+                  <option>Width</option>
+                  <option>Thickness</option>
+                  <option>Weight</option>
+                  <option>Taper</option>
+                  <option>Min Edge</option>
+                  <option>Bed Depth</option>
+                  <option>Convexity</option>
+                </select>
+              </label>
+              <label>Structural Direction
+                <select id="structuralDirection">
+                  <option>Compression lines</option>
+                  <option>Rib lines</option>
+                  <option>Thrust paths</option>
+                </select>
+              </label>
+              <label>Registration Method
+                <select id="registrationMode">
+                  <option>UV coordinates</option>
+                  <option>Bounding box fit</option>
+                  <option>Control points</option>
+                </select>
+              </label>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="strategy">
+            <summary>Trait / Development</summary>
             <div class="grid-1">
               <label>Drawing Mode
                 <select id="drawingMode2d">
@@ -379,11 +977,6 @@
                   <option>True-Shape Panels</option>
                 </select>
               </label>
-              <label title="Joint normals describe the geometric direction of each joint: radial, normal to a curve, skewed, generatrix-based, or otherwise controlled by the trait.">Joint Principle
-                <select id="jointPrinciple"></select>
-              </label>
-              <button class="ghost-btn" id="applyJointPrinciple">Apply Joint Principle</button>
-              <div class="joint-card" id="jointPrincipleDetails"></div>
               <label>Block Generation
                 <select id="blockStep">
                   <option>Generated Voussoirs</option>
@@ -392,60 +985,56 @@
                   <option>Fabrication Preview</option>
                 </select>
               </label>
-              <label>Fabrication Check
-                <select id="fabricationCheck">
-                  <option>All Checks</option>
-                  <option>Length</option>
-                  <option>Width</option>
-                  <option>Thickness</option>
-                  <option>Weight</option>
-                  <option>Taper</option>
-                  <option>Min Edge</option>
-                  <option>Bed Depth</option>
-                  <option>Convexity</option>
-                </select>
-              </label>
               <label title="Hypography and development operations transfer 3D surface logic into 2D trait, underside, or unrolled drawings.">Projection / Development Operation
                 <select id="projectionOperation"></select>
               </label>
               <button class="ghost-btn" id="applyProjectionOperation">Apply Projection Operation</button>
               <div class="projection-card" id="projectionOperationDetails"></div>
-              <button class="ghost-btn" id="generateBlocksFromTrait">Generate Blocks From Trait</button>
             </div>
           </details>
-          <div class="grid-2">
-            <label>Joint Thickness (m) <input id="jointGap" type="number" step="0.005" value="0.02" /></label>
-            <label>Joint Mode
-              <select id="jointMode">
-                <option>Visual seams</option>
-                <option>Physical cut</option>
-              </select>
-            </label>
-            <label>Taper (deg) <input id="taperAngle" type="number" step="0.1" value="4" /></label>
-            <label>Course Height (m) <input id="courseHeight" type="number" step="0.01" value="0.65" /></label>
-            <label>Block Depth (m) <input id="bedDepth" type="number" step="0.01" value="0.24" /></label>
-            <label>Structural Direction
-              <select id="structuralDirection">
-                <option>Compression lines</option>
-                <option>Rib lines</option>
-                <option>Thrust paths</option>
-              </select>
-            </label>
-            <label>Registration Method
-              <select id="registrationMode">
-                <option>UV coordinates</option>
-                <option>Bounding box fit</option>
-                <option>Control points</option>
-              </select>
-            </label>
-            <label>Align Scale <input id="alignScale" type="number" step="0.05" value="1" /></label>
-            <label>Align Offset U <input id="alignOffsetU" type="number" step="0.01" value="0" /></label>
-            <label>Align Offset V <input id="alignOffsetV" type="number" step="0.01" value="0" /></label>
-            <label>Align Rotation (deg) <input id="alignRotation" type="number" step="1" value="0" /></label>
-          </div>
+          <details class="param-section" data-tool-group="editor" open>
+            <summary>2D Strategy Editor</summary>
+            <div class="grid-1">
+              <div class="grid-2">
+                <button class="ghost-btn" id="editSplitCell">Split Cell</button>
+                <button class="ghost-btn" id="editMergeCell">Merge With Next</button>
+                <button class="ghost-btn" id="editRotateComponent">Rotate Component</button>
+                <button class="ghost-btn" id="editPinBoundary">Pin Boundary</button>
+                <button class="ghost-btn" id="editMarkSupport">Mark Support</button>
+              </div>
+              <label>Component Variant
+                <select id="editComponentVariant">
+                  <option value="voussoir">Tapered Voussoir</option>
+                  <option value="ashlar">Ashlar Block</option>
+                  <option value="keyedVoussoir">Keyed Voussoir</option>
+                  <option value="interlock">Interlocking Block</option>
+                  <option value="custom">Custom Component</option>
+                </select>
+              </label>
+              <button class="ghost-btn" id="editAssignVariant">Assign Variant</button>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="strategy blocks">
+            <summary>Alignment Overrides</summary>
+            <div class="grid-2">
+              <label>Align Scale <input id="alignScale" type="number" step="0.05" value="1" /></label>
+              <label>Align Offset U <input id="alignOffsetU" type="number" step="0.01" value="0" /></label>
+              <label>Align Offset V <input id="alignOffsetV" type="number" step="0.01" value="0" /></label>
+              <label>Align Rotation (deg) <input id="alignRotation" type="number" step="1" value="0" /></label>
+            </div>
+          </details>
+          <details class="param-section" data-tool-group="export" open>
+            <summary>Fabrication Package</summary>
+            <div class="grid-1">
+              <div class="source-card">
+                <b>Package contents</b>
+                <span>Exports include strategy settings, host dimensions, topology graph, block solids, labels, assembly order, tolerances, and merged fabrication mesh when enabled.</span>
+              </div>
+            </div>
+          </details>
         </div>
-        <div class="section" data-tool-group="layers">
-          <h3>Layer Drawer</h3>
+        <div class="section" data-tool-group="display">
+          <h3>Display</h3>
           <div class="layer-drawer">
             <details class="param-section" open>
               <summary>Visual Style</summary>
@@ -548,15 +1137,37 @@
           </div>
         </div>
         </div>
+        <div class="action-dock" aria-label="Primary actions">
+          <button class="ghost-btn primary-action" id="generateBlocksFromTrait">Generate Blocks</button>
+          <button class="ghost-btn primary-action" id="applyPatternToModel">Apply To Model</button>
+          <button class="ghost-btn" id="showSolidOnly">Solid Preview</button>
+          <button class="ghost-btn" id="exportJson">Export JSON</button>
+          <button class="ghost-btn" id="exportBlocks">Export Blocks</button>
+          <button class="ghost-btn" id="exportBlocksObj">Export OBJ</button>
+          <button class="ghost-btn" id="exportBlocksStl">Export STL</button>
+        </div>
       </aside>
       <div class="splitter" data-splitter="left" title="Resize tools"></div>
 
       <section class="modelspace">
-        <article class="panel-window glass">
+        <div class="instrument-readout" aria-hidden="true"><span>OBJECT / VAULT-01</span><span>MODE / MODEL</span><span>UNIT / CM</span></div>
+        <section class="block-designer-workbench" id="blockDesignerWorkbench" aria-label="Block Designer workbench">
+          <div class="bd-center"><div class="bd-toolbar" id="bdViews"><button data-bd-view="assembled" class="active">Assembled Pair</button><button data-bd-view="tile3d">3D Tile Preview</button><button data-bd-view="exploded">Exploded Pair</button><button data-bd-view="section">Section Cut</button><button data-bd-view="contact">Contact Face</button><button data-bd-view="tolerance">Tolerance</button><button data-bd-view="profile">2D Profile</button></div><div class="bd-canvas" id="bdPairCanvas"><canvas id="bdModelCanvas"></canvas><div class="bd-model-caption" id="bdModelCaption">Orbit · Pan · Zoom</div></div><div class="bd-row-splitter" id="bdRowSplitter" title="Resize model and drawing panes"></div><div class="bd-swatch-head"><b>Tile Swatch Preview</b><span id="bdSwatchLabel">5 × 5 • Running Bond</span></div><div class="bd-swatch" id="bdSwatchCanvas"></div></div>
+          <div class="bd-column-splitter" id="bdColumnSplitter" title="Resize Tile Library"></div>
+          <aside class="bd-right"><div class="bd-library-head"><div><span class="eyebrow">TILE LIBRARY</span><h3>Saved Systems</h3></div><button class="mini-btn" id="bdApplyTile">Apply to Vault</button></div><div class="bd-tile-list" id="bdTileList"></div><h3 class="subhead">Analysis</h3><div class="bd-analysis" id="bdAnalysis"></div><div class="hint">Green = valid · yellow = review · red = invalid. Saved tiles carry joint, fabrication, material, and tiling rules.</div></aside>
+        </section>
+        <article class="panel-window glass viewport-2d">
           <div class="window-head viewport-titlebar">
+            <div class="strategy-view-title" id="strategyViewLabel">Strategy View</div>
             <details class="viewport-menu">
-              <summary>Top <span>▾</span></summary>
+              <summary>2D View <span>▾</span></summary>
               <div class="viewport-menu-list">
+                <button data-strategy-view="uv-layout">UV / Layout View</button>
+                <button data-strategy-view="component-mapping">Component Mapping Preview</button>
+                <button data-strategy-view="assembly-sequence">Assembly Sequence View</button>
+                <button data-strategy-view="distortion">Distortion / Deformation View</button>
+                <button data-strategy-view="zones">Zone / Weight View</button>
+                <hr />
                 <button data-layout-style="Rhino Gray">Rhino Gray</button>
                 <button data-layout-style="Blueprint">Blueprint</button>
                 <button data-layout-style="Paper">Paper</button>
@@ -564,34 +1175,41 @@
               </div>
             </details>
             <div class="viewport-actions">
-              <div class="drawing-presets" aria-label="2D drawing presets">
+              <div class="segmented-control drawing-presets" aria-label="2D drawing presets">
                 <button class="mini-btn" data-drawing-preset="Clean Trait" title="Show only the primary reference geometry and trait curves.">Clean Trait</button>
                 <button class="mini-btn" data-drawing-preset="Full Epure" title="Show reference, projection, courses, joints, and derived stereotomy.">Full Epure</button>
                 <button class="mini-btn" data-drawing-preset="Development" title="Show surface unrolling and true-shape panneaux.">Development</button>
-                <button class="mini-btn" data-drawing-preset="Fabrication Check" title="Show generated blocks, IDs, metrics, and fabrication checks.">Fabrication Check</button>
-                <button class="mini-btn" data-drawing-preset="Teaching View" title="Show explanatory labels and measurements for review or instruction.">Teaching View</button>
+                <button class="mini-btn" data-drawing-preset="Fabrication" title="Show generated blocks, IDs, metrics, and fabrication checks.">Fabrication</button>
+                <button class="mini-btn" data-drawing-preset="Teaching" title="Show explanatory labels and measurements for review or instruction.">Teaching</button>
               </div>
+              <div class="segmented-control view-layout-toggle" aria-label="Viewport layout">
+                <button class="mini-btn" data-view-layout="2d" title="2D Focus">2D Focus</button>
+                <button class="mini-btn" data-view-layout="split" title="Split View">Split View</button>
+                <button class="mini-btn" data-view-layout="3d" title="3D Focus">3D Focus</button>
+              </div>
+              <details class="drawing-legend">
+                <summary>Legend</summary>
+                <div class="drawing-legend-list">
+                  <span><i class="legend-line primary"></i>Primary geometry</span>
+                  <span><i class="legend-line extrados"></i>Extrados / thickness</span>
+                  <span><i class="legend-line projection"></i>Projection</span>
+                  <span><i class="legend-line development"></i>Surface / development</span>
+                  <span><i class="legend-line validation"></i>Validation / keystone</span>
+                </div>
+              </details>
               <div class="trait-state-chip" id="currentTraitState"></div>
-              <button class="mini-btn" data-layout-style="Rhino Gray">Grid</button>
-              <span>UV Editor</span>
+              <button class="mini-btn" data-strategy-view="uv-layout">UV</button>
+              <button class="mini-btn" data-strategy-view="component-mapping">Mapping</button>
+              <button class="mini-btn" data-strategy-view="assembly-sequence">Assembly</button>
+              <button class="mini-btn" data-strategy-view="distortion">Distortion</button>
             </div>
           </div>
           <svg id="layout2d" viewBox="0 0 1000 700" preserveAspectRatio="none"></svg>
-          <div class="floating glass" id="diagramPanel">
-            <div class="window-head">
-              <h2>Form / Force</h2>
-              <div>
-                <button class="ghost-btn" id="ffFullscreen">Expand</button>
-                <span id="diagramMode">Generated</span>
-              </div>
-            </div>
-            <svg id="formDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
-            <svg id="forceDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
-          </div>
+          <div class="viewport-index" aria-hidden="true">01 / EPURE</div>
         </article>
         <div class="viewport-splitter" data-viewport-splitter title="Resize viewports"></div>
 
-        <article class="panel-window glass">
+        <article class="panel-window glass viewport-3d">
           <div class="window-head viewport-titlebar">
             <details class="viewport-menu">
               <summary>Perspective <span>▾</span></summary>
@@ -601,6 +1219,8 @@
                 <button data-display-preset="Rendered">Rendered</button>
                 <button data-display-preset="Ghosted">Ghosted</button>
                 <button data-display-preset="XRay">X-Ray</button>
+                <hr />
+                <button id="toggleImportedSurface" type="button">Hide Original Vault Surface</button>
                 <hr />
                 <button data-toggle-view="grid">Grid</button>
                 <button data-toggle-view="edges">Mesh Wires</button>
@@ -613,6 +1233,21 @@
             </div>
           </div>
           <canvas id="viewport"></canvas>
+          <div class="viewport-index viewport-index-3d" aria-hidden="true">02 / OBJECT</div>
+          <div class="block-preview glass" id="blockPreviewPanel">
+            <div class="block-preview-head">
+              <b>Block Detail</b>
+              <span id="blockPreviewTitle">1 block</span>
+            </div>
+            <canvas id="blockPreview"></canvas>
+            <div class="block-preview-info" id="blockPreviewInfo"></div>
+            <div class="block-preview-controls" aria-label="Block dimensions">
+              <label>L <input id="blockPreviewLength" type="number" min="10" max="500" step="5" value="120" /></label>
+              <label>W <input id="blockPreviewWidth" type="number" min="10" max="500" step="1" value="65" /></label>
+              <label>H <input id="blockPreviewHeight" type="number" min="20" max="400" step="5" value="90" /></label>
+            </div>
+            <div class="block-preview-resize" id="blockPreviewResize" title="Resize block detail"></div>
+          </div>
           <div class="floating transform-toolbar glass" id="transformToolbar" aria-label="Transform tools">
             <div class="toolbar-group" aria-label="Edit mode">
               <button class="tool-btn active" data-transform-tool="select" title="Select">Select</button>
@@ -642,12 +1277,20 @@
           <h2 id="rightPanelTitle">Properties</h2>
           <button class="dock-toggle" data-dock-toggle="right" title="Collapse properties">×</button>
         </div>
-        <div class="section" data-right-section="vault-tools">
-          <h3>Active Vault Tools</h3>
+        <details class="section collapsible-section" data-right-section="vault-tools">
+          <summary>Active Vault Tools</summary>
           <div id="activeVaultTools" class="hint"></div>
-        </div>
-        <div class="section docked-display" data-right-section="display">
-          <h3>Display Settings</h3>
+        </details>
+        <details class="section collapsible-section form-force-section" id="diagramPanel" data-right-section="form-force">
+          <summary>Form / Force <span id="diagramMode">Generated</span></summary>
+          <div class="diagram-actions">
+            <button class="ghost-btn" id="ffFullscreen">Expand</button>
+          </div>
+          <svg id="formDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
+          <svg id="forceDiagram" viewBox="0 0 240 120" preserveAspectRatio="none"></svg>
+        </details>
+        <details class="section docked-display collapsible-section" data-right-section="display">
+          <summary>Display Settings</summary>
           <label>Lighting
             <select id="lightingPreset">
               <option>Rhino Studio</option>
@@ -694,35 +1337,40 @@
           </div>
           <h3 class="subhead">Layers</h3>
           <div class="display-toggles">
-            <label class="toggle-row"><span>Source Model</span><input id="layerSourceModel" type="checkbox" checked /></label>
+            <label class="toggle-row"><span>Imported / Source Surface</span><input id="layerSourceModel" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Built-In Form</span><input id="layerBuiltInForm" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Blocks</span><input id="layerBlocks" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Copied Geometry</span><input id="layerCopies" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Supports</span><input id="layerSupports" type="checkbox" checked /></label>
             <label class="toggle-row"><span>Guides + Grid</span><input id="layerGuides" type="checkbox" checked /></label>
           </div>
-        </div>
+        </details>
+        <div class="diagnostic-summary" id="diagnosticSummary" data-right-section="diagnostic-summary"></div>
         <div class="metrics" id="metrics" data-right-section="metrics"></div>
+        <details class="section collapsible-section" data-right-section="ngon-diagnostics" open>
+          <summary>Topology Diagnostics</summary>
+          <div id="ngonDiagnostics" class="diagnostics-grid"></div>
+        </details>
 
         <div class="section" data-right-section="constraints">
           <h3>Fabrication Constraints</h3>
           <div class="grid-1">
-            <label>Max Block Length (m)
+            <label>Max Block Length (cm)
               <div class="dual-input-row">
-                <input id="maxLengthSlider" type="range" min="0.5" max="6" step="0.1" value="2.4" />
-                <input id="maxLength" type="number" min="0.5" max="6" value="2.4" step="0.1" />
+                <input id="maxLengthSlider" type="range" min="50" max="600" step="10" value="240" />
+                <input id="maxLength" type="number" min="50" max="600" value="240" step="10" />
               </div>
             </label>
-            <label>Max Block Width (m)
+            <label>Max Block Width (cm)
               <div class="dual-input-row">
-                <input id="maxWidthSlider" type="range" min="0.3" max="4" step="0.1" value="1.2" />
-                <input id="maxWidth" type="number" min="0.3" max="4" value="1.2" step="0.1" />
+                <input id="maxWidthSlider" type="range" min="30" max="400" step="10" value="120" />
+                <input id="maxWidth" type="number" min="30" max="400" value="120" step="10" />
               </div>
             </label>
-            <label>Min Block Thickness (m)
+            <label>Min Block Thickness (cm)
               <div class="dual-input-row">
-                <input id="minThicknessSlider" type="range" min="0.1" max="1.5" step="0.01" value="0.3" />
-                <input id="minThickness" type="number" min="0.1" max="1.5" value="0.3" step="0.05" />
+                <input id="minThicknessSlider" type="range" min="10" max="150" step="1" value="30" />
+                <input id="minThickness" type="number" min="10" max="150" value="30" step="5" />
               </div>
             </label>
             <label>Max Block Weight (kg)
@@ -737,16 +1385,16 @@
                 <input id="maxTaper" type="number" min="0" max="20" value="8" step="0.1" />
               </div>
             </label>
-            <label>Min Edge Length (m)
+            <label>Min Edge Length (cm)
               <div class="dual-input-row">
-                <input id="minEdgeLengthSlider" type="range" min="0.01" max="1" step="0.005" value="0.18" />
-                <input id="minEdgeLength" type="number" min="0.01" max="1" value="0.18" step="0.01" />
+                <input id="minEdgeLengthSlider" type="range" min="1" max="100" step="0.5" value="18" />
+                <input id="minEdgeLength" type="number" min="1" max="100" value="18" step="1" />
               </div>
             </label>
-            <label>Fab Tolerance (m)
+            <label>Fab Tolerance (cm)
               <div class="dual-input-row">
-                <input id="fabToleranceSlider" type="range" min="0.001" max="0.05" step="0.001" value="0.008" />
-                <input id="fabTolerance" type="number" min="0.001" max="0.05" value="0.008" step="0.001" />
+                <input id="fabToleranceSlider" type="range" min="0.1" max="5" step="0.1" value="0.8" />
+                <input id="fabTolerance" type="number" min="0.1" max="5" value="0.8" step="0.1" />
               </div>
             </label>
           </div>

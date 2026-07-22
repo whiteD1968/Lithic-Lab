@@ -6711,10 +6711,6 @@ const getComponentUvLoop = (block) => {
     return block.sourceCarrierUv || block.uv;
   }
   const uv = getMappedComponentBaseUv(block);
-  const tile = state.appliedTileSystem;
-  if (tile?.jointType && tile.jointType !== "Flat Joint") {
-    return buildDesignedJointUvLoop(uv, tile);
-  }
   const component = block.componentVariant || block.componentType || state.strategy.component;
   if (component === "keyedVoussoir") return buildKeyedUvLoop(uv);
   if (component === "interlock") return buildInterlockUvLoop(uv, block.id);
@@ -6745,6 +6741,49 @@ const getVaultSample = (u, v, cyclicU = state.vaultType === "Dome") => {
   let normal = getVaultSurfaceNormal(uu, vv, cyclicU);
   if (normal.y < 0) normal = normal.multiplyScalar(-1);
   return { point, normal };
+};
+
+const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickness = getBlockThicknessForComponent(block)) => {
+  if (!tile?.jointType || tile.jointType === "Flat Joint") return null;
+  const uv = getMappedComponentBaseUv(block);
+  if (!Array.isArray(uv) || uv.length < 3) return null;
+  const host = getHostField();
+  const cyclicU = state.vaultType === "Dome";
+  const center = polygonCentroidUv(uv);
+  const samples = Math.max(12, Math.min(48, Math.round((tile.frequency || 3) * 12)));
+  const depthScale = clamp((tile.depth || 35) / 260, 0.04, 0.18);
+  const points = [];
+  const makePoint = (a, b, edgeIndex, t) => {
+    const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const out = edgeOutwardUv(a, b, center, 1);
+    const sign = edgeIndex % 4 < 2 ? 1 : -1;
+    const offset = getBdJointOffset(t, tile) * edgeLen * depthScale * sign;
+    const u = clamp(a[0] + (b[0] - a[0]) * t + out[0] * offset, 0, 1);
+    const v = clamp(a[1] + (b[1] - a[1]) * t + out[1] * offset, 0, 1);
+    const p = host.pointAt(cyclicU ? wrap01(u) : u, v);
+    const n = host.normalAt(cyclicU ? wrap01(u) : u, v).clone();
+    if (n.y < 0) n.multiplyScalar(-1);
+    return p.clone().addScaledVector(n, thickness + 0.006);
+  };
+  uv.forEach((a, edgeIndex) => {
+    const isBedEdge = uv.length === 4 ? edgeIndex % 2 === 1 : edgeIndex % 2 === 0;
+    if (!isBedEdge) return;
+    const b = uv[(edgeIndex + 1) % uv.length];
+    for (let i = 0; i < samples; i++) {
+      points.push(makePoint(a, b, edgeIndex, i / samples));
+      points.push(makePoint(a, b, edgeIndex, (i + 1) / samples));
+    }
+  });
+  if (points.length < 2) return null;
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const line = new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x1d2a22, transparent: true, opacity: 0.96 })
+  );
+  line.name = "designed-joint-profile";
+  line.renderOrder = 15;
+  line.frustumCulled = false;
+  return line;
 };
 
 const createHostField = () => {
@@ -9374,6 +9413,8 @@ const build3d = () => {
         seam.name = "seam";
         seam.visible = state.appliedTileSystem ? true : !!state.display.seamDebug;
         mesh.add(seam);
+        const designedJoint = buildDesignedJointOverlay(b, state.appliedTileSystem, getBlockThicknessForComponent(b));
+        if (designedJoint) mesh.add(designedJoint);
       } else {
         mesh.userData.mergeMode = state.strategy.merge;
       }

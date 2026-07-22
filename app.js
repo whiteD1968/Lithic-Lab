@@ -6686,10 +6686,11 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
   const isLastCourse = Number.isFinite(block.courseIndex) &&
     Number.isFinite(block.courseCount) &&
     block.courseIndex >= block.courseCount - 1;
-  const amplitude = Math.max(0, Number(tile.amplitude) || 0);
-  const amplitudeBasis = Math.max(1e-6, amplitude / 100);
-  const physicalCourse = Math.max(1, Number(tile.width) || Number(tile.height) || 100);
-  const amplitudeRatio = clamp(amplitude / physicalCourse, 0, 0.3);
+  const host = getHostField();
+  const cyclicU = state.vaultType === "Dome";
+  const amplitudeM = Math.max(0, Number(tile.amplitude) || 0) / 100;
+  const amplitudeBasis = Math.max(1e-6, amplitudeM);
+  const maxAmplitudeRatio = clamp((Number(tile.amplitude) || 0) / Math.max(1, Number(tile.height) || Number(tile.width) || 100), 0, 0.18);
   const lerpUv = (a, b, t) => [
     THREE.MathUtils.lerp(a[0], b[0], t),
     THREE.MathUtils.lerp(a[1], b[1], t),
@@ -6706,7 +6707,11 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const axisLen = Math.hypot(axisU, axisV) || 1;
       axisU /= axisLen;
       axisV /= axisLen;
+      const leftPoint = host.pointAt(cyclicU ? wrap01(leftBase[0]) : clamp(leftBase[0], 0, 1), clamp(leftBase[1], 0, 1));
+      const rightPoint = host.pointAt(cyclicU ? wrap01(rightBase[0]) : clamp(rightBase[0], 0, 1), clamp(rightBase[1], 0, 1));
+      const physicalAxisLen = Math.max(1e-6, leftPoint.distanceTo(rightPoint));
       const jointShape = getBdJointOffset(runT, tile) / amplitudeBasis;
+      const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
       const left = isFirstCourse
         ? leftBase

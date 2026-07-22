@@ -6715,12 +6715,14 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const jointShape = (getBdJointOffset(runT, tile) / amplitudeBasis) * depthPolarity;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
+      const leftBoundarySign = Number.isFinite(block.courseIndex) && block.courseIndex % 2 ? -1 : 1;
+      const rightBoundarySign = Number.isFinite(block.courseIndex) && (block.courseIndex + 1) % 2 ? -1 : 1;
       const left = isFirstCourse
         ? leftBase
-        : [leftBase[0] + axisU * jointOffset, leftBase[1] + axisV * jointOffset];
+        : [leftBase[0] + axisU * jointOffset * leftBoundarySign, leftBase[1] + axisV * jointOffset * leftBoundarySign];
       const right = isLastCourse
         ? rightBase
-        : [rightBase[0] + axisU * jointOffset, rightBase[1] + axisV * jointOffset];
+        : [rightBase[0] + axisU * jointOffset * rightBoundarySign, rightBase[1] + axisV * jointOffset * rightBoundarySign];
       return [
         clamp(THREE.MathUtils.lerp(left[0], right[0], courseT), 0, 1),
         clamp(THREE.MathUtils.lerp(left[1], right[1], courseT), 0, 1),

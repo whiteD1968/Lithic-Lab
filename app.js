@@ -6715,14 +6715,22 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const jointShape = (getBdJointOffset(runT, tile) / amplitudeBasis) * depthPolarity;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
+      const contactOverlapM = clamp(amplitudeM * 0.12, 0.006, 0.025);
+      const contactOverlap = (contactOverlapM / physicalAxisLen) * axisLen * 0.5;
       const leftBoundarySign = Number.isFinite(block.courseIndex) && block.courseIndex % 2 ? -1 : 1;
       const rightBoundarySign = Number.isFinite(block.courseIndex) && (block.courseIndex + 1) % 2 ? -1 : 1;
       const left = isFirstCourse
         ? leftBase
-        : [leftBase[0] + axisU * jointOffset * leftBoundarySign, leftBase[1] + axisV * jointOffset * leftBoundarySign];
+        : [
+          leftBase[0] + axisU * (jointOffset * leftBoundarySign - contactOverlap),
+          leftBase[1] + axisV * (jointOffset * leftBoundarySign - contactOverlap),
+        ];
       const right = isLastCourse
         ? rightBase
-        : [rightBase[0] + axisU * jointOffset * rightBoundarySign, rightBase[1] + axisV * jointOffset * rightBoundarySign];
+        : [
+          rightBase[0] + axisU * (jointOffset * rightBoundarySign + contactOverlap),
+          rightBase[1] + axisV * (jointOffset * rightBoundarySign + contactOverlap),
+        ];
       return [
         clamp(THREE.MathUtils.lerp(left[0], right[0], courseT), 0, 1),
         clamp(THREE.MathUtils.lerp(left[1], right[1], courseT), 0, 1),

@@ -7158,18 +7158,8 @@ const buildDesignedJointSampledBlockGeometry = (block, thickness, tile = state.a
           normal,
         };
       };
-      const makeRegisteredTopSample = () => {
-        const [u, v] = designedSampler.sampleUvAt(courseT, runT, 0);
-        const uu = cyclicU ? wrap01(u) : u;
-        const normal = host.normalAt(uu, v).clone();
-        if (normal.y < 0) normal.multiplyScalar(-1);
-        return {
-          point: host.pointAt(uu, v),
-          normal,
-        };
-      };
       botSamples.push(makeSample(0));
-      topSamples.push(makeRegisteredTopSample());
+      topSamples.push(makeSample(1));
     }
   }
   const top = topSamples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));

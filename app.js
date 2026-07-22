@@ -13595,29 +13595,69 @@ const getBdJointOffset = (t, data = getBlockDesignerData()) => {
 };
 
 const getBdDepthPhaseShift = (b = getBlockDesignerData()) => (
-  clamp((Number(b.depth) || Number(b.thickness) || 0) / Math.max(1, Number(b.length) || 100), 0, 0.32)
+  Math.sign(Number(b.depth) || Number(b.thickness) || 1) *
+    clamp(Math.abs(Number(b.depth) || Number(b.thickness) || 0) / Math.max(1, Number(b.length) || 100), 0, 0.32)
 );
 
-const buildBdLoftedSolidGeometry = (frontLoop, backLoop, depth) => {
-  const n = Math.min(frontLoop.length, backLoop.length);
-  if (n < 3) return new THREE.BufferGeometry();
+const buildBdSubdividedBlockGeometry = (b, part = "lower") => {
+  const length = Math.max(0.1, Number(b.length) / 100);
+  const height = Math.max(0.1, Number(b.height) / 100);
+  const depth = Math.max(0.08, Number(b.thickness) / 100);
+  const gap = b.view === "exploded" ? 0.48 : Number(b.clearance || 0) / 1000;
+  const depthShift = getBdDepthPhaseShift(b);
+  const outer = b.baseGeometry === "Hexagonal" ? height * 0.18 : b.baseGeometry === "Polyhedral" ? height * 0.11 : ["Custom Mesh", "TPMS Block", "Wedge"].includes(b.baseGeometry) ? height * 0.15 : 0;
+  const runSegments = 72;
+  const depthSegments = 10;
+  const xAt = (runT) => THREE.MathUtils.lerp(-length * 0.5 + outer, length * 0.5 - outer, runT);
+  const jointAt = (runT, depthT) => getBdJointOffset(clamp(runT + depthShift * depthT, 0, 1), b);
+  const lowerY = (runT, depthT) => part === "lower" ? -height * 0.5 : jointAt(runT, depthT) + gap * 0.5;
+  const upperY = (runT, depthT) => part === "lower" ? jointAt(runT, depthT) - gap * 0.5 : height * 0.5;
   const vertices = [];
-  for (let i = 0; i < n; i++) vertices.push(new THREE.Vector3(frontLoop[i].x, frontLoop[i].y, -depth * 0.5));
-  for (let i = 0; i < n; i++) vertices.push(new THREE.Vector3(backLoop[i].x, backLoop[i].y, depth * 0.5));
-  const frontTriangles = THREE.ShapeUtils.triangulateShape(frontLoop.slice(0, n), []);
-  const index = [];
-  frontTriangles.forEach(([a, b, c]) => index.push(a, b, c));
-  frontTriangles.forEach(([a, b, c]) => index.push(n + c, n + b, n + a));
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    index.push(i, n + i, n + j, i, n + j, j);
+  const push = (x, y, z) => vertices.push(new THREE.Vector3(x, y, z));
+  for (let z = 0; z <= depthSegments; z++) {
+    const depthT = z / depthSegments;
+    const zz = THREE.MathUtils.lerp(-depth * 0.5, depth * 0.5, depthT);
+    for (let x = 0; x <= runSegments; x++) {
+      const runT = x / runSegments;
+      push(xAt(runT), lowerY(runT, depthT), zz);
+    }
   }
+  const topOffset = vertices.length;
+  for (let z = 0; z <= depthSegments; z++) {
+    const depthT = z / depthSegments;
+    const zz = THREE.MathUtils.lerp(-depth * 0.5, depth * 0.5, depthT);
+    for (let x = 0; x <= runSegments; x++) {
+      const runT = x / runSegments;
+      push(xAt(runT), upperY(runT, depthT), zz);
+    }
+  }
+  const rowSize = runSegments + 1;
+  const idx = (x, z, offset = 0) => offset + z * rowSize + x;
   const pos = new Float32Array(vertices.length * 3);
   vertices.forEach((point, i) => {
     pos[i * 3] = point.x;
     pos[i * 3 + 1] = point.y;
     pos[i * 3 + 2] = point.z;
   });
+  const index = [];
+  const addQuad = (a, b, c, d, flip = false) => {
+    if (flip) index.push(a, c, b, a, d, c);
+    else index.push(a, b, c, a, c, d);
+  };
+  for (let z = 0; z < depthSegments; z++) {
+    for (let x = 0; x < runSegments; x++) {
+      addQuad(idx(x, z), idx(x + 1, z), idx(x + 1, z + 1), idx(x, z + 1), true);
+      addQuad(idx(x, z, topOffset), idx(x + 1, z, topOffset), idx(x + 1, z + 1, topOffset), idx(x, z + 1, topOffset));
+    }
+  }
+  for (let x = 0; x < runSegments; x++) {
+    addQuad(idx(x, 0), idx(x, 0, topOffset), idx(x + 1, 0, topOffset), idx(x + 1, 0));
+    addQuad(idx(x + 1, depthSegments), idx(x + 1, depthSegments, topOffset), idx(x, depthSegments, topOffset), idx(x, depthSegments));
+  }
+  for (let z = 0; z < depthSegments; z++) {
+    addQuad(idx(0, z + 1), idx(0, z + 1, topOffset), idx(0, z, topOffset), idx(0, z));
+    addQuad(idx(runSegments, z), idx(runSegments, z, topOffset), idx(runSegments, z + 1, topOffset), idx(runSegments, z + 1));
+  }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geometry.setIndex(index);
@@ -13630,25 +13670,26 @@ const renderBlockDesignerModel = () => {
   if (!bdModelRenderer) return; clearGroup(bdModelGroup);
   const b = getBlockDesignerData(), L = b.length / 100, H = b.height / 100, T = Math.max(.08, b.thickness / 100), gap = b.view === "exploded" ? .48 : b.clearance / 1000;
   // Bed joints run along the course (X), not vertically as head joints.
-  const depthShift = getBdDepthPhaseShift(b);
-  const makeJoint = (depthT = 0, sideGap = 0) => Array.from({ length: 49 }, (_, i) => {
+  const makeJoint = (depthT = 0) => Array.from({ length: 49 }, (_, i) => {
     const t = i / 48;
-    return new THREE.Vector2(-L / 2 + L * t, getBdJointOffset(clamp(t + depthShift * depthT, 0, 1), b) + sideGap);
+    return new THREE.Vector3(-L / 2 + L * t, getBdJointOffset(clamp(t + getBdDepthPhaseShift(b) * depthT, 0, 1), b), THREE.MathUtils.lerp(-T * 0.5, T * 0.5, depthT));
   });
   const joint = makeJoint(0, 0);
-  const backJoint = makeJoint(1, 0);
-  const outer = b.baseGeometry === "Hexagonal" ? H * .18 : b.baseGeometry === "Polyhedral" ? H * .11 : ["Custom Mesh", "TPMS Block", "Wedge"].includes(b.baseGeometry) ? H * .15 : 0;
-  const lowerFront = [new THREE.Vector2(-L / 2 + outer, -H / 2), new THREE.Vector2(L / 2 - outer, -H / 2), ...joint.slice().reverse().map(p => new THREE.Vector2(p.x, p.y - gap * .5))];
-  const lowerBack = [new THREE.Vector2(-L / 2 + outer, -H / 2), new THREE.Vector2(L / 2 - outer, -H / 2), ...backJoint.slice().reverse().map(p => new THREE.Vector2(p.x, p.y - gap * .5))];
-  const upperFront = [new THREE.Vector2(joint[0].x, joint[0].y + gap * .5), new THREE.Vector2(-L / 2 + outer, H / 2), new THREE.Vector2(L / 2 - outer, H / 2), new THREE.Vector2(joint[joint.length - 1].x, joint[joint.length - 1].y + gap * .5), ...joint.slice(0, -1).reverse().map(p => new THREE.Vector2(p.x, p.y + gap * .5))];
-  const upperBack = [new THREE.Vector2(backJoint[0].x, backJoint[0].y + gap * .5), new THREE.Vector2(-L / 2 + outer, H / 2), new THREE.Vector2(L / 2 - outer, H / 2), new THREE.Vector2(backJoint[backJoint.length - 1].x, backJoint[backJoint.length - 1].y + gap * .5), ...backJoint.slice(0, -1).reverse().map(p => new THREE.Vector2(p.x, p.y + gap * .5))];
-  const make = (frontLoop, backLoop, color) => { const geo = buildBdLoftedSolidGeometry(frontLoop, backLoop, T); if (b.baseGeometry === "TPMS Block") geo.scale(1, 1, .74); const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0, transparent: true, opacity: .62, side: THREE.DoubleSide })); mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 16), new THREE.LineBasicMaterial({ color: 0x617266, transparent: true, opacity: .3 }))); return mesh; };
-  const templateA = make(lowerFront, lowerBack, 0xaeb9a8), templateB = make(upperFront, upperBack, 0xc5c9c0);
+  const make = (part, color, phaseSign = 1) => {
+    const geo = buildBdSubdividedBlockGeometry({ ...b, depth: (Number(b.depth) || 0) * phaseSign }, part);
+    if (b.baseGeometry === "TPMS Block") geo.scale(1, 1, .74);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0, transparent: true, opacity: .62, side: THREE.DoubleSide }));
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 22), new THREE.LineBasicMaterial({ color: 0x617266, transparent: true, opacity: .22 })));
+    return mesh;
+  };
+  const templateA = make("lower", 0xaeb9a8), templateB = make("upper", 0xc5c9c0);
   if (b.view === "tile3d") {
     const cols = Math.min(5, b.swatch), rows = Math.min(5, b.swatch), pitchX = L + gap, pitchY = H;
     for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
       const pair = new THREE.Group(), dx = (col - (cols - 1) * .5) * pitchX + (row % 2 && b.tileMode === "Running Bond" ? pitchX * .5 : 0), dy = (row - (rows - 1) * .5) * pitchY;
-      const a = templateA.clone(), bb = templateB.clone(); a.position.set(dx, dy, 0); bb.position.set(dx, dy, 0); pair.add(a, bb); bdModelGroup.add(pair);
+      const phaseSign = (row + col) % 2 ? -1 : 1;
+      const a = make("lower", 0xaeb9a8, phaseSign), bb = make("upper", 0xc5c9c0, phaseSign);
+      a.position.set(dx, dy, 0); bb.position.set(dx, dy, 0); pair.add(a, bb); bdModelGroup.add(pair);
     }
   } else { bdModelGroup.add(templateA, templateB); }
   if (b.view === "contact" || b.view === "tolerance") bdModelGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(joint.map(p => new THREE.Vector3(p.x, p.y, T * .52))), new THREE.LineBasicMaterial({ color: b.view === "contact" ? 0x5de4a0 : 0xffd36b })));

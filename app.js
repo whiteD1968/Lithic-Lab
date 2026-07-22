@@ -4361,7 +4361,8 @@ const generateBarrelLikeBlocksFromTrait = () => {
     : Math.max(2, Math.min(160, Math.round((state.params.length / targetWidth) * density * Math.max(1, state.arrayV))));
   const keystoneCourse = stoneKeystoneMode ? Math.floor(courseCount / 2) : -1;
   const blocks = [];
-  const physicalJoint = state.jointMode === "Physical cut";
+  const designedContactJoint = !!state.appliedTileSystem?.jointType && state.appliedTileSystem.jointType !== "Flat Joint";
+  const physicalJoint = state.jointMode === "Physical cut" && !designedContactJoint;
   const localGap = physicalJoint ? state.constraints.jointGap : 0;
   for (let course = 0; course < courseCount; course++) {
     let u0 = uBreaks[course];
@@ -13937,7 +13938,9 @@ const applyBlockDesignerToVault = async () => {
     // Keep shell thickness in a vault-safe range so blocks stay visible and within weight limits.
     state.params.thickness = thicknessM;
     state.constraints.maxWeight = Math.max(state.constraints.maxWeight || 520, 2500);
-    state.constraints.jointGap = Math.max(0.001, clearanceM || state.constraints.jointGap || 0.02);
+    state.constraints.jointGap = b.jointType === "Flat Joint"
+      ? Math.max(0.001, clearanceM || state.constraints.jointGap || 0.02)
+      : 0;
     state.constraints.fabTolerance = Math.max(state.constraints.fabTolerance || 0.008, clearanceM || 0);
     state.pattern = bond.pattern;
     state.barrelBondMode = bond.barrelBondMode;

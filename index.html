@@ -512,20 +512,41 @@
                   <option value="preserve-component-scale">Preserve Component Scale</option>
                 </select>
               </label>
-              <label>Thickness Mapping
-                <select id="strategyThickness">
-                  <option value="constant">Constant</option>
-                  <option value="relative">Relative</option>
-                  <option value="scale">Scale</option>
-                  <option value="offset">Offset</option>
-                </select>
-              </label>
-              <label>Thickness Scale
-                <input id="customPanelThicknessScale" type="number" min="0.05" max="20" step="0.05" value="1" />
-              </label>
-              <label>Thickness Offset (cm)
-                <input id="customPanelThicknessOffset" type="number" min="-200" max="200" step="0.5" value="0" />
-              </label>
+              <div class="source-card custom-panel-parameters-card" data-tool-group="strategy panel-library edit-panels">
+                <b>Custom Panel Parameters</b>
+                <span>Control custom imported panel count, mapped depth, and thickness behavior from the mapping strategy.</span>
+                <label data-param-control="courseCount">Panel Count U
+                  <div class="dual-input-row">
+                    <input type="range" id="courseCount" min="4" max="48" step="1" value="16" />
+                    <input type="number" id="courseCountNum" min="4" max="48" step="1" value="16" />
+                  </div>
+                </label>
+                <label data-param-control="blockCount">Panel Count V
+                  <div class="dual-input-row">
+                    <input type="range" id="blockCount" min="6" max="40" step="1" value="18" />
+                    <input type="number" id="blockCountNum" min="6" max="40" step="1" value="18" />
+                  </div>
+                </label>
+                <label>Panel Depth / Block Height (cm)
+                  <input id="blockHeight" type="number" min="2" max="600" step="1" value="20" />
+                </label>
+                <label>Thickness Mapping
+                  <select id="strategyThickness">
+                    <option value="constant">Constant</option>
+                    <option value="relative">Relative</option>
+                    <option value="scale">Scale</option>
+                    <option value="offset">Offset</option>
+                  </select>
+                </label>
+                <div class="grid-2">
+                  <label>Thickness Scale
+                    <input id="customPanelThicknessScale" type="number" min="0.05" max="20" step="0.05" value="1" />
+                  </label>
+                  <label>Thickness Offset (cm)
+                    <input id="customPanelThicknessOffset" type="number" min="-200" max="200" step="0.5" value="0" />
+                  </label>
+                </div>
+              </div>
               <div class="source-card panel-variant-card" data-tool-group="panel-library strategy edit-panels">
                 <b>Panel Variants + Transforms</b>
                 <span>Build a reusable panel family and let mapping assign variants by boundary, support, keystone, or curvature conditions.</span>
@@ -584,7 +605,6 @@
                 <label>Response Amount <input id="panelAttractorResponseAmount" type="number" min="0" max="1" step="0.02" value="0.18" /></label>
                 <div class="component-panel-status" id="panelAttractorResponseStatus">Perforation response is boundary-locked.</div>
               </div>
-              <label>Block Height / Thickness (cm) <input id="blockHeight" type="number" min="2" max="600" step="1" value="20" /></label>
               <label>Patch Subdivision
                 <div class="dual-input-row">
                   <input type="range" id="strategyPatchSubdivision" min="2" max="12" step="1" value="4" />
@@ -809,18 +829,6 @@
                 </div>
               </label>
               <label>Block Width (cm) <input id="courseHeight" type="number" min="10" max="500" step="1" value="65" /></label>
-              <label data-param-control="courseCount">Field U Divisions
-                <div class="dual-input-row">
-                  <input type="range" id="courseCount" min="4" max="48" step="1" value="16" />
-                  <input type="number" id="courseCountNum" min="4" max="48" step="1" value="16" />
-                </div>
-              </label>
-              <label data-param-control="blockCount">Field V Divisions
-                <div class="dual-input-row">
-                  <input type="range" id="blockCount" min="6" max="40" step="1" value="18" />
-                  <input type="number" id="blockCountNum" min="6" max="40" step="1" value="18" />
-                </div>
-              </label>
               <label data-param-control="subdivisionDensity">Block Density
                 <div class="dual-input-row">
                   <input type="range" id="subdivisionDensity" min="0.5" max="2.5" step="0.1" value="1" />

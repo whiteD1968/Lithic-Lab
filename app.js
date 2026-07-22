@@ -12456,6 +12456,22 @@ const getCustomPanelThicknessSettings = (data, targetPoints, baseThickness) => {
 
 const getNormalizedAxisValue = (point, axis) => clamp((point[axis.axis] - axis.min) / Math.max(axis.range, 1e-9), 0, 1);
 
+const getPanelBoundaryEdges = (indices) => {
+  const edges = new Map();
+  for (let i = 0; i < indices.length; i += 3) {
+    const tri = [indices[i], indices[i + 1], indices[i + 2]];
+    for (let j = 0; j < 3; j++) {
+      const a = tri[j];
+      const b = tri[(j + 1) % 3];
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      const existing = edges.get(key);
+      if (existing) existing.count += 1;
+      else edges.set(key, { a, b, count: 1 });
+    }
+  }
+  return [...edges.values()].filter((edge) => edge.count === 1);
+};
+
 const getCustomPanelMorphCompatibility = (basisData, morphData) => {
   if (!basisData?.positions?.length || !morphData?.positions?.length) return { compatible: false, reason: "missing mesh positions" };
   if (basisData.positions.length !== morphData.positions.length) return { compatible: false, reason: "vertex count differs" };
@@ -12495,6 +12511,8 @@ const buildCustomPanelMappedGeometry = (block, sourceUv, thickness, useImportedS
   const targetNormals = block.targetNormals?.length === targetPoints?.length ? block.targetNormals : null;
   const seamExpansion = getTargetCellSeamExpansion(targetPoints, state.customPanelSeamAllowance || 0);
   const thicknessSettings = getCustomPanelThicknessSettings(data, targetPoints, thickness);
+  const sourcePlan = Math.max(data.axes.u.range || 0, data.axes.v.range || 0, 0.001);
+  const sourceIsFlatPanel = data.axes.n.range <= Math.max(1e-6, sourcePlan * 0.0001);
   const morphStrength = clamp(state.panelMorphStrength || 0, 0, 1);
   const morphWeight = clamp(block.morphWeight ?? getPanelMorphWeight(sourceUv, block.id || "custom-panel-morph"), 0, 1);
   const fieldWeight = clamp(block.fieldWeights?.smoothedWeight ?? block.fieldWeights?.sourceWeight ?? 0, 0, 1);
@@ -12523,7 +12541,7 @@ const buildCustomPanelMappedGeometry = (block, sourceUv, thickness, useImportedS
     const morphPoint = morphData?.positions?.[i];
     const morphU = morphPoint ? getNormalizedAxisValue(morphPoint, morphData.axes.u) : u;
     const morphV = morphPoint ? getNormalizedAxisValue(morphPoint, morphData.axes.v) : v;
-    const h = data.axes.n.range > 1e-9 ? (axisValue(point, data.axes.n) - data.axes.n.min) / data.axes.n.range : 0;
+    const h = data.axes.n.range > 1e-9 ? (axisValue(point, data.axes.n) - data.axes.n.min) / data.axes.n.range : 1;
     const morphH = morphPoint && morphData.axes.n.range > 1e-9
       ? (axisValue(morphPoint, morphData.axes.n) - morphData.axes.n.min) / morphData.axes.n.range
       : h;
@@ -12582,8 +12600,36 @@ const buildCustomPanelMappedGeometry = (block, sourceUv, thickness, useImportedS
     pos[i * 3 + 2] = p.z;
   });
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geometry.setIndex(data.indices);
+  if (sourceIsFlatPanel) {
+    const solidPositions = new Float32Array(out.length * 6);
+    out.forEach((p, i) => {
+      solidPositions[i * 3] = p.x;
+      solidPositions[i * 3 + 1] = p.y;
+      solidPositions[i * 3 + 2] = p.z;
+    });
+    surfacePoints.forEach((p, i) => {
+      const offset = (out.length + i) * 3;
+      solidPositions[offset] = p.x;
+      solidPositions[offset + 1] = p.y;
+      solidPositions[offset + 2] = p.z;
+    });
+    const solidIndices = [...data.indices];
+    for (let i = 0; i < data.indices.length; i += 3) {
+      solidIndices.push(
+        out.length + data.indices[i + 2],
+        out.length + data.indices[i + 1],
+        out.length + data.indices[i]
+      );
+    }
+    getPanelBoundaryEdges(data.indices).forEach(({ a, b }) => {
+      solidIndices.push(a, b, out.length + b, a, out.length + b, out.length + a);
+    });
+    geometry.setAttribute("position", new THREE.BufferAttribute(solidPositions, 3));
+    geometry.setIndex(solidIndices);
+  } else {
+    geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geometry.setIndex(data.indices);
+  }
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   return {

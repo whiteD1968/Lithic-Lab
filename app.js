@@ -6723,8 +6723,8 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
       const contactOverlap = 0;
-      const leftBoundarySign = Number.isFinite(block.courseIndex) && block.courseIndex % 2 ? -1 : 1;
-      const rightBoundarySign = Number.isFinite(block.courseIndex) && (block.courseIndex + 1) % 2 ? -1 : 1;
+      const leftBoundarySign = 1;
+      const rightBoundarySign = 1;
       const left = isFirstCourse
         ? leftBase
         : [

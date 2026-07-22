@@ -6691,6 +6691,7 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
   const amplitudeM = Math.max(0, Number(tile.amplitude) || 0) / 100;
   const amplitudeBasis = Math.max(1e-6, amplitudeM);
   const maxAmplitudeRatio = clamp((Number(tile.amplitude) || 0) / Math.max(1, Number(tile.height) || Number(tile.width) || 100), 0, 0.18);
+  const depthPhaseShift = clamp((Number(tile.depth) || Number(tile.thickness) || 0) / Math.max(1, Number(tile.length) || 100), 0, 0.32);
   const lerpUv = (a, b, t) => [
     THREE.MathUtils.lerp(a[0], b[0], t),
     THREE.MathUtils.lerp(a[1], b[1], t),
@@ -6699,7 +6700,8 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
     uv,
     isFirstCourse,
     isLastCourse,
-    sampleUvAt: (courseT, runT) => {
+    sampleUvAt: (courseT, runT, depthT = 0) => {
+      const shiftedRunT = clamp(runT + depthPhaseShift * clamp(depthT, 0, 1), 0, 1);
       const leftBase = lerpUv(uv[0], uv[3], runT);
       const rightBase = lerpUv(uv[1], uv[2], runT);
       let axisU = rightBase[0] - leftBase[0];
@@ -6710,7 +6712,7 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const leftPoint = host.pointAt(cyclicU ? wrap01(leftBase[0]) : clamp(leftBase[0], 0, 1), clamp(leftBase[1], 0, 1));
       const rightPoint = host.pointAt(cyclicU ? wrap01(rightBase[0]) : clamp(rightBase[0], 0, 1), clamp(rightBase[1], 0, 1));
       const physicalAxisLen = Math.max(1e-6, leftPoint.distanceTo(rightPoint));
-      const jointShape = getBdJointOffset(runT, tile) / amplitudeBasis;
+      const jointShape = getBdJointOffset(shiftedRunT, tile) / amplitudeBasis;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
       const left = isFirstCourse
@@ -6848,8 +6850,8 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
   if (designedSampler) {
     if (designedSampler.isFirstCourse) return null;
     for (let i = 0; i < samples; i++) {
-      points.push(makePointFromUv(designedSampler.sampleUvAt(0, i / samples)));
-      points.push(makePointFromUv(designedSampler.sampleUvAt(0, (i + 1) / samples)));
+      points.push(makePointFromUv(designedSampler.sampleUvAt(0, i / samples, 1)));
+      points.push(makePointFromUv(designedSampler.sampleUvAt(0, (i + 1) / samples, 1)));
     }
   } else {
   uv.forEach((a, edgeIndex) => {
@@ -6895,10 +6897,10 @@ const buildAppliedBlockHeadSeams = (block, thickness = getBlockThicknessForCompo
     const segments = 6;
     points = [];
     for (let i = 0; i < segments; i++) {
-      points.push(sample(designedSampler.sampleUvAt(i / segments, 0)));
-      points.push(sample(designedSampler.sampleUvAt((i + 1) / segments, 0)));
-      points.push(sample(designedSampler.sampleUvAt(i / segments, 1)));
-      points.push(sample(designedSampler.sampleUvAt((i + 1) / segments, 1)));
+      points.push(sample(designedSampler.sampleUvAt(i / segments, 0, 1)));
+      points.push(sample(designedSampler.sampleUvAt((i + 1) / segments, 0, 1)));
+      points.push(sample(designedSampler.sampleUvAt(i / segments, 1, 1)));
+      points.push(sample(designedSampler.sampleUvAt((i + 1) / segments, 1, 1)));
     }
   } else {
     points = [
@@ -7134,21 +7136,28 @@ const buildDesignedJointSampledBlockGeometry = (block, thickness, tile = state.a
   const cyclicU = state.vaultType === "Dome";
   const runSegments = Math.max(24, Math.min(56, Math.round((tile.frequency || 3) * 18)));
   const courseSegments = 6;
-  const samples = [];
+  const botSamples = [];
+  const topSamples = [];
   for (let y = 0; y <= runSegments; y++) {
     for (let x = 0; x <= courseSegments; x++) {
-      const [u, v] = designedSampler.sampleUvAt(x / courseSegments, y / runSegments);
-      const uu = cyclicU ? wrap01(u) : u;
-      const sample = {
-        point: host.pointAt(uu, v),
-        normal: host.normalAt(uu, v).clone(),
+      const courseT = x / courseSegments;
+      const runT = y / runSegments;
+      const makeSample = (depthT) => {
+        const [u, v] = designedSampler.sampleUvAt(courseT, runT, depthT);
+        const uu = cyclicU ? wrap01(u) : u;
+        const normal = host.normalAt(uu, v).clone();
+        if (normal.y < 0) normal.multiplyScalar(-1);
+        return {
+          point: host.pointAt(uu, v),
+          normal,
+        };
       };
-      if (sample.normal.y < 0) sample.normal.multiplyScalar(-1);
-      samples.push(sample);
+      botSamples.push(makeSample(0));
+      topSamples.push(makeSample(1));
     }
   }
-  const top = samples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));
-  const bot = samples.map((sample) => sample.point.clone());
+  const top = topSamples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));
+  const bot = botSamples.map((sample) => sample.point.clone());
   const vertices = [...top, ...bot];
   const topOffset = 0;
   const botOffset = top.length;

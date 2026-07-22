@@ -6690,7 +6690,8 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
   const cyclicU = state.vaultType === "Dome";
   const amplitudeM = Math.max(0, Number(tile.amplitude) || 0) / 100;
   const amplitudeBasis = Math.max(1e-6, amplitudeM);
-  const maxAmplitudeRatio = clamp((Number(tile.amplitude) || 0) / Math.max(1, Number(tile.height) || Number(tile.width) || 100), 0, 0.18);
+  const maxAmplitudeRatio = clamp((Number(tile.amplitude) || 0) / Math.max(1, Number(tile.height) || Number(tile.width) || 100), 0, 0.14);
+  const backRelief = clamp((Number(tile.depth) || Number(tile.thickness) || 0) / Math.max(1, Number(tile.length) || 100), 0, 0.45);
   const lerpUv = (a, b, t) => [
     THREE.MathUtils.lerp(a[0], b[0], t),
     THREE.MathUtils.lerp(a[1], b[1], t),
@@ -6710,7 +6711,7 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const leftPoint = host.pointAt(cyclicU ? wrap01(leftBase[0]) : clamp(leftBase[0], 0, 1), clamp(leftBase[1], 0, 1));
       const rightPoint = host.pointAt(cyclicU ? wrap01(rightBase[0]) : clamp(rightBase[0], 0, 1), clamp(rightBase[1], 0, 1));
       const physicalAxisLen = Math.max(1e-6, leftPoint.distanceTo(rightPoint));
-      const depthPolarity = THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1));
+      const depthPolarity = THREE.MathUtils.lerp(1, -backRelief, clamp(depthT, 0, 1));
       const jointShape = (getBdJointOffset(runT, tile) / amplitudeBasis) * depthPolarity;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
@@ -13597,8 +13598,9 @@ const buildBdSubdividedBlockGeometry = (b, part = "lower") => {
   const outer = b.baseGeometry === "Hexagonal" ? height * 0.18 : b.baseGeometry === "Polyhedral" ? height * 0.11 : ["Custom Mesh", "TPMS Block", "Wedge"].includes(b.baseGeometry) ? height * 0.15 : 0;
   const runSegments = 72;
   const depthSegments = 10;
+  const backRelief = clamp((Number(b.depth) || Number(b.thickness) || 0) / Math.max(1, Number(b.length) || 100), 0, 0.45);
   const xAt = (runT) => THREE.MathUtils.lerp(-length * 0.5 + outer, length * 0.5 - outer, runT);
-  const jointAt = (runT, depthT) => getBdJointOffset(runT, b) * THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1));
+  const jointAt = (runT, depthT) => getBdJointOffset(runT, b) * THREE.MathUtils.lerp(1, -backRelief, clamp(depthT, 0, 1));
   const lowerY = (runT, depthT) => part === "lower" ? -height * 0.5 : jointAt(runT, depthT) + gap * 0.5;
   const upperY = (runT, depthT) => part === "lower" ? jointAt(runT, depthT) - gap * 0.5 : height * 0.5;
   const vertices = [];
@@ -13659,9 +13661,10 @@ const renderBlockDesignerModel = () => {
   if (!bdModelRenderer) return; clearGroup(bdModelGroup);
   const b = getBlockDesignerData(), L = b.length / 100, H = b.height / 100, T = Math.max(.08, b.thickness / 100), gap = b.view === "exploded" ? .48 : b.clearance / 1000;
   // Bed joints run along the course (X), not vertically as head joints.
+  const backRelief = clamp((Number(b.depth) || Number(b.thickness) || 0) / Math.max(1, Number(b.length) || 100), 0, 0.45);
   const makeJoint = (depthT = 0) => Array.from({ length: 49 }, (_, i) => {
     const t = i / 48;
-    return new THREE.Vector3(-L / 2 + L * t, getBdJointOffset(t, b) * THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1)), THREE.MathUtils.lerp(-T * 0.5, T * 0.5, depthT));
+    return new THREE.Vector3(-L / 2 + L * t, getBdJointOffset(t, b) * THREE.MathUtils.lerp(1, -backRelief, clamp(depthT, 0, 1)), THREE.MathUtils.lerp(-T * 0.5, T * 0.5, depthT));
   });
   const joint = makeJoint(0, 0);
   const make = (part, color) => {

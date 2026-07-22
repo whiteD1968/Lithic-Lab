@@ -6712,11 +6712,17 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const rightPoint = host.pointAt(cyclicU ? wrap01(rightBase[0]) : clamp(rightBase[0], 0, 1), clamp(rightBase[1], 0, 1));
       const physicalAxisLen = Math.max(1e-6, leftPoint.distanceTo(rightPoint));
       const depthPolarity = THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1));
-      const jointShape = (getBdJointOffset(runT, tile) / amplitudeBasis) * depthPolarity;
+      const runBaseUv = [
+        THREE.MathUtils.lerp(leftBase[0], rightBase[0], 0.5),
+        THREE.MathUtils.lerp(leftBase[1], rightBase[1], 0.5),
+      ];
+      const vaultRunM = Math.max(0.1, Number(state.params.length) || 1);
+      const repeatM = Math.max(0.1, (Number(tile.length) || Number(state.targetBlockWidth) * 100 || 120) / 100);
+      const globalRunT = (runBaseUv[1] * vaultRunM) / repeatM;
+      const jointShape = (getBdJointOffset(globalRunT, tile) / amplitudeBasis) * depthPolarity;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
-      const contactOverlapM = clamp(amplitudeM * 0.12, 0.006, 0.025);
-      const contactOverlap = (contactOverlapM / physicalAxisLen) * axisLen * 0.5;
+      const contactOverlap = 0;
       const leftBoundarySign = Number.isFinite(block.courseIndex) && block.courseIndex % 2 ? -1 : 1;
       const rightBoundarySign = Number.isFinite(block.courseIndex) && (block.courseIndex + 1) % 2 ? -1 : 1;
       const left = isFirstCourse

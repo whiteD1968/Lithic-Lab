@@ -6691,7 +6691,6 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
   const amplitudeM = Math.max(0, Number(tile.amplitude) || 0) / 100;
   const amplitudeBasis = Math.max(1e-6, amplitudeM);
   const maxAmplitudeRatio = clamp((Number(tile.amplitude) || 0) / Math.max(1, Number(tile.height) || Number(tile.width) || 100), 0, 0.18);
-  const depthPhaseShift = clamp((Number(tile.depth) || Number(tile.thickness) || 0) / Math.max(1, Number(tile.length) || 100), 0, 0.32);
   const lerpUv = (a, b, t) => [
     THREE.MathUtils.lerp(a[0], b[0], t),
     THREE.MathUtils.lerp(a[1], b[1], t),
@@ -6701,7 +6700,6 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
     isFirstCourse,
     isLastCourse,
     sampleUvAt: (courseT, runT, depthT = 0) => {
-      const shiftedRunT = clamp(runT + depthPhaseShift * clamp(depthT, 0, 1), 0, 1);
       const leftBase = lerpUv(uv[0], uv[3], runT);
       const rightBase = lerpUv(uv[1], uv[2], runT);
       let axisU = rightBase[0] - leftBase[0];
@@ -6712,7 +6710,8 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const leftPoint = host.pointAt(cyclicU ? wrap01(leftBase[0]) : clamp(leftBase[0], 0, 1), clamp(leftBase[1], 0, 1));
       const rightPoint = host.pointAt(cyclicU ? wrap01(rightBase[0]) : clamp(rightBase[0], 0, 1), clamp(rightBase[1], 0, 1));
       const physicalAxisLen = Math.max(1e-6, leftPoint.distanceTo(rightPoint));
-      const jointShape = getBdJointOffset(shiftedRunT, tile) / amplitudeBasis;
+      const depthPolarity = THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1));
+      const jointShape = (getBdJointOffset(runT, tile) / amplitudeBasis) * depthPolarity;
       const amplitudeRatio = Math.min(amplitudeM / physicalAxisLen, maxAmplitudeRatio);
       const jointOffset = jointShape * amplitudeRatio * axisLen;
       const left = isFirstCourse
@@ -13594,22 +13593,16 @@ const getBdJointOffset = (t, data = getBlockDesignerData()) => {
   return Math.sin(t * Math.PI * 2 * b.frequency + b.phase / 100 * Math.PI * 2) * a;
 };
 
-const getBdDepthPhaseShift = (b = getBlockDesignerData()) => (
-  Math.sign(Number(b.depth) || Number(b.thickness) || 1) *
-    clamp(Math.abs(Number(b.depth) || Number(b.thickness) || 0) / Math.max(1, Number(b.length) || 100), 0, 0.32)
-);
-
 const buildBdSubdividedBlockGeometry = (b, part = "lower") => {
   const length = Math.max(0.1, Number(b.length) / 100);
   const height = Math.max(0.1, Number(b.height) / 100);
   const depth = Math.max(0.08, Number(b.thickness) / 100);
   const gap = b.view === "exploded" ? 0.48 : Number(b.clearance || 0) / 1000;
-  const depthShift = getBdDepthPhaseShift(b);
   const outer = b.baseGeometry === "Hexagonal" ? height * 0.18 : b.baseGeometry === "Polyhedral" ? height * 0.11 : ["Custom Mesh", "TPMS Block", "Wedge"].includes(b.baseGeometry) ? height * 0.15 : 0;
   const runSegments = 72;
   const depthSegments = 10;
   const xAt = (runT) => THREE.MathUtils.lerp(-length * 0.5 + outer, length * 0.5 - outer, runT);
-  const jointAt = (runT, depthT) => getBdJointOffset(clamp(runT + depthShift * depthT, 0, 1), b);
+  const jointAt = (runT, depthT) => getBdJointOffset(runT, b) * THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1));
   const lowerY = (runT, depthT) => part === "lower" ? -height * 0.5 : jointAt(runT, depthT) + gap * 0.5;
   const upperY = (runT, depthT) => part === "lower" ? jointAt(runT, depthT) - gap * 0.5 : height * 0.5;
   const vertices = [];
@@ -13672,11 +13665,11 @@ const renderBlockDesignerModel = () => {
   // Bed joints run along the course (X), not vertically as head joints.
   const makeJoint = (depthT = 0) => Array.from({ length: 49 }, (_, i) => {
     const t = i / 48;
-    return new THREE.Vector3(-L / 2 + L * t, getBdJointOffset(clamp(t + getBdDepthPhaseShift(b) * depthT, 0, 1), b), THREE.MathUtils.lerp(-T * 0.5, T * 0.5, depthT));
+    return new THREE.Vector3(-L / 2 + L * t, getBdJointOffset(t, b) * THREE.MathUtils.lerp(1, -1, clamp(depthT, 0, 1)), THREE.MathUtils.lerp(-T * 0.5, T * 0.5, depthT));
   });
   const joint = makeJoint(0, 0);
-  const make = (part, color, phaseSign = 1) => {
-    const geo = buildBdSubdividedBlockGeometry({ ...b, depth: (Number(b.depth) || 0) * phaseSign }, part);
+  const make = (part, color) => {
+    const geo = buildBdSubdividedBlockGeometry(b, part);
     if (b.baseGeometry === "TPMS Block") geo.scale(1, 1, .74);
     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0, transparent: true, opacity: .62, side: THREE.DoubleSide }));
     mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 22), new THREE.LineBasicMaterial({ color: 0x617266, transparent: true, opacity: .22 })));
@@ -13687,8 +13680,7 @@ const renderBlockDesignerModel = () => {
     const cols = Math.min(5, b.swatch), rows = Math.min(5, b.swatch), pitchX = L + gap, pitchY = H;
     for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
       const pair = new THREE.Group(), dx = (col - (cols - 1) * .5) * pitchX + (row % 2 && b.tileMode === "Running Bond" ? pitchX * .5 : 0), dy = (row - (rows - 1) * .5) * pitchY;
-      const phaseSign = (row + col) % 2 ? -1 : 1;
-      const a = make("lower", 0xaeb9a8, phaseSign), bb = make("upper", 0xc5c9c0, phaseSign);
+      const a = make("lower", 0xaeb9a8), bb = make("upper", 0xc5c9c0);
       a.position.set(dx, dy, 0); bb.position.set(dx, dy, 0); pair.add(a, bb); bdModelGroup.add(pair);
     }
   } else { bdModelGroup.add(templateA, templateB); }

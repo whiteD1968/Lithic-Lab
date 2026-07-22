@@ -6679,27 +6679,40 @@ const getMappedComponentBaseUv = (block) => {
   return uv;
 };
 
-const buildDesignedJointUvLoop = (uv, tile = state.appliedTileSystem) => {
+const buildDesignedJointUvLoop = (block, tile = state.appliedTileSystem) => {
+  const uv = getMappedComponentBaseUv(block);
   if (!tile || !uv?.length || tile.jointType === "Flat Joint") return uv;
-  const center = polygonCentroidUv(uv);
-  const samples = Math.max(6, Math.min(12, Math.round((tile.frequency || 3) * 3)));
-  const depthScale = clamp((tile.depth || 35) / 220, 0.08, 0.28);
+  const samples = Math.max(8, Math.min(24, Math.round((tile.frequency || 3) * 6)));
+  const depthScale = clamp((tile.depth || 35) / 420, 0.025, 0.09);
+  const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
+  const isLastCourse = Number.isFinite(block.courseIndex) &&
+    Number.isFinite(block.courseCount) &&
+    block.courseIndex >= block.courseCount - 1;
+  const edgeShouldMorph = (edgeIndex) => {
+    if (uv.length !== 4) return edgeIndex % 2 === 0;
+    if (edgeIndex === 1) return !isLastCourse;
+    if (edgeIndex === 3) return !isFirstCourse;
+    return false;
+  };
+  const morphPoint = (a, b, edgeIndex, t) => {
+    const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const offset = getBdJointOffset(t, tile) * edgeLen * depthScale;
+    const baseU = a[0] + (b[0] - a[0]) * t;
+    const baseV = a[1] + (b[1] - a[1]) * t;
+    if (uv.length === 4 && (edgeIndex === 1 || edgeIndex === 3)) {
+      return [clamp(baseU + offset, 0, 1), clamp(baseV, 0, 1)];
+    }
+    const center = polygonCentroidUv(uv);
+    const out = edgeOutwardUv(a, b, center, 1);
+    return [clamp(baseU + out[0] * offset, 0, 1), clamp(baseV + out[1] * offset, 0, 1)];
+  };
   const loop = [];
   uv.forEach((a, edgeIndex) => {
     const b = uv[(edgeIndex + 1) % uv.length];
-    const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-    const isBedEdge = uv.length === 4 ? edgeIndex % 2 === 1 : edgeIndex % 2 === 0;
     loop.push([clamp(a[0], 0, 1), clamp(a[1], 0, 1)]);
-    if (!isBedEdge) return;
-    const out = edgeOutwardUv(a, b, center, 1);
-    const sign = edgeIndex % 4 < 2 ? 1 : -1;
+    if (!edgeShouldMorph(edgeIndex)) return;
     for (let i = 1; i < samples; i++) {
-      const t = i / samples;
-      const offset = getBdJointOffset(t, tile) * edgeLen * 0.22 * depthScale * sign;
-      loop.push([
-        clamp(a[0] + (b[0] - a[0]) * t + out[0] * offset, 0, 1),
-        clamp(a[1] + (b[1] - a[1]) * t + out[1] * offset, 0, 1),
-      ]);
+      loop.push(morphPoint(a, b, edgeIndex, i / samples));
     }
   });
   return cleanUvPolygon(loop, 0.000001) || uv;
@@ -6713,6 +6726,9 @@ const getComponentUvLoop = (block) => {
     return block.sourceCarrierUv || block.uv;
   }
   const uv = getMappedComponentBaseUv(block);
+  if (state.appliedTileSystem?.jointType && state.appliedTileSystem.jointType !== "Flat Joint") {
+    return buildDesignedJointUvLoop(block, state.appliedTileSystem);
+  }
   const component = block.componentVariant || block.componentType || state.strategy.component;
   if (component === "keyedVoussoir") return buildKeyedUvLoop(uv);
   if (component === "interlock") return buildInterlockUvLoop(uv, block.id);
@@ -6751,28 +6767,23 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
   if (!Array.isArray(uv) || uv.length < 3) return null;
   const host = getHostField();
   const cyclicU = state.vaultType === "Dome";
-  const center = polygonCentroidUv(uv);
   const samples = Math.max(12, Math.min(48, Math.round((tile.frequency || 3) * 12)));
-  const depthScale = clamp((tile.depth || 35) / 260, 0.04, 0.18);
+  const depthScale = clamp((tile.depth || 35) / 420, 0.025, 0.09);
+  const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
   const points = [];
   const makePoint = (a, b, edgeIndex, t) => {
     const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-    const out = edgeOutwardUv(a, b, center, 1);
-    const sign = edgeIndex % 4 < 2 ? 1 : -1;
-    const offset = getBdJointOffset(t, tile) * edgeLen * depthScale * sign;
-    const u = clamp(a[0] + (b[0] - a[0]) * t + out[0] * offset, 0, 1);
-    const v = clamp(a[1] + (b[1] - a[1]) * t + out[1] * offset, 0, 1);
+    const offset = getBdJointOffset(t, tile) * edgeLen * depthScale;
+    const u = clamp(a[0] + (b[0] - a[0]) * t + offset, 0, 1);
+    const v = clamp(a[1] + (b[1] - a[1]) * t, 0, 1);
     const p = host.pointAt(cyclicU ? wrap01(u) : u, v);
     const n = host.normalAt(cyclicU ? wrap01(u) : u, v).clone();
     if (n.y < 0) n.multiplyScalar(-1);
     return p.clone().addScaledVector(n, thickness + 0.006);
   };
   uv.forEach((a, edgeIndex) => {
-    const isLastCourse = Number.isFinite(block.courseIndex) &&
-      Number.isFinite(block.courseCount) &&
-      block.courseIndex >= block.courseCount - 1;
     const isBedEdge = uv.length === 4
-      ? edgeIndex === 3 || (isLastCourse && edgeIndex === 1)
+      ? edgeIndex === 3 && !isFirstCourse
       : edgeIndex % 2 === 0;
     if (!isBedEdge) return;
     const b = uv[(edgeIndex + 1) % uv.length];

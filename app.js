@@ -7041,6 +7041,107 @@ const buildSampledVaultPatchGeometry = (uv, thickness, options = {}) => {
   };
 };
 
+const buildDesignedJointSampledBlockGeometry = (block, thickness, tile = state.appliedTileSystem) => {
+  if (!tile?.jointType || tile.jointType === "Flat Joint") return null;
+  const uv = getMappedComponentBaseUv(block);
+  if (!Array.isArray(uv) || uv.length !== 4) return null;
+  const host = getHostField();
+  const cyclicU = state.vaultType === "Dome";
+  const runSegments = Math.max(24, Math.min(56, Math.round((tile.frequency || 3) * 18)));
+  const courseSegments = 6;
+  const depthScale = clamp((tile.depth || 35) / 520, 0.018, 0.07);
+  const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
+  const isLastCourse = Number.isFinite(block.courseIndex) &&
+    Number.isFinite(block.courseCount) &&
+    block.courseIndex >= block.courseCount - 1;
+  const lerpUv = (a, b, t) => [
+    THREE.MathUtils.lerp(a[0], b[0], t),
+    THREE.MathUtils.lerp(a[1], b[1], t),
+  ];
+  const sampleUvAt = (courseT, runT) => {
+    const leftBase = lerpUv(uv[0], uv[3], runT);
+    const rightBase = lerpUv(uv[1], uv[2], runT);
+    let axisU = rightBase[0] - leftBase[0];
+    let axisV = rightBase[1] - leftBase[1];
+    const axisLen = Math.hypot(axisU, axisV) || 1;
+    axisU /= axisLen;
+    axisV /= axisLen;
+    const runLen = Math.max(
+      Math.hypot(uv[3][0] - uv[0][0], uv[3][1] - uv[0][1]),
+      Math.hypot(uv[2][0] - uv[1][0], uv[2][1] - uv[1][1]),
+      1e-6
+    );
+    const jointOffset = getBdJointOffset(runT, tile) * runLen * depthScale;
+    const left = isFirstCourse
+      ? leftBase
+      : [leftBase[0] + axisU * jointOffset, leftBase[1] + axisV * jointOffset];
+    const right = isLastCourse
+      ? rightBase
+      : [rightBase[0] + axisU * jointOffset, rightBase[1] + axisV * jointOffset];
+    return [
+      clamp(THREE.MathUtils.lerp(left[0], right[0], courseT), 0, 1),
+      clamp(THREE.MathUtils.lerp(left[1], right[1], courseT), 0, 1),
+    ];
+  };
+  const samples = [];
+  for (let y = 0; y <= runSegments; y++) {
+    for (let x = 0; x <= courseSegments; x++) {
+      const [u, v] = sampleUvAt(x / courseSegments, y / runSegments);
+      const uu = cyclicU ? wrap01(u) : u;
+      const sample = {
+        point: host.pointAt(uu, v),
+        normal: host.normalAt(uu, v).clone(),
+      };
+      if (sample.normal.y < 0) sample.normal.multiplyScalar(-1);
+      samples.push(sample);
+    }
+  }
+  const top = samples.map((sample) => sample.point.clone().addScaledVector(sample.normal, thickness));
+  const bot = samples.map((sample) => sample.point.clone());
+  const vertices = [...top, ...bot];
+  const topOffset = 0;
+  const botOffset = top.length;
+  const rowSize = courseSegments + 1;
+  const idx = (x, y, offset = topOffset) => offset + y * rowSize + x;
+  const index = [];
+  const addQuad = (a, b, c, d, flip = false) => {
+    if (flip) index.push(a, c, b, a, d, c);
+    else index.push(a, b, c, a, c, d);
+  };
+  for (let y = 0; y < runSegments; y++) {
+    for (let x = 0; x < courseSegments; x++) {
+      addQuad(idx(x, y), idx(x + 1, y), idx(x + 1, y + 1), idx(x, y + 1));
+      addQuad(idx(x, y, botOffset), idx(x + 1, y, botOffset), idx(x + 1, y + 1, botOffset), idx(x, y + 1, botOffset), true);
+    }
+  }
+  for (let x = 0; x < courseSegments; x++) {
+    addQuad(idx(x, 0), idx(x, 0, botOffset), idx(x + 1, 0, botOffset), idx(x + 1, 0));
+    addQuad(idx(x + 1, runSegments), idx(x + 1, runSegments, botOffset), idx(x, runSegments, botOffset), idx(x, runSegments));
+  }
+  for (let y = 0; y < runSegments; y++) {
+    addQuad(idx(0, y + 1), idx(0, y + 1, botOffset), idx(0, y, botOffset), idx(0, y));
+    addQuad(idx(courseSegments, y), idx(courseSegments, y, botOffset), idx(courseSegments, y + 1, botOffset), idx(courseSegments, y + 1));
+  }
+  const pos = new Float32Array(vertices.length * 3);
+  vertices.forEach((point, i) => {
+    pos[i * 3] = point.x;
+    pos[i * 3 + 1] = point.y;
+    pos[i * 3 + 2] = point.z;
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  return {
+    geometry,
+    bot,
+    cornerBot: [bot[idx(0, 0)], bot[idx(courseSegments, 0)], bot[idx(courseSegments, runSegments)], bot[idx(0, runSegments)]],
+    uvLoop: buildDesignedJointUvLoop(block, tile),
+    smooth: true,
+  };
+};
+
 const buildImportedSampledBlockGeometry = (block, thickness, anchorU, anchorV, requireDirectSamples = false) => {
   const uv = block.uv;
   const readSample = (u, v) => {
@@ -7200,6 +7301,35 @@ const buildBlockMesh = (block) => {
         isConvex: isConvexUv(sourceUv),
         jointFaceType: `custom uploaded panel ${state.customPanel.name}`,
         customPanelSource: state.customPanel.name,
+      };
+    }
+  }
+  const useDesignedJointSampler = !useImportedSurface &&
+    !useCustomPanel &&
+    state.appliedTileSystem?.jointType &&
+    state.appliedTileSystem.jointType !== "Flat Joint";
+  if (useDesignedJointSampler) {
+    const sampledDesignedBlock = buildDesignedJointSampledBlockGeometry(block, t, state.appliedTileSystem);
+    if (sampledDesignedBlock) {
+      const metricsLoop = sampledDesignedBlock.cornerBot || sampledDesignedBlock.bot;
+      const { edges, minEdge, avgEdge } = getLoopEdgeMetrics(metricsLoop);
+      const box = sampledDesignedBlock.geometry.boundingBox || new THREE.Box3().setFromBufferAttribute(sampledDesignedBlock.geometry.getAttribute("position"));
+      const size = box.getSize(new THREE.Vector3());
+      const avgLength = Math.max(size.x, size.z, avgEdge);
+      const avgWidth = Math.max(Math.min(size.x || avgEdge, size.z || avgEdge), minEdge);
+      const uvLoop = sampledDesignedBlock.uvLoop || sourceUv;
+      const volume = Math.max(0.0001, avgLength * avgWidth * t);
+      return {
+        geometry: sampledDesignedBlock.geometry,
+        q: metricsLoop,
+        avgLength,
+        avgWidth,
+        volume,
+        weight: volume * densityKgPerM3,
+        minEdge: Math.min(...edges),
+        uvArea: Math.abs(signedUvArea(uvLoop)),
+        isConvex: isConvexUv(uvLoop),
+        jointFaceType: `subdivided sampled ${state.appliedTileSystem.jointType.toLowerCase()} block`,
       };
     }
   }

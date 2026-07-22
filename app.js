@@ -31,7 +31,7 @@ const state = {
   designMode: "Generated",
   vaultType: "Barrel Vault",
   vaultDesignerPreview: true,
-  blockDesigner: { baseGeometry: "Cuboid", jointType: "Sine Wave Joint", length: 120, width: 65, height: 90, thickness: 30, draft: 2, fillet: 3, clearance: 1, density: 2600, frequency: 3, amplitude: 12, depth: 35, phase: 0, morph: 20, tileMode: "Running Bond", swatch: 5, view: "assembled", activeTileId: null, userCamera: false },
+  blockDesigner: { name: "", baseGeometry: "Cuboid", jointType: "Sine Wave Joint", length: 120, width: 65, height: 90, thickness: 30, draft: 2, fillet: 3, clearance: 1, density: 2600, frequency: 3, amplitude: 12, depth: 35, phase: 0, morph: 20, tileMode: "Running Bond", swatch: 5, view: "assembled", activeTileId: null, userCamera: false },
   appliedTileSystem: null,
   pattern: "Radial joints",
   structuralDirection: "Compression lines",
@@ -13412,6 +13412,14 @@ const runAssetLibraryStore = async (mode, action) => {
   }
 };
 
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  "\"": "&quot;",
+  "'": "&#39;",
+}[char]));
+
 const assetLibraryViews = {
   host: {
     select: () => nodes.hostLibrarySelect,
@@ -13742,7 +13750,7 @@ const renderBlockDesigner = () => {
   byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} · ${b.tileMode} · module ${b.length} mm × ${b.height} mm · joint ${b.frequency} cycles`; renderBlockDesignerAnalysis(); renderBlockDesignerLibrary();
 };
 const renderBlockDesignerAnalysis = () => { const b = getBlockDesignerData(), el = byId("bdAnalysis"); if (!el) return; const vol = b.length * b.width * b.height / 1e6, weight = vol * b.density; const neck = b.width / 2 - b.amplitude; const items = [["Block volume", `${vol.toFixed(3)} m³`, "ok"], ["Block weight", `${weight.toFixed(1)} kg`, weight > 520 ? "warn" : "ok"], ["Contact area", `${(b.height * b.thickness / 100).toFixed(0)} cm²`, "ok"], ["Min neck", `${neck.toFixed(1)} mm`, neck < 8 ? "bad" : neck < 18 ? "warn" : "ok"], ["Undercut", b.depth > b.thickness * .85 ? "Review" : "Clear", b.depth > b.thickness * .85 ? "warn" : "ok"], ["Tolerance", `${b.clearance} mm`, b.clearance < .4 ? "warn" : "ok"]]; el.innerHTML = items.map(([k,v,c]) => `<div class="${c}"><b>${k}</b>${v}</div>`).join(""); };
-const blockDesignerInputs = { bdBaseGeometry: "baseGeometry", bdJointPreset: "jointType", bdLength: "length", bdWidth: "width", bdHeight: "height", bdThickness: "thickness", bdDraft: "draft", bdFillet: "fillet", bdClearance: "clearance", bdDensity: "density", bdFrequency: "frequency", bdAmplitude: "amplitude", bdDepth: "depth", bdPhase: "phase", bdMorph: "morph", bdTileMode: "tileMode", bdSwatch: "swatch" };
+const blockDesignerInputs = { bdBlockName: "name", bdBaseGeometry: "baseGeometry", bdJointPreset: "jointType", bdLength: "length", bdWidth: "width", bdHeight: "height", bdThickness: "thickness", bdDraft: "draft", bdFillet: "fillet", bdClearance: "clearance", bdDensity: "density", bdFrequency: "frequency", bdAmplitude: "amplitude", bdDepth: "depth", bdPhase: "phase", bdMorph: "morph", bdTileMode: "tileMode", bdSwatch: "swatch" };
 
 const syncBlockDesignerInputs = () => {
   const b = state.blockDesigner;
@@ -13759,8 +13767,11 @@ const renderBlockDesignerLibrary = () => {
   if (!el) return;
   const tiles = state.assetLibraryEntries.filter((e) => e.kind === "tile-system");
   el.innerHTML = tiles.length
-    ? tiles.map((t) => `<div class="bd-tile-card ${t.id === state.blockDesigner.activeTileId ? "active" : ""}" data-tile-id="${t.id}"><b>${t.name}</b><span>${t.metadata?.jointType || "Joint"} · ${t.metadata?.tags?.join(" · ") || "Experimental"}</span></div>`).join("")
-    : `<div class="hint">No saved systems yet. Shape a pair, then save it to Panel Library → Designed Blocks.</div>`;
+    ? tiles.map((t) => {
+      const meta = [t.metadata?.jointType || "Joint", ...(t.metadata?.tags || ["Experimental"])].join(" � ");
+      return `<div class="bd-tile-card ${t.id === state.blockDesigner.activeTileId ? "active" : ""}" data-tile-id="${escapeHtml(t.id)}"><div class="bd-tile-main"><b>${escapeHtml(t.name)}</b><span>${escapeHtml(meta)}</span></div><button class="bd-tile-delete" type="button" data-delete-tile-id="${escapeHtml(t.id)}" title="Delete saved block">Delete</button></div>`;
+    }).join("")
+    : `<div class="hint">No saved systems yet. Shape a pair, then save it to Panel Library -> Designed Blocks.</div>`;
   el.querySelectorAll("[data-tile-id]").forEach((card) => card.addEventListener("click", async () => {
     state.activeLibraryAssetIds.tile = card.dataset.tileId;
     renderBlockDesignerLibrary();
@@ -13769,12 +13780,40 @@ const renderBlockDesignerLibrary = () => {
     renderAssetLibraryPreview("tile");
     await loadSelectedLibraryAsset("tile");
   }));
+  el.querySelectorAll("[data-delete-tile-id]").forEach((btn) => btn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = btn.dataset.deleteTileId;
+    const entry = state.assetLibraryEntries.find((item) => item.id === id && item.kind === "tile-system");
+    if (!id || !entry) return;
+    if (!window.confirm(`Delete "${entry.name}" from Designed Blocks?`)) return;
+    await deleteBlockDesignerTile(id);
+  }));
 };
-
+const deleteBlockDesignerTile = async (id) => {
+  const entry = state.assetLibraryEntries.find((item) => item.id === id && item.kind === "tile-system");
+  try {
+    await runAssetLibraryStore("readwrite", (store) => store.delete(id));
+    if (state.blockDesigner.activeTileId === id) state.blockDesigner.activeTileId = null;
+    if (state.activeLibraryAssetIds.tile === id) state.activeLibraryAssetIds.tile = null;
+    await renderAssetLibrary();
+    const select = nodes.tileLibrarySelect;
+    if (select) select.value = state.activeLibraryAssetIds.tile || "";
+    renderAssetLibraryPreview("tile");
+    renderActiveAssetStrip();
+    setAssetLibraryStatus("tile", entry ? `Deleted designed block: ${entry.name}.` : "Deleted designed block.");
+    setPipelineStatus(entry ? `Deleted "${entry.name}" from Panel Library -> Designed Blocks.` : "Deleted designed block from Panel Library.");
+  } catch (err) {
+    console.error("deleteBlockDesignerTile failed", err);
+    setAssetLibraryStatus("tile", "Could not delete that designed block.");
+    setPipelineStatus("Could not delete that designed block from Panel Library.");
+  }
+};
 const saveBlockDesignerTile = async () => {
   const b = getBlockDesignerData();
   const now = new Date().toISOString();
-  const name = `${b.jointType.replace(" Joint", "")} ${b.baseGeometry} ${new Date().toLocaleDateString()}`;
+  const fallbackName = `${b.jointType.replace(" Joint", "")} ${b.baseGeometry} ${new Date().toLocaleDateString()}`;
+  const name = String(b.name || "").trim() || fallbackName;
   const payload = {
     name,
     previewImage: "procedural",
@@ -13809,6 +13848,7 @@ const saveBlockDesignerTile = async () => {
   };
   try {
     await runAssetLibraryStore("readwrite", (store) => store.put(entry));
+    state.blockDesigner.name = name;
     state.blockDesigner.activeTileId = entry.id;
     state.activeLibraryAssetIds.tile = entry.id;
     await renderAssetLibrary();
@@ -13834,6 +13874,7 @@ const applyTileSystemFile = async (file, { remember = false } = {}) => {
       : payload;
     const next = {
       ...state.blockDesigner,
+      name: String(params.name || payload.name || state.blockDesigner.name || ""),
       baseGeometry: params.baseGeometry || payload.baseGeometry || state.blockDesigner.baseGeometry,
       jointType: params.jointType || payload.jointType || state.blockDesigner.jointType,
       length: Number(params.length ?? state.blockDesigner.length),
@@ -15454,7 +15495,7 @@ byId("vaultType").addEventListener("change", (e) => {
   runVaultSelectionPipeline(e.target.value);
 });
 Object.entries(blockDesignerInputs).forEach(([id, key]) => {
-  const update = (e) => { const el = e.target; state.blockDesigner[key] = el.tagName === "SELECT" ? el.value : Number(el.value); renderBlockDesigner(); };
+  const update = (e) => { const el = e.target; state.blockDesigner[key] = el.tagName === "SELECT" || el.type === "text" ? el.value : Number(el.value); renderBlockDesigner(); };
   byId(id)?.addEventListener("input", update);
   byId(id)?.addEventListener("change", update);
 });

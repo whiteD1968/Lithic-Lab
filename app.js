@@ -4395,6 +4395,8 @@ const generateBarrelLikeBlocksFromTrait = () => {
         id: `${isKeystoneCourse ? "K" : "B"}-${course + 1}-${blocks.length + 1}`,
         uv: uv.map(applyAlign),
         isKeystone: isKeystoneCourse,
+        courseIndex: course,
+        courseCount,
       });
     }
   }
@@ -6766,7 +6768,12 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
     return p.clone().addScaledVector(n, thickness + 0.006);
   };
   uv.forEach((a, edgeIndex) => {
-    const isBedEdge = uv.length === 4 ? edgeIndex % 2 === 1 : edgeIndex % 2 === 0;
+    const isLastCourse = Number.isFinite(block.courseIndex) &&
+      Number.isFinite(block.courseCount) &&
+      block.courseIndex >= block.courseCount - 1;
+    const isBedEdge = uv.length === 4
+      ? edgeIndex === 3 || (isLastCourse && edgeIndex === 1)
+      : edgeIndex % 2 === 0;
     if (!isBedEdge) return;
     const b = uv[(edgeIndex + 1) % uv.length];
     for (let i = 0; i < samples; i++) {
@@ -6782,6 +6789,33 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
   );
   line.name = "designed-joint-profile";
   line.renderOrder = 15;
+  line.frustumCulled = false;
+  return line;
+};
+
+const buildAppliedBlockHeadSeams = (block, thickness = getBlockThicknessForComponent(block)) => {
+  const uv = getMappedComponentBaseUv(block);
+  if (!Array.isArray(uv) || uv.length !== 4) return null;
+  const host = getHostField();
+  const cyclicU = state.vaultType === "Dome";
+  const sample = ([u, v]) => {
+    const uu = cyclicU ? wrap01(u) : clamp(u, 0, 1);
+    const vv = clamp(v, 0, 1);
+    const point = host.pointAt(uu, vv);
+    const normal = host.normalAt(uu, vv).clone();
+    if (normal.y < 0) normal.multiplyScalar(-1);
+    return point.clone().addScaledVector(normal, thickness + 0.008);
+  };
+  const points = [
+    sample(uv[0]), sample(uv[1]),
+    sample(uv[2]), sample(uv[3]),
+  ];
+  const line = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color: 0x1d2a22, transparent: true, opacity: 0.7 })
+  );
+  line.name = "applied-head-seams";
+  line.renderOrder = 14;
   line.frustumCulled = false;
   return line;
 };
@@ -9401,20 +9435,21 @@ const build3d = () => {
       mesh.userData.blockId = b.id;
       mesh.userData.smoothImportedSurface = smoothImportedSurface;
       if (state.strategy.merge !== "merge-visual" && state.strategy.merge !== "merge-fabrication") {
-        const edgeThreshold = state.appliedTileSystem ? 1 : 16;
-        const seam = new THREE.LineSegments(
-          new THREE.EdgesGeometry(m.geometry, edgeThreshold),
-          new THREE.LineBasicMaterial({
-            color: state.appliedTileSystem ? 0x1d2a22 : 0xf1eadc,
-            transparent: true,
-            opacity: state.appliedTileSystem ? 0.9 : 0.26,
-          })
-        );
-        seam.name = "seam";
-        seam.visible = state.appliedTileSystem ? true : !!state.display.seamDebug;
-        mesh.add(seam);
-        const designedJoint = buildDesignedJointOverlay(b, state.appliedTileSystem, getBlockThicknessForComponent(b));
-        if (designedJoint) mesh.add(designedJoint);
+        if (state.appliedTileSystem) {
+          const thickness = getBlockThicknessForComponent(b);
+          const headSeams = buildAppliedBlockHeadSeams(b, thickness);
+          if (headSeams) mesh.add(headSeams);
+          const designedJoint = buildDesignedJointOverlay(b, state.appliedTileSystem, thickness);
+          if (designedJoint) mesh.add(designedJoint);
+        } else {
+          const seam = new THREE.LineSegments(
+            new THREE.EdgesGeometry(m.geometry, 16),
+            new THREE.LineBasicMaterial({ color: 0xf1eadc, transparent: true, opacity: 0.26 })
+          );
+          seam.name = "seam";
+          seam.visible = !!state.display.seamDebug;
+          mesh.add(seam);
+        }
       } else {
         mesh.userData.mergeMode = state.strategy.merge;
       }

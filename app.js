@@ -3548,7 +3548,7 @@ const makeTextSprite = (text, color = "#ffe2a0") => {
 const makePreviewTextSprite = (text, color = "#ffe2a0") => {
   const sprite = makeTextSprite(text, color);
   if (!sprite) return null;
-  sprite.scale.set(1.15, 0.3, 1);
+  sprite.scale.set(0.78, 0.2, 1);
   sprite.renderOrder = 9000;
   return sprite;
 };
@@ -6682,8 +6682,8 @@ const getMappedComponentBaseUv = (block) => {
 const buildDesignedJointUvLoop = (block, tile = state.appliedTileSystem) => {
   const uv = getMappedComponentBaseUv(block);
   if (!tile || !uv?.length || tile.jointType === "Flat Joint") return uv;
-  const samples = Math.max(8, Math.min(24, Math.round((tile.frequency || 3) * 6)));
-  const depthScale = clamp((tile.depth || 35) / 420, 0.025, 0.09);
+  const samples = Math.max(24, Math.min(72, Math.round((tile.frequency || 3) * 18)));
+  const depthScale = clamp((tile.depth || 35) / 520, 0.018, 0.07);
   const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
   const isLastCourse = Number.isFinite(block.courseIndex) &&
     Number.isFinite(block.courseCount) &&
@@ -6767,8 +6767,8 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
   if (!Array.isArray(uv) || uv.length < 3) return null;
   const host = getHostField();
   const cyclicU = state.vaultType === "Dome";
-  const samples = Math.max(12, Math.min(48, Math.round((tile.frequency || 3) * 12)));
-  const depthScale = clamp((tile.depth || 35) / 420, 0.025, 0.09);
+  const samples = Math.max(32, Math.min(96, Math.round((tile.frequency || 3) * 24)));
+  const depthScale = clamp((tile.depth || 35) / 520, 0.018, 0.07);
   const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
   const points = [];
   const makePoint = (a, b, edgeIndex, t) => {
@@ -9442,7 +9442,7 @@ const build3d = () => {
       b.metrics = m;
       b.failed = validate(m, b);
       const smoothImportedSurface = String(m.jointFaceType || "").includes("sampled imported-surface");
-      const mesh = new THREE.Mesh(m.geometry, new THREE.MeshStandardMaterial({ color: b.failed.length ? 0xd15a5a : 0x7ab8df, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92, side: THREE.DoubleSide, flatShading: !smoothImportedSurface }));
+      const mesh = new THREE.Mesh(m.geometry, new THREE.MeshStandardMaterial({ color: b.failed.length ? 0xd15a5a : 0x7ab8df, roughness: 0.48, metalness: 0.08, transparent: true, opacity: 0.92, side: THREE.DoubleSide, flatShading: !(smoothImportedSurface || state.appliedTileSystem) }));
       mesh.userData.blockId = b.id;
       mesh.userData.smoothImportedSurface = smoothImportedSurface;
       if (state.strategy.merge !== "merge-visual" && state.strategy.merge !== "merge-fabrication") {
@@ -10450,7 +10450,7 @@ const applyDisplayPreset = () => {
       b.mesh.material.side = sideMode;
       if (seam) seam.visible = state.display.seamDebug;
     }
-    b.mesh.material.flatShading = !b.mesh.userData.smoothImportedSurface;
+    b.mesh.material.flatShading = !(b.mesh.userData.smoothImportedSurface || state.appliedTileSystem);
     b.mesh.material.side = sideMode;
     if (state.display.meshWires) b.mesh.material.wireframe = true;
     b.mesh.material.needsUpdate = true;
@@ -11302,12 +11302,12 @@ const addPreviewDimensionLine = (group, label, start, end, color, textColor) => 
   const labelSprite = makePreviewTextSprite(label, textColor);
   if (labelSprite) {
     labelSprite.position.copy(start).add(end).multiplyScalar(0.5);
-    labelSprite.position.y += 0.16;
+    labelSprite.position.y += 0.08;
     group.add(labelSprite);
   }
 };
 
-const addPreviewDimensionAnnotations = (size) => {
+const addPreviewDimensionAnnotations = (size, dimensions = {}) => {
   const group = new THREE.Group();
   group.name = "block-preview-dimensions";
   const sx = size.x * 0.5;
@@ -11316,7 +11316,7 @@ const addPreviewDimensionAnnotations = (size) => {
   const pad = Math.max(0.18, Math.max(size.x, size.y, size.z) * 0.1);
   addPreviewDimensionLine(
     group,
-    "Length - run",
+    `Run ${dimensions.lengthCm || "--"} cm`,
     new THREE.Vector3(-sx - pad, -sy - pad, -sz),
     new THREE.Vector3(-sx - pad, -sy - pad, sz),
     0x7db7ff,
@@ -11324,7 +11324,7 @@ const addPreviewDimensionAnnotations = (size) => {
   );
   addPreviewDimensionLine(
     group,
-    "Width - course",
+    `Course ${dimensions.widthCm || "--"} cm`,
     new THREE.Vector3(-sx, -sy - pad * 0.2, sz + pad),
     new THREE.Vector3(sx, -sy - pad * 0.2, sz + pad),
     0xffd27a,
@@ -11332,7 +11332,7 @@ const addPreviewDimensionAnnotations = (size) => {
   );
   addPreviewDimensionLine(
     group,
-    "Height",
+    `Height ${dimensions.heightCm || "--"} cm`,
     new THREE.Vector3(-sx - pad, -sy, -sz - pad),
     new THREE.Vector3(-sx - pad, sy, -sz - pad),
     0x96e6a5,
@@ -11359,6 +11359,7 @@ const renderBlockPreview = () => {
   const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32 });
   const selectedId = state.selectedBlockId || previewBlocks[0].id;
   let anchorMetrics = null;
+  const useDesignedPreview = !!state.appliedTileSystem;
   previewBlocks.forEach((block) => {
     try {
       const metrics = buildBlockMesh(block);
@@ -11374,13 +11375,21 @@ const renderBlockPreview = () => {
         transparent: false,
         opacity: 1,
         side: THREE.DoubleSide,
-        flatShading: !smoothImportedSurface,
+        flatShading: !(smoothImportedSurface || useDesignedPreview),
       }));
       mesh.userData.blockId = block.id;
       mesh.userData.smoothImportedSurface = smoothImportedSurface;
-      const seams = new THREE.LineSegments(new THREE.EdgesGeometry(metrics.geometry, 12), edgeMat.clone());
-      seams.name = "preview-seams";
-      mesh.add(seams);
+      if (useDesignedPreview) {
+        const thickness = getBlockThicknessForComponent(block);
+        const headSeams = buildAppliedBlockHeadSeams(block, thickness);
+        if (headSeams) mesh.add(headSeams);
+        const designedJoint = buildDesignedJointOverlay(block, state.appliedTileSystem, thickness);
+        if (designedJoint) mesh.add(designedJoint);
+      } else {
+        const seams = new THREE.LineSegments(new THREE.EdgesGeometry(metrics.geometry, 24), edgeMat.clone());
+        seams.name = "preview-seams";
+        mesh.add(seams);
+      }
       previewRoot.add(mesh);
     } catch (err) {
       console.error("renderBlockPreview skipped block", block.id, err);
@@ -11396,7 +11405,18 @@ const renderBlockPreview = () => {
   previewRoot.position.sub(center);
   blockPreviewGroup.add(previewRoot);
   const size = box.getSize(new THREE.Vector3());
-  addPreviewDimensionAnnotations(size);
+  const previewLengthCm = state.appliedTileSystem
+    ? metersToCmInput(state.targetBlockWidth)
+    : anchorMetrics ? metersToCmInput(anchorMetrics.avgLength) : "--";
+  const previewWidthCm = state.appliedTileSystem
+    ? metersToCmInput(state.constraints.courseHeight)
+    : anchorMetrics ? metersToCmInput(anchorMetrics.avgWidth) : "--";
+  const previewHeightCm = metersToCmInput(state.params.thickness);
+  addPreviewDimensionAnnotations(size, {
+    lengthCm: previewLengthCm,
+    widthCm: previewWidthCm,
+    heightCm: previewHeightCm,
+  });
   const maxSize = Math.max(0.25, size.x, size.y, size.z);
   const distance = maxSize * 2.35;
   blockPreviewCamera.position.set(distance, distance * 0.72, distance * 0.95);
@@ -11411,9 +11431,9 @@ const renderBlockPreview = () => {
   const targetLabel = `${metersToCmInput(state.targetBlockWidth)} x ${metersToCmInput(state.constraints.courseHeight)} x ${metersToCmInput(state.params.thickness)} cm`;
   nodes.blockPreviewInfo.innerHTML = [
     `<span><b>ID</b> ${previewBlocks[0].id}</span>`,
-    `<span><b>Length</b> ${anchorMetrics ? metersToCmInput(anchorMetrics.avgWidth) : "--"} cm</span>`,
-    `<span><b>Width</b> ${anchorMetrics ? metersToCmInput(anchorMetrics.avgLength) : "--"} cm</span>`,
-    `<span><b>Height</b> ${metersToCmInput(state.params.thickness)} cm</span>`,
+    `<span><b>Run length</b> ${previewLengthCm} cm</span>`,
+    `<span><b>Course height</b> ${previewWidthCm} cm</span>`,
+    `<span><b>Block depth</b> ${previewHeightCm} cm</span>`,
     `<span><b>Joint</b> ${metersToCmInput(state.constraints.jointGap)} cm</span>`,
     `<span><b>L/W/H</b> ${targetLabel}</span>`,
   ].join("");

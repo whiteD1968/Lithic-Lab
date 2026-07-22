@@ -13540,10 +13540,7 @@ const mapBlockDesignerTileModeToVault = (tileMode = "") => {
 
 const mapBlockDesignerJointToComponent = (jointType = "") => {
   if (jointType === "Flat Joint") return "ashlar";
-  if (jointType === "Zig Zag Joint") return "keyedVoussoir";
-  if (jointType === "Topological Interlocking") return "interlock";
-  // Profiled joints (sine, geological, field, custom) produce non-convex mating faces by design.
-  return "interlock";
+  return "voussoir";
 };
 
 const applySelectedBlockDesignerTile = async () => {
@@ -13612,8 +13609,13 @@ const applyBlockDesignerToVault = async () => {
     state.strategy = {
       ...state.strategy,
       component,
-      componentMode: state.strategy.componentMode || "single",
+      componentMode: "single",
+      fill: "quad",
+      rotationVariation: "none",
       scale: state.strategy.scale === "cell-bounds" ? "fit-to-cell" : (state.strategy.scale || "fit-to-cell"),
+      topology: "primal",
+      dualBoundaryCleanup: true,
+      merge: "separate-blocks",
     };
     state.appliedTileSystem = {
       id: b.activeTileId || null,
@@ -13653,6 +13655,7 @@ const applyBlockDesignerToVault = async () => {
     if (byId("layerSourceModel")) byId("layerSourceModel").checked = true;
     if (byId("subdivision")) byId("subdivision").value = state.pattern;
     if (nodes.strategyComponent) nodes.strategyComponent.value = component;
+    syncStrategyInputs();
     if (nodes.topologyLatticeEnabled) nodes.topologyLatticeEnabled.checked = false;
 
     setStrategyViewMode("component-mapping");

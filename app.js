@@ -6847,11 +6847,7 @@ const buildDesignedJointOverlay = (block, tile = state.appliedTileSystem, thickn
     return makePointFromUv([u, v]);
   };
   if (designedSampler) {
-    if (designedSampler.isFirstCourse) return null;
-    for (let i = 0; i < samples; i++) {
-      points.push(makePointFromUv(designedSampler.sampleUvAt(0, i / samples, 1)));
-      points.push(makePointFromUv(designedSampler.sampleUvAt(0, (i + 1) / samples, 1)));
-    }
+    return null;
   } else {
   uv.forEach((a, edgeIndex) => {
     const isBedEdge = uv.length === 4

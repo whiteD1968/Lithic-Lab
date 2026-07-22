@@ -68,7 +68,7 @@
           <label>Joint Morpher <input id="bdMorph" type="range" min="0" max="100" value="20" /></label>
           <label>Tile Mode <select id="bdTileMode"><option>Stacked Bond</option><option>Running Bond</option><option>Mirrored Bond</option><option>Alternating Mirrored Blocks</option><option>Radial Array</option><option>Circular Array</option><option>Vault Strip Preview</option><option>Curved Surface Preview</option></select></label>
           <label>Swatch <select id="bdSwatch"><option value="2">2 × 2</option><option value="5" selected>5 × 5</option><option value="10">10 × 10</option><option value="20">20 × 20</option></select></label>
-          <button class="primary-btn" id="bdSaveTile" type="button">Save to Tile Library</button>
+          <button class="primary-btn" id="bdSaveTile" type="button">Save to Panel Library</button>
         </div>
         <div class="section vault-designer-panel" data-tool-group="vault-designer">
           <div class="vault-designer-heading">
@@ -444,8 +444,8 @@
               </div>
               <div class="source-card asset-library-card" data-tool-group="panel-library">
                 <b>Panel Library</b>
-                <span>Save imported panel, morph, topology, or 2D tile designs here for reuse on host surfaces.</span>
-                <label>Saved Panels
+                <span>Two repositories: uploaded panel files, and designed block systems from Block Designer.</span>
+                <label>Uploaded Panels
                   <select id="panelLibrarySelect">
                     <option value="">No saved panels</option>
                   </select>
@@ -471,6 +471,29 @@
                   <button class="ghost-btn" id="deletePanelAsset" type="button">Delete</button>
                 </div>
                 <div class="component-panel-status" id="panelLibraryStatus">Import a panel or tile design to save it.</div>
+                <label>Designed Blocks
+                  <select id="tileLibrarySelect">
+                    <option value="">No designed blocks</option>
+                  </select>
+                </label>
+                <div class="asset-preview" id="tileLibraryPreview">
+                  <div class="asset-thumb" data-kind="tile">TIL</div>
+                  <div class="asset-preview-main">
+                    <b>No designed block selected</b>
+                    <span>Save a custom block from Block Designer to store it here.</span>
+                    <div class="asset-meta">
+                      <span>Type: n/a</span>
+                      <span>Joint: n/a</span>
+                      <span>Last used: n/a</span>
+                    </div>
+                  </div>
+                  <em>Inactive</em>
+                </div>
+                <div class="library-actions">
+                  <button class="ghost-btn" id="loadTileAsset" type="button">Load</button>
+                  <button class="ghost-btn" id="deleteTileAsset" type="button">Delete</button>
+                </div>
+                <div class="component-panel-status" id="tileLibraryStatus">Designed blocks from Block Designer appear in this repository.</div>
               </div>
               <label>Component Mode
                 <select id="strategyComponentMode">
@@ -1161,7 +1184,7 @@
         <section class="block-designer-workbench" id="blockDesignerWorkbench" aria-label="Block Designer workbench">
           <div class="bd-center"><div class="bd-toolbar" id="bdViews"><button data-bd-view="assembled" class="active">Assembled Pair</button><button data-bd-view="tile3d">3D Tile Preview</button><button data-bd-view="exploded">Exploded Pair</button><button data-bd-view="section">Section Cut</button><button data-bd-view="contact">Contact Face</button><button data-bd-view="tolerance">Tolerance</button><button data-bd-view="profile">2D Profile</button></div><div class="bd-canvas" id="bdPairCanvas"><canvas id="bdModelCanvas"></canvas><div class="bd-model-caption" id="bdModelCaption">Orbit · Pan · Zoom</div></div><div class="bd-row-splitter" id="bdRowSplitter" title="Resize model and drawing panes"></div><div class="bd-swatch-head"><b>Tile Swatch Preview</b><span id="bdSwatchLabel">5 × 5 • Running Bond</span></div><div class="bd-swatch" id="bdSwatchCanvas"></div></div>
           <div class="bd-column-splitter" id="bdColumnSplitter" title="Resize Tile Library"></div>
-          <aside class="bd-right"><div class="bd-library-head"><div><span class="eyebrow">TILE LIBRARY</span><h3>Saved Systems</h3></div><button class="mini-btn" id="bdApplyTile">Apply to Vault</button></div><div class="bd-tile-list" id="bdTileList"></div><h3 class="subhead">Analysis</h3><div class="bd-analysis" id="bdAnalysis"></div><div class="hint">Green = valid · yellow = review · red = invalid. Saved tiles carry joint, fabrication, material, and tiling rules.</div></aside>
+          <aside class="bd-right"><div class="bd-library-head"><div><span class="eyebrow">PANEL LIBRARY</span><h3>Designed Blocks</h3></div><button class="mini-btn" id="bdApplyTile">Apply To Model</button></div><div class="bd-tile-list" id="bdTileList"></div><h3 class="subhead">Analysis</h3><div class="bd-analysis" id="bdAnalysis"></div><div class="hint">Green = valid · yellow = review · red = invalid. Saved blocks live in Panel Library → Designed Blocks, separate from uploaded panels.</div></aside>
         </section>
         <article class="panel-window glass viewport-2d">
           <div class="window-head viewport-titlebar">

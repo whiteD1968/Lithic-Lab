@@ -32,6 +32,7 @@ const state = {
   vaultType: "Barrel Vault",
   vaultDesignerPreview: true,
   blockDesigner: { baseGeometry: "Cuboid", jointType: "Sine Wave Joint", length: 120, width: 65, height: 90, thickness: 30, draft: 2, fillet: 3, clearance: 1, density: 2600, frequency: 3, amplitude: 12, depth: 35, phase: 0, morph: 20, tileMode: "Running Bond", swatch: 5, view: "assembled", activeTileId: null, userCamera: false },
+  appliedTileSystem: null,
   pattern: "Radial joints",
   structuralDirection: "Compression lines",
   registrationMode: "UV coordinates",
@@ -48,7 +49,7 @@ const state = {
   customPanelMorphObject: null,
   libraryCandidates: { tile: null, host: null },
   assetLibraryEntries: [],
-  activeLibraryAssetIds: { host: null, panel: null },
+  activeLibraryAssetIds: { host: null, panel: null, tile: null },
   customPanelSeamAllowance: 0,
   customPanelThicknessScale: 1,
   customPanelThicknessOffset: 0,
@@ -1148,6 +1149,9 @@ const nodes = {
   panelLibrarySelect: byId("panelLibrarySelect"),
   panelLibraryStatus: byId("panelLibraryStatus"),
   panelLibraryPreview: byId("panelLibraryPreview"),
+  tileLibrarySelect: byId("tileLibrarySelect"),
+  tileLibraryStatus: byId("tileLibraryStatus"),
+  tileLibraryPreview: byId("tileLibraryPreview"),
   saveTileAsset: byId("saveTileAsset"),
   saveHostAsset: byId("saveHostAsset"),
   saveEditedPanelAsset: byId("saveEditedPanelAsset"),
@@ -1156,6 +1160,8 @@ const nodes = {
   deleteHostAsset: byId("deleteHostAsset"),
   loadPanelAsset: byId("loadPanelAsset"),
   deletePanelAsset: byId("deletePanelAsset"),
+  loadTileAsset: byId("loadTileAsset"),
+  deleteTileAsset: byId("deleteTileAsset"),
   importCustomPanel: byId("importCustomPanel"),
   importCustomPanelMorph: byId("importCustomPanelMorph"),
   customPanelSeamAllowance: byId("customPanelSeamAllowance"),
@@ -6492,6 +6498,14 @@ const isConvexUv = (uv) => {
   return true;
 };
 
+const isDrawableBlockUvLoop = (uv) => {
+  if (!Array.isArray(uv) || uv.length < 3) return false;
+  return uv.every((point) => Array.isArray(point)
+    && point.length >= 2
+    && Number.isFinite(Number(point[0]))
+    && Number.isFinite(Number(point[1])));
+};
+
 const getMasonryThickness = (scale = state.cubeScale) => {
   return Math.max(0.02, state.params.thickness * scale);
 };
@@ -6663,6 +6677,32 @@ const getMappedComponentBaseUv = (block) => {
   return uv;
 };
 
+const buildDesignedJointUvLoop = (uv, tile = state.appliedTileSystem) => {
+  if (!tile || !uv?.length || tile.jointType === "Flat Joint") return uv;
+  const center = polygonCentroidUv(uv);
+  const samples = Math.max(6, Math.min(12, Math.round((tile.frequency || 3) * 3)));
+  const depthScale = clamp((tile.depth || 35) / 220, 0.08, 0.28);
+  const loop = [];
+  uv.forEach((a, edgeIndex) => {
+    const b = uv[(edgeIndex + 1) % uv.length];
+    const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const isBedEdge = uv.length === 4 ? edgeIndex % 2 === 1 : edgeIndex % 2 === 0;
+    loop.push([clamp(a[0], 0, 1), clamp(a[1], 0, 1)]);
+    if (!isBedEdge) return;
+    const out = edgeOutwardUv(a, b, center, 1);
+    const sign = edgeIndex % 4 < 2 ? 1 : -1;
+    for (let i = 1; i < samples; i++) {
+      const t = i / samples;
+      const offset = getBdJointOffset(t, tile) * edgeLen * 0.22 * depthScale * sign;
+      loop.push([
+        clamp(a[0] + (b[0] - a[0]) * t + out[0] * offset, 0, 1),
+        clamp(a[1] + (b[1] - a[1]) * t + out[1] * offset, 0, 1),
+      ]);
+    }
+  });
+  return cleanUvPolygon(loop, 0.000001) || uv;
+};
+
 const getComponentUvLoop = (block) => {
   if (
     block.targetPoints?.length >= 3 &&
@@ -6671,6 +6711,10 @@ const getComponentUvLoop = (block) => {
     return block.sourceCarrierUv || block.uv;
   }
   const uv = getMappedComponentBaseUv(block);
+  const tile = state.appliedTileSystem;
+  if (tile?.jointType && tile.jointType !== "Flat Joint") {
+    return buildDesignedJointUvLoop(uv, tile);
+  }
   const component = block.componentVariant || block.componentType || state.strategy.component;
   if (component === "keyedVoussoir") return buildKeyedUvLoop(uv);
   if (component === "interlock") return buildInterlockUvLoop(uv, block.id);
@@ -9318,8 +9362,17 @@ const build3d = () => {
       mesh.userData.blockId = b.id;
       mesh.userData.smoothImportedSurface = smoothImportedSurface;
       if (state.strategy.merge !== "merge-visual" && state.strategy.merge !== "merge-fabrication") {
-        const seam = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 16), new THREE.LineBasicMaterial({ color: 0xf1eadc, transparent: true, opacity: 0.26 }));
+        const edgeThreshold = state.appliedTileSystem ? 1 : 16;
+        const seam = new THREE.LineSegments(
+          new THREE.EdgesGeometry(m.geometry, edgeThreshold),
+          new THREE.LineBasicMaterial({
+            color: state.appliedTileSystem ? 0x1d2a22 : 0xf1eadc,
+            transparent: true,
+            opacity: state.appliedTileSystem ? 0.9 : 0.26,
+          })
+        );
         seam.name = "seam";
+        seam.visible = state.appliedTileSystem ? true : !!state.display.seamDebug;
         mesh.add(seam);
       } else {
         mesh.userData.mergeMode = state.strategy.merge;
@@ -10436,14 +10489,18 @@ const fitCameraToBlocks = () => {
   if (!w.isEmpty()) box.union(w);
   if (!f.isEmpty()) box.union(f);
   if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (!Number.isFinite(maxDim) || maxDim <= 0 || maxDim > 5000) {
+    fitCameraToPreviewSource();
+    return;
+  }
   if (isBarrelLikeVault() && state.designMode !== "Custom Import") {
     fitCameraToBarrelProfile(box);
     return;
   }
-  const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z, 1);
-  const dist = maxDim * 1.9;
+  const dist = Math.max(maxDim, 1) * 1.9;
   camera.position.set(center.x + dist * 0.9, center.y + dist * 0.7, center.z + dist * 0.9);
   controls.target.copy(center);
   controls.update();
@@ -11822,11 +11879,39 @@ const rebuild = () => {
     );
     blockGroup.add(dbg);
   }
+  applySourceTransform();
+  applyLayerVisibility();
+  applySelection();
   if (!state.suspendViewportFit && !state.userDefinedCamera) {
-    if (state.patternAppliedToModel) fitCameraToBlocks();
-    else fitCameraToPreviewSource();
+    if (state.patternAppliedToModel) {
+      if (state.appliedTileSystem) {
+        const box = new THREE.Box3();
+        const blockBox = new THREE.Box3().setFromObject(blockGroup);
+        const solidBox = new THREE.Box3().setFromObject(solidVaultGroup);
+        if (!blockBox.isEmpty()) box.union(blockBox);
+        if (!solidBox.isEmpty()) box.union(solidBox);
+        if (!box.isEmpty()) {
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const span = Math.max(size.x, size.y, size.z, 8);
+          camera.position.set(center.x + span * 1.15, center.y + span * 0.72, center.z + span * 1.35);
+          controls.target.set(center.x, center.y * 0.55, center.z);
+          controls.update();
+        } else {
+          fitCameraToBlocks();
+        }
+      } else {
+        fitCameraToBlocks();
+      }
+    } else {
+      fitCameraToPreviewSource();
+    }
   }
-  draw2d();
+  try {
+    draw2d();
+  } catch (err) {
+    console.error("rebuild/draw2d failed", err);
+  }
   renderFormForceDiagrams();
   renderMetrics();
   renderPrecedent();
@@ -11836,9 +11921,6 @@ const rebuild = () => {
   renderProjectionOperationDetails();
   renderJointPrincipleDetails();
   if (!state.blocks.some((b) => b.id === state.selectedBlockId)) state.selectedBlockId = null;
-  applySourceTransform();
-  applyLayerVisibility();
-  applySelection();
   renderBlockPreview();
 };
 
@@ -12770,6 +12852,7 @@ const assetKindLabels = {
   "custom-panel": "Custom tile panel",
   "morph-panel": "Morph tile panel",
   "edited-panel": "Edited panel variant",
+  "tile-system": "Designed block system",
   "host-3d": "3D host",
 };
 
@@ -12788,6 +12871,7 @@ const formatAssetDate = (dateValue) => {
 const formatAssetCount = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString() : "n/a";
 
 const getActivePanelName = () => {
+  if (state.appliedTileSystem?.name) return state.appliedTileSystem.name;
   if (state.customPanel?.name) return state.customPanel.name;
   if (state.importedTopologyMeshName) return state.importedTopologyMeshName.replace(/\s+Panel carrier faces$/i, "");
   if (state.libraryCandidates.tile?.file?.name) return state.libraryCandidates.tile.file.name;
@@ -13040,10 +13124,26 @@ const assetLibraryViews = {
     kinds: ["2d-layout", "topology-mesh", "custom-panel", "morph-panel", "edited-panel"],
     emptyLabel: "No saved panels",
   },
-  tile: { kinds: ["tile-system"] },
+  tile: {
+    select: () => nodes.tileLibrarySelect,
+    status: () => nodes.tileLibraryStatus,
+    preview: () => nodes.tileLibraryPreview,
+    kinds: ["tile-system"],
+    emptyLabel: "No designed blocks",
+  },
 };
 
-const getAssetLibraryViewForKind = (kind) => kind === "host-3d" ? "host" : "panel";
+const getAssetLibraryViewForKind = (kind) => {
+  if (kind === "host-3d") return "host";
+  if (kind === "tile-system") return "tile";
+  return "panel";
+};
+
+const libraryViewLabel = (viewKey) => {
+  if (viewKey === "host") return "host";
+  if (viewKey === "tile") return "designed block";
+  return "panel";
+};
 
 const setAssetLibraryStatus = (viewKey, message) => {
   const status = assetLibraryViews[viewKey]?.status?.();
@@ -13087,6 +13187,7 @@ const isAssetEntryActive = (entry) => {
   if (!entry) return false;
   if (entry.id === state.activeLibraryAssetIds?.[getAssetLibraryViewForKind(entry.kind)]) return true;
   if (entry.kind === "host-3d") return !!state.importedModelName && state.importedModelName === entry.name;
+  if (entry.kind === "tile-system") return entry.id === state.blockDesigner.activeTileId;
   if (entry.kind === "custom-panel") return state.customPanel?.name === entry.name;
   if (entry.kind === "morph-panel") return state.customPanel?.morph?.name === entry.name;
   if (entry.kind === "edited-panel") return state.customPanel?.name === entry.name;
@@ -13104,14 +13205,22 @@ const renderAssetLibraryPreview = (viewKey) => {
   const meta = preview.querySelector(".asset-meta");
   const active = preview.querySelector("em");
   if (!entry) {
-    if (thumb) thumb.textContent = viewKey === "host" ? "3D" : "PNL";
-    if (title) title.textContent = viewKey === "host" ? "No saved host selected" : "No saved panel selected";
+    if (thumb) thumb.textContent = viewKey === "host" ? "3D" : viewKey === "tile" ? "TIL" : "PNL";
+    if (title) title.textContent = viewKey === "host"
+      ? "No saved host selected"
+      : viewKey === "tile"
+        ? "No designed block selected"
+        : "No saved panel selected";
     if (description) description.textContent = viewKey === "host"
       ? "Save or select a host surface to see file details."
-      : "Save or select a panel asset to see file details.";
+      : viewKey === "tile"
+        ? "Save a custom block from Block Designer to store it here."
+        : "Save or select a panel asset to see file details.";
     if (meta) meta.innerHTML = viewKey === "host"
       ? "<span>Type: n/a</span><span>Triangles: n/a</span><span>Last used: n/a</span>"
-      : "<span>Type: n/a</span><span>Faces: n/a</span><span>Last used: n/a</span>";
+      : viewKey === "tile"
+        ? "<span>Type: n/a</span><span>Joint: n/a</span><span>Last used: n/a</span>"
+        : "<span>Type: n/a</span><span>Faces: n/a</span><span>Last used: n/a</span>";
     if (active) {
       active.textContent = "Inactive";
       active.classList.remove("active");
@@ -13120,15 +13229,17 @@ const renderAssetLibraryPreview = (viewKey) => {
   }
   const metadata = entry.metadata || {};
   const ext = metadata.ext || getFileExtension(entry.name);
-  const primaryCount = entry.kind === "host-3d" || entry.kind === "custom-panel" || entry.kind === "morph-panel" || entry.kind === "edited-panel"
-    ? `Triangles: ${formatAssetCount(metadata.triangleCount)}`
-    : `Faces: ${formatAssetCount(metadata.faceCount)}`;
-  if (thumb) thumb.textContent = metadata.previewLabel || (viewKey === "host" ? "3D" : ext.slice(0, 3));
+  const primaryCount = entry.kind === "tile-system"
+    ? `Joint: ${metadata.jointType || "n/a"}`
+    : entry.kind === "host-3d" || entry.kind === "custom-panel" || entry.kind === "morph-panel" || entry.kind === "edited-panel"
+      ? `Triangles: ${formatAssetCount(metadata.triangleCount)}`
+      : `Faces: ${formatAssetCount(metadata.faceCount)}`;
+  if (thumb) thumb.textContent = metadata.previewLabel || (viewKey === "host" ? "3D" : viewKey === "tile" ? "TIL" : ext.slice(0, 3));
   if (title) title.textContent = entry.name;
   if (description) description.textContent = assetKindLabels[entry.kind] || "Saved asset";
   if (meta) {
     meta.innerHTML = [
-      `<span>Type: ${ext}</span>`,
+      `<span>Type: ${entry.kind === "tile-system" ? "JSON" : ext}</span>`,
       `<span>${primaryCount}</span>`,
       `<span>Last used: ${formatAssetDate(entry.lastUsedAt || entry.addedAt)}</span>`,
     ].join("");
@@ -13141,7 +13252,7 @@ const renderAssetLibraryPreview = (viewKey) => {
 };
 
 const renderAssetLibrary = async () => {
-  if (!nodes.hostLibrarySelect && !nodes.panelLibrarySelect && !byId("bdTileList")) return;
+  if (!nodes.hostLibrarySelect && !nodes.panelLibrarySelect && !nodes.tileLibrarySelect && !byId("bdTileList")) return;
   try {
     const entries = await runAssetLibraryStore("readonly", (store) => store.getAll());
     state.assetLibraryEntries = entries
@@ -13149,12 +13260,14 @@ const renderAssetLibrary = async () => {
       .sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
     populateAssetLibrarySelect("host");
     populateAssetLibrarySelect("panel");
+    populateAssetLibrarySelect("tile");
     renderBlockDesignerLibrary();
     renderActiveAssetStrip();
   } catch (err) {
     console.error("renderAssetLibrary failed", err);
     setAssetLibraryStatus("host", "The host library could not be opened in this browser.");
     setAssetLibraryStatus("panel", "The panel library could not be opened in this browser.");
+    setAssetLibraryStatus("tile", "The designed block library could not be opened in this browser.");
   }
 };
 
@@ -13172,8 +13285,9 @@ const renderBlockDesignerLegacy = () => {
   byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} • ${b.tileMode}`;
   renderBlockDesignerAnalysis(); renderBlockDesignerLibrary();
 };
-const getBdJointOffset = (t) => {
-  const b = getBlockDesignerData(), a = b.amplitude / 100;
+const getBdJointOffset = (t, data = getBlockDesignerData()) => {
+  const b = data || getBlockDesignerData();
+  const a = (b.amplitude || 0) / 100;
   if (b.jointType === "Flat Joint") return 0;
   if (b.jointType === "Zig Zag Joint") return (Math.abs(((t * b.frequency) % 1) - .5) * 4 - 1) * a;
   if (b.jointType === "Topological Interlocking") return (Math.sin(t * Math.PI * b.frequency) >= 0 ? 1 : -1) * a * .82;
@@ -13250,8 +13364,334 @@ const renderBlockDesigner = () => {
   byId("bdSwatchLabel").textContent = `${b.swatch} × ${b.swatch} · ${b.tileMode} · module ${b.length} mm × ${b.height} mm · joint ${b.frequency} cycles`; renderBlockDesignerAnalysis(); renderBlockDesignerLibrary();
 };
 const renderBlockDesignerAnalysis = () => { const b = getBlockDesignerData(), el = byId("bdAnalysis"); if (!el) return; const vol = b.length * b.width * b.height / 1e6, weight = vol * b.density; const neck = b.width / 2 - b.amplitude; const items = [["Block volume", `${vol.toFixed(3)} m³`, "ok"], ["Block weight", `${weight.toFixed(1)} kg`, weight > 520 ? "warn" : "ok"], ["Contact area", `${(b.height * b.thickness / 100).toFixed(0)} cm²`, "ok"], ["Min neck", `${neck.toFixed(1)} mm`, neck < 8 ? "bad" : neck < 18 ? "warn" : "ok"], ["Undercut", b.depth > b.thickness * .85 ? "Review" : "Clear", b.depth > b.thickness * .85 ? "warn" : "ok"], ["Tolerance", `${b.clearance} mm`, b.clearance < .4 ? "warn" : "ok"]]; el.innerHTML = items.map(([k,v,c]) => `<div class="${c}"><b>${k}</b>${v}</div>`).join(""); };
-const renderBlockDesignerLibrary = () => { const el = byId("bdTileList"); if (!el) return; const tiles = state.assetLibraryEntries.filter(e => e.kind === "tile-system"); el.innerHTML = tiles.length ? tiles.map(t => `<div class="bd-tile-card ${t.id === state.blockDesigner.activeTileId ? "active" : ""}" data-tile-id="${t.id}"><b>${t.name}</b><span>${t.metadata?.jointType || "Joint"} · ${t.metadata?.tags?.join(" · ") || "Experimental"}</span></div>`).join("") : `<div class="hint">No saved systems yet. Shape a pair, then save it here.</div>`; el.querySelectorAll("[data-tile-id]").forEach(card => card.addEventListener("click", () => { state.blockDesigner.activeTileId = card.dataset.tileId; renderBlockDesignerLibrary(); })); };
-const saveBlockDesignerTile = async () => { const b = getBlockDesignerData(), now = new Date().toISOString(), name = `${b.jointType.replace(" Joint", "")} ${b.baseGeometry} ${new Date().toLocaleDateString()}`; const payload = { name, previewImage: "procedural", baseGeometry: b.baseGeometry, jointType: b.jointType, jointParameters: b, tileRules: { mode: b.tileMode, swatch: b.swatch }, fabricationRules: { clearance: b.clearance, fillet: b.fillet, draft: b.draft }, material: { density: b.density }, tags: [b.jointType.replace(" Joint", ""), b.baseGeometry, "Experimental"], favorite: false, createdAt: now, updatedAt: now }; const blob = new Blob([JSON.stringify(payload)], { type: "application/json" }); const entry = { id: crypto.randomUUID?.() || `${Date.now()}-tile`, kind: "tile-system", name, mimeType: "application/json", size: blob.size, addedAt: now, lastUsedAt: now, metadata: { jointType: b.jointType, tags: payload.tags, previewLabel: "TILE" }, blob }; await runAssetLibraryStore("readwrite", store => store.put(entry)); state.blockDesigner.activeTileId = entry.id; await renderAssetLibrary(); };
+const blockDesignerInputs = { bdBaseGeometry: "baseGeometry", bdJointPreset: "jointType", bdLength: "length", bdWidth: "width", bdHeight: "height", bdThickness: "thickness", bdDraft: "draft", bdFillet: "fillet", bdClearance: "clearance", bdDensity: "density", bdFrequency: "frequency", bdAmplitude: "amplitude", bdDepth: "depth", bdPhase: "phase", bdMorph: "morph", bdTileMode: "tileMode", bdSwatch: "swatch" };
+
+const syncBlockDesignerInputs = () => {
+  const b = state.blockDesigner;
+  Object.entries(blockDesignerInputs).forEach(([id, key]) => {
+    const el = byId(id);
+    if (!el || b[key] == null) return;
+    el.value = b[key];
+  });
+  if (byId("bdJointSectionTitle")) byId("bdJointSectionTitle").textContent = b.jointType;
+};
+
+const renderBlockDesignerLibrary = () => {
+  const el = byId("bdTileList");
+  if (!el) return;
+  const tiles = state.assetLibraryEntries.filter((e) => e.kind === "tile-system");
+  el.innerHTML = tiles.length
+    ? tiles.map((t) => `<div class="bd-tile-card ${t.id === state.blockDesigner.activeTileId ? "active" : ""}" data-tile-id="${t.id}"><b>${t.name}</b><span>${t.metadata?.jointType || "Joint"} · ${t.metadata?.tags?.join(" · ") || "Experimental"}</span></div>`).join("")
+    : `<div class="hint">No saved systems yet. Shape a pair, then save it to Panel Library → Designed Blocks.</div>`;
+  el.querySelectorAll("[data-tile-id]").forEach((card) => card.addEventListener("click", async () => {
+    state.activeLibraryAssetIds.tile = card.dataset.tileId;
+    renderBlockDesignerLibrary();
+    const select = nodes.tileLibrarySelect;
+    if (select) select.value = card.dataset.tileId;
+    renderAssetLibraryPreview("tile");
+    await loadSelectedLibraryAsset("tile");
+  }));
+};
+
+const saveBlockDesignerTile = async () => {
+  const b = getBlockDesignerData();
+  const now = new Date().toISOString();
+  const name = `${b.jointType.replace(" Joint", "")} ${b.baseGeometry} ${new Date().toLocaleDateString()}`;
+  const payload = {
+    name,
+    previewImage: "procedural",
+    baseGeometry: b.baseGeometry,
+    jointType: b.jointType,
+    jointParameters: { ...b },
+    tileRules: { mode: b.tileMode, swatch: b.swatch },
+    fabricationRules: { clearance: b.clearance, fillet: b.fillet, draft: b.draft },
+    material: { density: b.density },
+    tags: [b.jointType.replace(" Joint", ""), b.baseGeometry, "Experimental"],
+    favorite: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const entry = {
+    id: crypto.randomUUID?.() || `${Date.now()}-tile`,
+    kind: "tile-system",
+    name,
+    mimeType: "application/json",
+    size: blob.size,
+    addedAt: now,
+    lastUsedAt: now,
+    metadata: {
+      jointType: b.jointType,
+      baseGeometry: b.baseGeometry,
+      tags: payload.tags,
+      previewLabel: "TIL",
+      ext: "JSON",
+    },
+    blob,
+  };
+  try {
+    await runAssetLibraryStore("readwrite", (store) => store.put(entry));
+    state.blockDesigner.activeTileId = entry.id;
+    state.activeLibraryAssetIds.tile = entry.id;
+    await renderAssetLibrary();
+    const select = nodes.tileLibrarySelect;
+    if (select) select.value = entry.id;
+    renderAssetLibraryPreview("tile");
+    setAssetLibraryStatus("tile", `Saved designed block: ${name}.`);
+    setPipelineStatus(`Saved “${name}” to Panel Library → Designed Blocks.`);
+    renderActiveAssetStrip();
+  } catch (err) {
+    console.error("saveBlockDesignerTile failed", err);
+    setAssetLibraryStatus("tile", "Could not save that designed block. Browser storage may be full or unavailable.");
+    setPipelineStatus("Could not save the designed block to Panel Library.");
+  }
+};
+
+const applyTileSystemFile = async (file, { remember = false } = {}) => {
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const params = payload.jointParameters && typeof payload.jointParameters === "object"
+      ? payload.jointParameters
+      : payload;
+    const next = {
+      ...state.blockDesigner,
+      baseGeometry: params.baseGeometry || payload.baseGeometry || state.blockDesigner.baseGeometry,
+      jointType: params.jointType || payload.jointType || state.blockDesigner.jointType,
+      length: Number(params.length ?? state.blockDesigner.length),
+      width: Number(params.width ?? state.blockDesigner.width),
+      height: Number(params.height ?? state.blockDesigner.height),
+      thickness: Number(params.thickness ?? state.blockDesigner.thickness),
+      draft: Number(params.draft ?? state.blockDesigner.draft),
+      fillet: Number(params.fillet ?? state.blockDesigner.fillet),
+      clearance: Number(params.clearance ?? state.blockDesigner.clearance),
+      density: Number(params.density ?? state.blockDesigner.density),
+      frequency: Number(params.frequency ?? state.blockDesigner.frequency),
+      amplitude: Number(params.amplitude ?? state.blockDesigner.amplitude),
+      depth: Number(params.depth ?? state.blockDesigner.depth),
+      phase: Number(params.phase ?? state.blockDesigner.phase),
+      morph: Number(params.morph ?? state.blockDesigner.morph),
+      tileMode: params.tileMode || payload.tileRules?.mode || state.blockDesigner.tileMode,
+      swatch: Number(params.swatch ?? payload.tileRules?.swatch ?? state.blockDesigner.swatch),
+      userCamera: false,
+    };
+    state.blockDesigner = next;
+    syncBlockDesignerInputs();
+    renderBlockDesigner();
+    setPipelineStatus(`Loaded designed block “${payload.name || file.name}” into Block Designer.`);
+    return true;
+  } catch (err) {
+    console.error("applyTileSystemFile failed", err);
+    setPipelineStatus(`Could not load designed block from ${file.name}.`);
+    return false;
+  }
+};
+
+const mapBlockDesignerTileModeToVault = (tileMode = "") => {
+  const mode = String(tileMode || "");
+  if (mode === "Running Bond") return { pattern: "Running bond", barrelBondMode: "2" };
+  if (mode === "Stacked Bond") return { pattern: "Courses", barrelBondMode: "1" };
+  if (mode.includes("Mirrored")) return { pattern: "Running bond", barrelBondMode: "3" };
+  if (mode.includes("Radial") || mode.includes("Circular")) return { pattern: "Radial joints", barrelBondMode: "4" };
+  if (mode.includes("Vault") || mode.includes("Curved")) return { pattern: "Courses", barrelBondMode: "5" };
+  return { pattern: "Courses", barrelBondMode: state.barrelBondMode || "1" };
+};
+
+const mapBlockDesignerJointToComponent = (jointType = "") => {
+  if (jointType === "Flat Joint") return "ashlar";
+  if (jointType === "Zig Zag Joint") return "keyedVoussoir";
+  if (jointType === "Topological Interlocking") return "interlock";
+  // Profiled joints (sine, geological, field, custom) produce non-convex mating faces by design.
+  return "interlock";
+};
+
+const applySelectedBlockDesignerTile = async () => {
+  const selectedId = nodes.tileLibrarySelect?.value || state.blockDesigner.activeTileId;
+  if (!selectedId || selectedId === state.blockDesigner.activeTileId) return true;
+  const entry = state.assetLibraryEntries.find((item) => item.id === selectedId && item.kind === "tile-system");
+  if (!entry) return true;
+  try {
+    const stored = await runAssetLibraryStore("readonly", (store) => store.get(selectedId));
+    if (!stored?.blob) return true;
+    const file = new File([stored.blob], stored.name, {
+      type: stored.mimeType || stored.blob.type || "application/json",
+      lastModified: Date.parse(stored.addedAt) || Date.now(),
+    });
+    const ok = await applyTileSystemFile(file, { remember: false });
+    if (ok) {
+      state.blockDesigner.activeTileId = selectedId;
+      state.activeLibraryAssetIds.tile = selectedId;
+    }
+    return ok;
+  } catch (err) {
+    console.error("applySelectedBlockDesignerTile failed", err);
+    setPipelineStatus("Could not load the selected designed block before applying it.");
+    return false;
+  }
+};
+
+const applyBlockDesignerToVault = async () => {
+  try {
+    if (!(await applySelectedBlockDesignerTile())) return false;
+    const b = getBlockDesignerData();
+    if (!b) {
+      setPipelineStatus("Block Designer has no active definition to apply.");
+      return false;
+    }
+
+    // Leave the Block Designer overlay immediately so the perspective vault is visible.
+    state.vaultDesignerPreview = false;
+    state.patternAppliedToModel = true;
+    state.userDefinedCamera = false;
+    state.suspendViewportFit = false;
+    if (state.topologyLattice) state.topologyLattice.enabled = false;
+    setToolTab("strategy");
+
+    const saved = state.assetLibraryEntries.find((entry) => entry.id === b.activeTileId && entry.kind === "tile-system");
+    const name = saved?.name || `${String(b.jointType || "Joint").replace(" Joint", "")} ${b.baseGeometry || "Block"}`;
+    const lengthM = clamp(Number(b.length) / 100, 0.1, 5);
+    const heightM = clamp(Number(b.height) / 100, 0.1, 5);
+    const thicknessM = clamp(Number(b.thickness) / 100, 0.08, 0.6);
+    const clearanceM = clamp(Number(b.clearance) / 1000, 0, 0.08);
+    const bond = mapBlockDesignerTileModeToVault(b.tileMode);
+    const component = mapBlockDesignerJointToComponent(b.jointType);
+
+    state.targetBlockWidth = lengthM;
+    state.constraints.courseHeight = heightM;
+    state.params.courseHeight = heightM;
+    state.params.targetBlockWidth = lengthM;
+    // Keep shell thickness in a vault-safe range so blocks stay visible and within weight limits.
+    state.params.thickness = thicknessM;
+    state.constraints.maxWeight = Math.max(state.constraints.maxWeight || 520, 2500);
+    state.constraints.jointGap = Math.max(0.001, clearanceM || state.constraints.jointGap || 0.02);
+    state.constraints.fabTolerance = Math.max(state.constraints.fabTolerance || 0.008, clearanceM || 0);
+    state.pattern = bond.pattern;
+    state.barrelBondMode = bond.barrelBondMode;
+    state.blockDimensionMode = "applied";
+    state.strategy = {
+      ...state.strategy,
+      component,
+      componentMode: state.strategy.componentMode || "single",
+      scale: state.strategy.scale === "cell-bounds" ? "fit-to-cell" : (state.strategy.scale || "fit-to-cell"),
+    };
+    state.appliedTileSystem = {
+      id: b.activeTileId || null,
+      name,
+      baseGeometry: b.baseGeometry,
+      jointType: b.jointType,
+      length: b.length,
+      width: b.width,
+      height: b.height,
+      thickness: b.thickness,
+      draft: b.draft,
+      fillet: b.fillet,
+      clearance: b.clearance,
+      density: b.density,
+      frequency: b.frequency,
+      amplitude: b.amplitude,
+      depth: b.depth,
+      phase: b.phase,
+      morph: b.morph,
+      tileMode: b.tileMode,
+      swatch: b.swatch,
+    };
+
+    state.blocksGeneratedFromTrait = true;
+    state.blockStep = "Generated Voussoirs";
+    state.layers.blocks = true;
+    // Keep host form as a light ghost under the applied blocks.
+    state.layers.builtInForm = true;
+    state.layers.sourceModel = true;
+    state.display.seamDebug = true;
+    state.view2dOptions.showBlocks = true;
+    state.pipelineStage = Math.max(state.pipelineStage || 0, 5);
+    updateStereotomyProcess(5);
+
+    if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+    if (byId("layerBuiltInForm")) byId("layerBuiltInForm").checked = true;
+    if (byId("layerSourceModel")) byId("layerSourceModel").checked = true;
+    if (byId("subdivision")) byId("subdivision").value = state.pattern;
+    if (nodes.strategyComponent) nodes.strategyComponent.value = component;
+    if (nodes.topologyLatticeEnabled) nodes.topologyLatticeEnabled.checked = false;
+
+    setStrategyViewMode("component-mapping");
+    syncInputsFromState();
+    renderActiveAssetStrip();
+    setPipelineStatus(`Applying “${name}” to ${state.vaultType}…`);
+    rebuild();
+    // Re-assert visibility after display presets run inside rebuild/build3d.
+    state.layers.blocks = true;
+    state.layers.builtInForm = true;
+    state.display.seamDebug = true;
+    if (byId("layerBlocks")) byId("layerBlocks").checked = true;
+    if (byId("layerBuiltInForm")) byId("layerBuiltInForm").checked = true;
+    // Readable 3D presentation for designed blocks.
+    state.displayPreset = "Shaded";
+    state.display.seamDebug = true;
+    if (byId("displayPreset")) byId("displayPreset").value = "Shaded";
+    applyDisplayPreset();
+    solidVaultGroup?.traverse((obj) => {
+      if (!obj.isMesh || !obj.material) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach((material) => {
+        material.transparent = true;
+        material.opacity = Math.min(Number(material.opacity ?? 1), 0.12);
+        material.depthWrite = false;
+        material.needsUpdate = true;
+      });
+    });
+    blockGroup?.traverse((obj) => {
+      if (!obj.isMesh || !obj.material) return;
+      if (obj.material.color) obj.material.color.set(0xb7c0b0);
+      obj.material.transparent = false;
+      obj.material.opacity = 1;
+      obj.material.needsUpdate = true;
+      const seam = obj.getObjectByName("seam");
+      if (seam) {
+        seam.visible = true;
+        if (seam.material) {
+          seam.material.color?.set?.(0x243028);
+          seam.material.transparent = true;
+          seam.material.opacity = 0.92;
+          seam.material.needsUpdate = true;
+        }
+      }
+    });
+    applyLayerVisibility();
+    {
+      const box = new THREE.Box3();
+      const blockBox = new THREE.Box3().setFromObject(blockGroup);
+      const solidBox = new THREE.Box3().setFromObject(solidVaultGroup);
+      if (!blockBox.isEmpty()) box.union(blockBox);
+      if (!solidBox.isEmpty()) box.union(solidBox);
+      if (!box.isEmpty()) {
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const span = Math.max(size.x, size.y, size.z, 8);
+        camera.position.set(center.x + span * 1.35, center.y + span * 0.85, center.z + span * 1.55);
+        controls.target.copy(center);
+        controls.update();
+      } else {
+        camera.position.set(22, 16, 28);
+        controls.target.set(0, 8, 0);
+        controls.update();
+      }
+    }
+    if (typeof resize === "function") resize();
+    renderer.toneMappingExposure = 1.05;
+    scene.background = new THREE.Color(0x334153);
+    renderer.render(scene, camera);
+    const count = state.blocks?.length || 0;
+    const invalid = state.blocks?.filter((block) => block.failed?.length)?.length || 0;
+    const meshCount = blockGroup?.children?.length || 0;
+    setPipelineStatus(`Applied “${name}” to ${state.vaultType}: ${count} block${count === 1 ? "" : "s"} (${meshCount} meshes) on the vault surface (${b.tileMode}, ${b.jointType})${invalid ? ` · ${invalid} need review` : ""}.`);
+    return true;
+  } catch (err) {
+    console.error("applyBlockDesignerToVault failed", err);
+    setPipelineStatus(`Apply to Vault failed: ${err?.message || err}`);
+    return false;
+  }
+};
 
 const rememberLibraryCandidate = (slot, kind, file) => {
   state.libraryCandidates[slot] = { kind, file, capturedAt: new Date().toISOString() };
@@ -13503,7 +13943,7 @@ const applyHost3dFile = async (file, { remember = true } = {}) => {
 const loadSelectedLibraryAsset = async (viewKey) => {
   const id = assetLibraryViews[viewKey]?.select?.()?.value;
   if (!id) {
-    setAssetLibraryStatus(viewKey, viewKey === "host" ? "Choose a saved host to load." : "Choose a saved panel to load.");
+    setAssetLibraryStatus(viewKey, `Choose a saved ${libraryViewLabel(viewKey)} to load.`);
     return;
   }
   try {
@@ -13514,7 +13954,7 @@ const loadSelectedLibraryAsset = async (viewKey) => {
       return;
     }
     if (!assetLibraryViews[viewKey]?.kinds.includes(entry.kind)) {
-      setAssetLibraryStatus(viewKey, "That asset belongs in the other library.");
+      setAssetLibraryStatus(viewKey, "That asset belongs in the other library repository.");
       await renderAssetLibrary();
       return;
     }
@@ -13526,10 +13966,12 @@ const loadSelectedLibraryAsset = async (viewKey) => {
       "morph-panel": applyMorphPanelFile,
       "edited-panel": applyEditedPanelVariantFile,
       "host-3d": applyHost3dFile,
+      "tile-system": applyTileSystemFile,
     };
     const ok = await loaders[entry.kind]?.(file, { remember: false });
     if (ok) {
       await runAssetLibraryStore("readwrite", (store) => store.put({ ...entry, lastUsedAt: new Date().toISOString(), blob: entry.blob }));
+      if (entry.kind === "tile-system") state.blockDesigner.activeTileId = id;
       await renderAssetLibrary();
       const select = assetLibraryViews[viewKey]?.select?.();
       if (select) select.value = id;
@@ -13547,19 +13989,23 @@ const loadSelectedLibraryAsset = async (viewKey) => {
 const deleteSelectedLibraryAsset = async (viewKey) => {
   const id = assetLibraryViews[viewKey]?.select?.()?.value;
   if (!id) {
-    setAssetLibraryStatus(viewKey, viewKey === "host" ? "Choose a saved host to delete." : "Choose a saved panel to delete.");
+    setAssetLibraryStatus(viewKey, `Choose a saved ${libraryViewLabel(viewKey)} to delete.`);
     return;
   }
   const entry = state.assetLibraryEntries.find((item) => item.id === id);
   if (entry && !assetLibraryViews[viewKey]?.kinds.includes(entry.kind)) {
-    setAssetLibraryStatus(viewKey, "That asset belongs in the other library.");
+    setAssetLibraryStatus(viewKey, "That asset belongs in the other library repository.");
     await renderAssetLibrary();
     return;
   }
   try {
     await runAssetLibraryStore("readwrite", (store) => store.delete(id));
+    if (entry?.kind === "tile-system" && state.blockDesigner.activeTileId === id) {
+      state.blockDesigner.activeTileId = null;
+    }
+    if (state.activeLibraryAssetIds[viewKey] === id) state.activeLibraryAssetIds[viewKey] = null;
     await renderAssetLibrary();
-    setAssetLibraryStatus(viewKey, entry ? `Deleted ${entry.name} from the ${viewKey === "host" ? "host" : "panel"} library.` : "Deleted saved asset.");
+    setAssetLibraryStatus(viewKey, entry ? `Deleted ${entry.name} from the ${libraryViewLabel(viewKey)} repository.` : "Deleted saved asset.");
   } catch (err) {
     console.error("deleteSelectedLibraryAsset failed", err);
     setAssetLibraryStatus(viewKey, "Could not delete that saved asset.");
@@ -14625,14 +15071,17 @@ byId("vaultType").addEventListener("change", (e) => {
   if (byId("referencePreset")) byId("referencePreset").value = "Custom";
   runVaultSelectionPipeline(e.target.value);
 });
-const blockDesignerInputs = { bdBaseGeometry: "baseGeometry", bdJointPreset: "jointType", bdLength: "length", bdWidth: "width", bdHeight: "height", bdThickness: "thickness", bdDraft: "draft", bdFillet: "fillet", bdClearance: "clearance", bdDensity: "density", bdFrequency: "frequency", bdAmplitude: "amplitude", bdDepth: "depth", bdPhase: "phase", bdMorph: "morph", bdTileMode: "tileMode", bdSwatch: "swatch" };
 Object.entries(blockDesignerInputs).forEach(([id, key]) => {
   const update = (e) => { const el = e.target; state.blockDesigner[key] = el.tagName === "SELECT" ? el.value : Number(el.value); renderBlockDesigner(); };
   byId(id)?.addEventListener("input", update);
   byId(id)?.addEventListener("change", update);
 });
 byId("bdSaveTile")?.addEventListener("click", () => saveBlockDesignerTile());
-byId("bdApplyTile")?.addEventListener("click", () => { const tile = state.assetLibraryEntries.find(e => e.id === state.blockDesigner.activeTileId); if (!tile) return; state.vaultDesignerPreview = true; setToolTab("vault-designer"); setPipelineStatus(`Tile system “${tile.name}” is selected for downstream adaptation to the vault surface.`); });
+document.addEventListener("click", (e) => {
+  if (!e.target?.closest?.("#bdApplyTile")) return;
+  e.preventDefault();
+  applyBlockDesignerToVault();
+});
 byId("bdViews")?.addEventListener("click", (e) => { const btn = e.target.closest("button[data-bd-view]"); if (!btn) return; state.blockDesigner.view = btn.dataset.bdView; state.blockDesigner.userCamera = false; byId("bdViews").querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn)); renderBlockDesigner(); });
 let blockDesignerSplitter = null;
 byId("bdRowSplitter")?.addEventListener("pointerdown", (e) => { blockDesignerSplitter = "row"; e.currentTarget.setPointerCapture(e.pointerId); document.body.style.userSelect = "none"; });
@@ -15013,7 +15462,19 @@ if (byId("resetRecommended")) byId("resetRecommended").addEventListener("click",
   applyVaultParamRules();
   rebuild();
 });
-if (byId("applyPatternToModel")) byId("applyPatternToModel").addEventListener("click", () => {
+const isBlockDesignerApplyContext = () => {
+  const activeTab = document.querySelector(".tool-scroll")?.getAttribute("data-active-tab");
+  const workbench = byId("blockDesignerWorkbench");
+  return activeTab === "block-designer" ||
+    document.body.classList.contains("block-designer-active") ||
+    (workbench && !workbench.classList.contains("hidden"));
+};
+
+if (byId("applyPatternToModel")) byId("applyPatternToModel").addEventListener("click", async () => {
+  if (isBlockDesignerApplyContext()) {
+    await applyBlockDesignerToVault();
+    return;
+  }
   state.vaultDesignerPreview = false;
   state.patternAppliedToModel = true;
   state.layers.blocks = true;
@@ -15062,10 +15523,13 @@ nodes.saveEditedPanelAsset?.addEventListener("click", () => saveCurrentEditedPan
 nodes.duplicatePanelVariant?.addEventListener("click", () => saveCurrentEditedPanelVariant({ duplicate: true }));
 nodes.hostLibrarySelect?.addEventListener("change", () => renderAssetLibraryPreview("host"));
 nodes.panelLibrarySelect?.addEventListener("change", () => renderAssetLibraryPreview("panel"));
+nodes.tileLibrarySelect?.addEventListener("change", () => renderAssetLibraryPreview("tile"));
 nodes.loadHostAsset?.addEventListener("click", () => loadSelectedLibraryAsset("host"));
 nodes.deleteHostAsset?.addEventListener("click", () => deleteSelectedLibraryAsset("host"));
 nodes.loadPanelAsset?.addEventListener("click", () => loadSelectedLibraryAsset("panel"));
 nodes.deletePanelAsset?.addEventListener("click", () => deleteSelectedLibraryAsset("panel"));
+nodes.loadTileAsset?.addEventListener("click", () => loadSelectedLibraryAsset("tile"));
+nodes.deleteTileAsset?.addEventListener("click", () => deleteSelectedLibraryAsset("tile"));
 byId("import2d").addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   if (!f) return;

@@ -6682,20 +6682,18 @@ const getMappedComponentBaseUv = (block) => {
 const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
   const uv = getMappedComponentBaseUv(block);
   if (!tile?.jointType || tile.jointType === "Flat Joint" || !Array.isArray(uv) || uv.length !== 4) return null;
-  const depthScale = clamp((tile.depth || 35) / 520, 0.018, 0.07);
   const isFirstCourse = Number.isFinite(block.courseIndex) && block.courseIndex <= 0;
   const isLastCourse = Number.isFinite(block.courseIndex) &&
     Number.isFinite(block.courseCount) &&
     block.courseIndex >= block.courseCount - 1;
+  const amplitude = Math.max(0, Number(tile.amplitude) || 0);
+  const amplitudeBasis = Math.max(1e-6, amplitude / 100);
+  const physicalCourse = Math.max(1, Number(tile.width) || Number(tile.height) || 100);
+  const amplitudeRatio = clamp(amplitude / physicalCourse, 0, 0.3);
   const lerpUv = (a, b, t) => [
     THREE.MathUtils.lerp(a[0], b[0], t),
     THREE.MathUtils.lerp(a[1], b[1], t),
   ];
-  const runLen = Math.max(
-    Math.hypot(uv[3][0] - uv[0][0], uv[3][1] - uv[0][1]),
-    Math.hypot(uv[2][0] - uv[1][0], uv[2][1] - uv[1][1]),
-    1e-6
-  );
   return {
     uv,
     isFirstCourse,
@@ -6708,7 +6706,8 @@ const makeDesignedJointUvSampler = (block, tile = state.appliedTileSystem) => {
       const axisLen = Math.hypot(axisU, axisV) || 1;
       axisU /= axisLen;
       axisV /= axisLen;
-      const jointOffset = getBdJointOffset(runT, tile) * runLen * depthScale;
+      const jointShape = getBdJointOffset(runT, tile) / amplitudeBasis;
+      const jointOffset = jointShape * amplitudeRatio * axisLen;
       const left = isFirstCourse
         ? leftBase
         : [leftBase[0] + axisU * jointOffset, leftBase[1] + axisV * jointOffset];

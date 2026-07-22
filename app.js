@@ -13655,7 +13655,6 @@ const applyBlockDesignerToVault = async () => {
     if (byId("layerSourceModel")) byId("layerSourceModel").checked = true;
     if (byId("subdivision")) byId("subdivision").value = state.pattern;
     if (nodes.strategyComponent) nodes.strategyComponent.value = component;
-    syncStrategyInputs();
     if (nodes.topologyLatticeEnabled) nodes.topologyLatticeEnabled.checked = false;
 
     setStrategyViewMode("component-mapping");
